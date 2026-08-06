@@ -42,6 +42,7 @@ describe('worker', () => {
         channelId: env.YOUTUBE_CHANNEL_ID,
         createdAtMs: nowMs,
         requestedAtMs: nowMs,
+        renewsAtMs: null,
         expiresAtMs: null,
       };
 
@@ -85,6 +86,7 @@ describe('worker', () => {
 
     expect(persisted.phase).toBe('active');
     expect(persisted.requestedAtMs).toBeNull();
+    expect(typeof persisted.renewsAtMs).toBe('number');
     expect(typeof persisted.expiresAtMs).toBe('number');
 
     if (persisted.expiresAtMs === null) {
@@ -129,6 +131,7 @@ describe('worker', () => {
       schemaVersion: 1,
       phase: 'pending',
       channelId: env.YOUTUBE_CHANNEL_ID,
+      renewsAtMs: null,
       expiresAtMs: null,
     });
 

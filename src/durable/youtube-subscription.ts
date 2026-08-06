@@ -6,6 +6,8 @@ import {
 } from '../youtube/websub';
 
 const SUBSCRIPTION_KEY = 'subscription';
+const VERIFICATION_TIMEOUT_MS = 30 * 60 * 1000;
+const RENEWAL_FRACTION = 0.8;
 
 export interface SubscriptionState {
   schemaVersion: 1;
@@ -13,6 +15,7 @@ export interface SubscriptionState {
   channelId: string;
   createdAtMs: number;
   requestedAtMs: number | null;
+  renewsAtMs: number | null;
   expiresAtMs: number | null;
 }
 
@@ -45,11 +48,42 @@ export class YouTubeSubscription extends DurableObject<Env> {
       channelId,
       createdAtMs: Date.now(),
       requestedAtMs: null,
+      renewsAtMs: null,
       expiresAtMs: null,
     };
 
     this.ctx.storage.kv.put(SUBSCRIPTION_KEY, created);
     return created;
+  }
+
+  async reconcileSubscription(): Promise<SubscriptionState> {
+    let state = this.ensureInitialized(this.env.YOUTUBE_CHANNEL_ID);
+    const nowMs = Date.now();
+
+    if (state.requestedAtMs !== null) {
+      const retryAtMs = state.requestedAtMs + VERIFICATION_TIMEOUT_MS;
+
+      if (nowMs < retryAtMs) {
+        return state;
+      }
+
+      state = {
+        ...state,
+        requestedAtMs: null,
+      };
+
+      this.ctx.storage.kv.put(SUBSCRIPTION_KEY, state);
+    }
+
+    if (
+      state.phase === 'active' &&
+      state.renewsAtMs !== null &&
+      nowMs < state.renewsAtMs
+    ) {
+      return state;
+    }
+
+    return this.requestSubscription();
   }
 
   async requestSubscription(): Promise<SubscriptionState> {
@@ -140,13 +174,20 @@ export class YouTubeSubscription extends DurableObject<Env> {
       return null;
     }
 
-    if (!Number.isSafeInteger(leaseSeconds) || leaseSeconds <= 0) {
+    const nowMs = Date.now();
+    const leaseDurationMs = leaseSeconds * 1000;
+
+    if (!Number.isSafeInteger(leaseDurationMs)) {
       return null;
     }
 
-    const expiresAtMs = Date.now() + leaseSeconds * 1000;
+    const renewsAtMs = nowMs + leaseDurationMs * RENEWAL_FRACTION;
+    const expiresAtMs = nowMs + leaseDurationMs;
 
-    if (!Number.isSafeInteger(expiresAtMs)) {
+    if (
+      !Number.isSafeInteger(renewsAtMs) ||
+      !Number.isSafeInteger(expiresAtMs)
+    ) {
       return null;
     }
 
@@ -154,6 +195,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
       ...state,
       phase: 'active',
       requestedAtMs: null,
+      renewsAtMs,
       expiresAtMs,
     };
 

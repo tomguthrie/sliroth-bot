@@ -7,7 +7,10 @@ import {
   YOUTUBE_WEBSUB_HUB_URL,
 } from '../../src/youtube/websub';
 
-import type { YouTubeSubscription } from '../../src/durable/youtube-subscription';
+import type {
+  SubscriptionState,
+  YouTubeSubscription,
+} from '../../src/durable/youtube-subscription';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -23,6 +26,138 @@ describe('YouTubeSubscription', () => {
     const second = await subscription.ensureInitialized('UC_TEST_CHANNEL_ID');
 
     expect(second).toEqual(first);
+  });
+
+  it('waits while subscription verification is still fresh', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
+      crypto.randomUUID(),
+    );
+
+    const nowMs = Date.now();
+    const requestedAtMs = nowMs - 29 * 60 * 1000;
+
+    await runInDurableObject(subscription, (_instance, state) => {
+      const pending: SubscriptionState = {
+        schemaVersion: 1,
+        phase: 'pending',
+        channelId: env.YOUTUBE_CHANNEL_ID,
+        createdAtMs: nowMs,
+        requestedAtMs,
+        renewsAtMs: null,
+        expiresAtMs: null,
+      };
+
+      state.storage.kv.put('subscription', pending);
+    });
+
+    const result = await subscription.reconcileSubscription();
+
+    expect(result.phase).toBe('pending');
+    expect(result.requestedAtMs).toBe(requestedAtMs);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('retries when subscription verification has timed out', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(new Response(null, { status: 204 })),
+      );
+
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
+      crypto.randomUUID(),
+    );
+
+    const nowMs = Date.now();
+    const staleRequestedAtMs = nowMs - 31 * 60 * 1000;
+
+    await runInDurableObject(subscription, (_instance, state) => {
+      const pending: SubscriptionState = {
+        schemaVersion: 1,
+        phase: 'pending',
+        channelId: env.YOUTUBE_CHANNEL_ID,
+        createdAtMs: nowMs,
+        requestedAtMs: staleRequestedAtMs,
+        renewsAtMs: null,
+        expiresAtMs: null,
+      };
+
+      state.storage.kv.put('subscription', pending);
+    });
+
+    const result = await subscription.reconcileSubscription();
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(result.phase).toBe('pending');
+    expect(result.requestedAtMs).not.toBeNull();
+
+    expect(result.requestedAtMs).toBeGreaterThan(staleRequestedAtMs);
+  });
+
+  it('waits while an active subscription does not need renewal', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
+      crypto.randomUUID(),
+    );
+
+    const nowMs = Date.now();
+
+    await runInDurableObject(subscription, (_instance, state) => {
+      const active: SubscriptionState = {
+        schemaVersion: 1,
+        phase: 'active',
+        channelId: env.YOUTUBE_CHANNEL_ID,
+        createdAtMs: nowMs,
+        requestedAtMs: null,
+        renewsAtMs: nowMs + 60 * 60 * 1000,
+        expiresAtMs: nowMs + 2 * 60 * 60 * 1000,
+      };
+
+      state.storage.kv.put('subscription', active);
+    });
+
+    const result = await subscription.reconcileSubscription();
+
+    expect(result.phase).toBe('active');
+    expect(result.requestedAtMs).toBeNull();
+    expect(result.renewsAtMs).toBe(nowMs + 60 * 60 * 1000);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('requests renewal when an active subscription is due', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(new Response(null, { status: 204 })),
+      );
+
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
+      crypto.randomUUID(),
+    );
+
+    const nowMs = Date.now();
+
+    await runInDurableObject(subscription, (_instance, state) => {
+      const active: SubscriptionState = {
+        schemaVersion: 1,
+        phase: 'active',
+        channelId: env.YOUTUBE_CHANNEL_ID,
+        createdAtMs: nowMs,
+        requestedAtMs: null,
+        renewsAtMs: nowMs - 1,
+        expiresAtMs: nowMs + 60 * 60 * 1000,
+      };
+
+      state.storage.kv.put('subscription', active);
+    });
+
+    const result = await subscription.reconcileSubscription();
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(result.phase).toBe('active');
+    expect(result.requestedAtMs).not.toBeNull();
+    expect(result.requestedAtMs).toBeGreaterThanOrEqual(nowMs);
   });
 
   it('requests a subscription and records pending state', async () => {
@@ -76,6 +211,7 @@ describe('YouTubeSubscription', () => {
     expect(first.channelId).toBe(env.YOUTUBE_CHANNEL_ID);
     expect(typeof first.createdAtMs).toBe('number');
     expect(typeof first.requestedAtMs).toBe('number');
+    expect(first.renewsAtMs).toBeNull();
     expect(first.expiresAtMs).toBeNull();
 
     expect(second).toEqual(first);
@@ -114,6 +250,7 @@ describe('YouTubeSubscription', () => {
 
     expect(active.phase).toBe('active');
     expect(active.requestedAtMs).toBeNull();
+    expect(typeof active.renewsAtMs).toBe('number');
     expect(typeof active.expiresAtMs).toBe('number');
 
     if (active.expiresAtMs === null) {
@@ -163,6 +300,7 @@ describe('YouTubeSubscription', () => {
 
         expect(result.phase).toBe('active');
         expect(result.requestedAtMs).toBeNull();
+        expect(typeof result.renewsAtMs).toBe('number');
         expect(typeof result.expiresAtMs).toBe('number');
       },
     );
@@ -195,6 +333,7 @@ describe('YouTubeSubscription', () => {
 
         expect(restored.phase).toBe('uninitialized');
         expect(restored.requestedAtMs).toBeNull();
+        expect(restored.renewsAtMs).toBeNull();
         expect(restored.expiresAtMs).toBeNull();
       },
     );
