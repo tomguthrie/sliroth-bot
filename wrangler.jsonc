@@ -34,6 +34,9 @@
   },
   "secrets": {
     "required": [
+      "DISCORD_BOT_TOKEN",
+      "DISCORD_CHANNEL_ID",
+      "DISCORD_YT_ROLE_ID",
       "PUBLIC_BASE_URL",
       "YOUTUBE_CHANNEL_ID",
       "YOUTUBE_CALLBACK_TOKEN",
