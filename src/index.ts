@@ -2,6 +2,7 @@ import {
   createYouTubeCallbackUrl,
   verifyYouTubeWebSubSignature,
 } from './youtube/websub';
+import { parseYouTubeVideoNotifications } from './youtube/notification';
 
 export { YouTubeSubscription } from './durable/youtube-subscription';
 
@@ -107,6 +108,21 @@ async function receiveYouTubeNotification(
   if (!hasValidSignature) {
     return new Response('Unauthorized', { status: 401 });
   }
+
+  let notifications: ReturnType<typeof parseYouTubeVideoNotifications>;
+
+  try {
+    const xml = new TextDecoder().decode(body);
+    notifications = parseYouTubeVideoNotifications(xml);
+  } catch {
+    return new Response('Bad Request', { status: 400 });
+  }
+
+  const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
+    YOUTUBE_SUBSCRIPTION_NAME,
+  );
+
+  await subscription.recordNotifications(notifications);
 
   return new Response(null, { status: 204 });
 }

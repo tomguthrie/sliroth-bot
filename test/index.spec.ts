@@ -8,7 +8,10 @@ import {
 } from 'cloudflare:test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { SubscriptionState } from '../src/durable/youtube-subscription';
+import type {
+  StoredVideo,
+  SubscriptionState,
+} from '../src/durable/youtube-subscription';
 import worker, { YOUTUBE_SUBSCRIPTION_NAME } from '../src/index';
 import {
   createYouTubeCallbackUrl,
@@ -103,13 +106,43 @@ describe('worker', () => {
   });
 
   it('accepts a correctly signed YouTube notification', async () => {
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
+      YOUTUBE_SUBSCRIPTION_NAME,
+    );
+    const createdAtMs = Date.parse('2026-08-06T12:00:00Z');
+
+    await runInDurableObject(subscription, (_instance, state) => {
+      const active: SubscriptionState = {
+        schemaVersion: 1,
+        phase: 'active',
+        channelId: env.YOUTUBE_CHANNEL_ID,
+        createdAtMs,
+        requestedAtMs: null,
+        renewsAtMs: createdAtMs + 60 * 60 * 1000,
+        expiresAtMs: createdAtMs + 2 * 60 * 60 * 1000,
+      };
+
+      state.storage.kv.put('subscription', active);
+    });
+
     const callbackUrl = createYouTubeCallbackUrl(
       env.PUBLIC_BASE_URL,
       env.YOUTUBE_CALLBACK_TOKEN,
     );
-    const body = Uint8Array.from(
-      new TextEncoder().encode('<feed>test</feed>'),
-    ).buffer;
+    const xml = `
+      <feed
+        xmlns="http://www.w3.org/2005/Atom"
+        xmlns:yt="http://www.youtube.com/xml/schemas/2015"
+      >
+        <entry>
+          <yt:videoId>video-123</yt:videoId>
+          <yt:channelId>${env.YOUTUBE_CHANNEL_ID}</yt:channelId>
+          <title>Test video</title>
+          <published>2026-08-06T13:00:00Z</published>
+        </entry>
+      </feed>
+    `;
+    const body = Uint8Array.from(new TextEncoder().encode(xml)).buffer;
     const signature = await createSignature(body, env.YOUTUBE_WEBSUB_SECRET);
 
     const response = await exports.default.fetch(callbackUrl, {
@@ -123,6 +156,44 @@ describe('worker', () => {
 
     expect(response.status).toBe(204);
     expect(await response.text()).toBe('');
+
+    const stored = await runInDurableObject(subscription, (_instance, state) =>
+      state.storage.kv.get<StoredVideo>('video:video-123'),
+    );
+
+    expect(stored).toMatchObject({
+      schemaVersion: 1,
+      status: 'pending',
+      notification: {
+        videoId: 'video-123',
+        channelId: env.YOUTUBE_CHANNEL_ID,
+        title: 'Test video',
+        publishedAt: '2026-08-06T13:00:00Z',
+      },
+    });
+  });
+
+  it('rejects a signed malformed YouTube notification', async () => {
+    const callbackUrl = createYouTubeCallbackUrl(
+      env.PUBLIC_BASE_URL,
+      env.YOUTUBE_CALLBACK_TOKEN,
+    );
+    const body = Uint8Array.from(
+      new TextEncoder().encode('<notification />'),
+    ).buffer;
+    const signature = await createSignature(body, env.YOUTUBE_WEBSUB_SECRET);
+
+    const response = await exports.default.fetch(callbackUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/atom+xml',
+        'x-hub-signature': signature,
+      },
+      body,
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.text()).toBe('Bad Request');
   });
 
   it('rejects an unsigned YouTube notification', async () => {
