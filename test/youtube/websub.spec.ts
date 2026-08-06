@@ -21,7 +21,7 @@ describe('createYouTubeWebSubRequest', () => {
       'application/x-www-form-urlencoded;charset=UTF-8',
     );
 
-    const body = new URLSearchParams(await request.text());
+    const body = await request.formData();
 
     expect(Object.fromEntries(body)).toEqual({
       'hub.mode': 'subscribe',

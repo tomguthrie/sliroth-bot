@@ -53,6 +53,7 @@ describe('Hello World worker', () => {
       schemaVersion: 1,
       phase: 'uninitialized',
       channelId: env.YOUTUBE_CHANNEL_ID,
+      requestedAtMs: null,
     });
 
     expect(typeof persisted?.createdAtMs).toBe('number');
