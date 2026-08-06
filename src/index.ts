@@ -6,6 +6,8 @@ import { parseYouTubeVideoNotifications } from './youtube/notification';
 
 export { YouTubeSubscription } from './durable/youtube-subscription';
 
+const MAX_YOUTUBE_NOTIFICATION_BYTES = 1024 * 1024;
+
 export const YOUTUBE_SUBSCRIPTION_NAME = 'primary';
 
 export default {
@@ -97,7 +99,14 @@ async function receiveYouTubeNotification(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const body = await request.arrayBuffer();
+  const body = await readLimitedRequestBody(
+    request,
+    MAX_YOUTUBE_NOTIFICATION_BYTES,
+  );
+
+  if (body === null) {
+    return new Response('Payload Too Large', { status: 413 });
+  }
 
   const hasValidSignature = await verifyYouTubeWebSubSignature(
     body,
@@ -125,4 +134,65 @@ async function receiveYouTubeNotification(
   await subscription.recordNotifications(notifications);
 
   return new Response(null, { status: 204 });
+}
+
+async function readLimitedRequestBody(
+  request: Request,
+  maximumBytes: number,
+): Promise<ArrayBuffer | null> {
+  const contentLength = request.headers.get('content-length');
+
+  if (contentLength !== null) {
+    const declaredBytes = Number(contentLength);
+
+    if (Number.isSafeInteger(declaredBytes) && declaredBytes > maximumBytes) {
+      return null;
+    }
+  }
+
+  if (request.body === null) {
+    return new ArrayBuffer(0);
+  }
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array<ArrayBuffer>[] = [];
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const result = await reader.read();
+
+      if (result.done) {
+        break;
+      }
+
+      const value: unknown = result.value;
+
+      if (!(value instanceof Uint8Array)) {
+        throw new Error('Request body stream produced an invalid chunk');
+      }
+
+      const chunk = Uint8Array.from(value);
+      totalBytes += chunk.byteLength;
+
+      if (totalBytes > maximumBytes) {
+        await reader.cancel();
+        return null;
+      }
+
+      chunks.push(chunk);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(totalBytes);
+  let offset = 0;
+
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return body.buffer;
 }

@@ -214,6 +214,42 @@ describe('worker', () => {
     expect(await response.text()).toBe('Unauthorized');
   });
 
+  it('rejects a declared oversized YouTube notification', async () => {
+    const callbackUrl = createYouTubeCallbackUrl(
+      env.PUBLIC_BASE_URL,
+      env.YOUTUBE_CALLBACK_TOKEN,
+    );
+
+    const response = await exports.default.fetch(callbackUrl, {
+      method: 'POST',
+      headers: {
+        'content-length': String(1024 * 1024 + 1),
+      },
+    });
+
+    expect(response.status).toBe(413);
+    expect(await response.text()).toBe('Payload Too Large');
+  });
+
+  it('rejects an oversized streamed YouTube notification', async () => {
+    const callbackUrl = createYouTubeCallbackUrl(
+      env.PUBLIC_BASE_URL,
+      env.YOUTUBE_CALLBACK_TOKEN,
+    );
+    const body = new Uint8Array(1024 * 1024 + 1);
+    const request = new Request(callbackUrl, {
+      method: 'POST',
+      body,
+    });
+
+    expect(request.headers.get('content-length')).toBeNull();
+
+    const response = await exports.default.fetch(request);
+
+    expect(response.status).toBe(413);
+    expect(await response.text()).toBe('Payload Too Large');
+  });
+
   it('rejects unsupported methods on the YouTube callback', async () => {
     const callbackUrl = createYouTubeCallbackUrl(
       env.PUBLIC_BASE_URL,
