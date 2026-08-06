@@ -2,6 +2,8 @@ export const YOUTUBE_WEBSUB_HUB_URL =
   'https://pubsubhubbub.appspot.com/subscribe';
 
 const YOUTUBE_FEED_URL = 'https://www.youtube.com/feeds/videos.xml';
+const YOUTUBE_SIGNATURE_PREFIX = 'sha1=';
+const SHA1_HEX_LENGTH = 40;
 
 export type WebSubMode = 'subscribe' | 'unsubscribe';
 
@@ -51,4 +53,53 @@ export function createYouTubeCallbackUrl(
     `/youtube/websub/${encodeURIComponent(callbackToken)}`,
     publicBaseUrl,
   ).toString();
+}
+
+export async function verifyYouTubeWebSubSignature(
+  body: ArrayBuffer,
+  signatureHeader: string | null,
+  secret: string,
+): Promise<boolean> {
+  if (signatureHeader === null) {
+    return false;
+  }
+
+  if (!signatureHeader.startsWith(YOUTUBE_SIGNATURE_PREFIX)) {
+    return false;
+  }
+
+  const signatureHex = signatureHeader.slice(YOUTUBE_SIGNATURE_PREFIX.length);
+
+  if (
+    signatureHex.length !== SHA1_HEX_LENGTH ||
+    !/^[0-9a-f]+$/i.test(signatureHex)
+  ) {
+    return false;
+  }
+
+  const signature = hexToBytes(signatureHex);
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    {
+      name: 'HMAC',
+      hash: 'SHA-1',
+    },
+    false,
+    ['verify'],
+  );
+
+  return crypto.subtle.verify('HMAC', key, signature, body);
+}
+
+function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(hex.length / 2);
+
+  for (let index = 0; index < bytes.length; index += 1) {
+    const offset = index * 2;
+    bytes[index] = Number.parseInt(hex.slice(offset, offset + 2), 16);
+  }
+
+  return bytes;
 }

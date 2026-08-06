@@ -102,6 +102,62 @@ describe('worker', () => {
     );
   });
 
+  it('accepts a correctly signed YouTube notification', async () => {
+    const callbackUrl = createYouTubeCallbackUrl(
+      env.PUBLIC_BASE_URL,
+      env.YOUTUBE_CALLBACK_TOKEN,
+    );
+    const body = Uint8Array.from(
+      new TextEncoder().encode('<feed>test</feed>'),
+    ).buffer;
+    const signature = await createSignature(body, env.YOUTUBE_WEBSUB_SECRET);
+
+    const response = await exports.default.fetch(callbackUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/atom+xml',
+        'x-hub-signature': signature,
+      },
+      body,
+    });
+
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe('');
+  });
+
+  it('rejects an unsigned YouTube notification', async () => {
+    const callbackUrl = createYouTubeCallbackUrl(
+      env.PUBLIC_BASE_URL,
+      env.YOUTUBE_CALLBACK_TOKEN,
+    );
+
+    const response = await exports.default.fetch(callbackUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/atom+xml',
+      },
+      body: '<feed>test</feed>',
+    });
+
+    expect(response.status).toBe(401);
+    expect(await response.text()).toBe('Unauthorized');
+  });
+
+  it('rejects unsupported methods on the YouTube callback', async () => {
+    const callbackUrl = createYouTubeCallbackUrl(
+      env.PUBLIC_BASE_URL,
+      env.YOUTUBE_CALLBACK_TOKEN,
+    );
+
+    const response = await exports.default.fetch(callbackUrl, {
+      method: 'PUT',
+    });
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get('allow')).toBe('GET, POST');
+    expect(await response.text()).toBe('Method Not Allowed');
+  });
+
   it('initializes the YouTube subscription on schedule', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
@@ -140,3 +196,27 @@ describe('worker', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });
+
+async function createSignature(
+  body: ArrayBuffer,
+  secret: string,
+): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    {
+      name: 'HMAC',
+      hash: 'SHA-1',
+    },
+    false,
+    ['sign'],
+  );
+
+  const signature = await crypto.subtle.sign('HMAC', key, body);
+
+  const signatureHex = Array.from(new Uint8Array(signature))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+
+  return `sha1=${signatureHex}`;
+}

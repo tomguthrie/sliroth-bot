@@ -1,4 +1,7 @@
-import { createYouTubeCallbackUrl } from './youtube/websub';
+import {
+  createYouTubeCallbackUrl,
+  verifyYouTubeWebSubSignature,
+} from './youtube/websub';
 
 export { YouTubeSubscription } from './durable/youtube-subscription';
 
@@ -15,16 +18,20 @@ export default {
       return notFound();
     }
 
-    if (request.method !== 'GET') {
-      return new Response('Method Not Allowed', {
-        status: 405,
-        headers: {
-          allow: 'GET',
-        },
-      });
+    if (request.method === 'GET') {
+      return verifyYouTubeSubscription(url, env);
     }
 
-    return verifyYouTubeSubscription(url, env);
+    if (request.method === 'POST') {
+      return receiveYouTubeNotification(request, env);
+    }
+
+    return new Response('Method Not Allowed', {
+      status: 405,
+      headers: {
+        allow: 'GET, POST',
+      },
+    });
   },
 
   async scheduled(_controller, env, _ctx): Promise<void> {
@@ -83,4 +90,23 @@ async function verifyYouTubeSubscription(
       'x-content-type-options': 'nosniff',
     },
   });
+}
+
+async function receiveYouTubeNotification(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const body = await request.arrayBuffer();
+
+  const hasValidSignature = await verifyYouTubeWebSubSignature(
+    body,
+    request.headers.get('x-hub-signature'),
+    env.YOUTUBE_WEBSUB_SECRET,
+  );
+
+  if (!hasValidSignature) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  return new Response(null, { status: 204 });
 }
