@@ -1,10 +1,13 @@
 import { env } from 'cloudflare:workers';
+import { runInDurableObject } from 'cloudflare:test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createYouTubeTopicUrl,
   YOUTUBE_WEBSUB_HUB_URL,
 } from '../../src/youtube/websub';
+
+import type { YouTubeSubscription } from '../../src/durable/youtube-subscription';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -131,5 +134,69 @@ describe('YouTubeSubscription', () => {
     );
 
     expect(repeated).toBeNull();
+  });
+
+  it('preserves confirmation completed while the request is in flight', async () => {
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
+      crypto.randomUUID(),
+    );
+
+    await runInDurableObject(
+      subscription,
+      async (instance: YouTubeSubscription) => {
+        vi.spyOn(globalThis, 'fetch').mockImplementation(() => {
+          const active = instance.confirmSubscription(
+            createYouTubeTopicUrl(env.YOUTUBE_CHANNEL_ID),
+            86_400,
+          );
+
+          if (active === null) {
+            throw new Error(
+              'Expected verification during the hub request to succeed',
+            );
+          }
+
+          return Promise.resolve(new Response(null, { status: 204 }));
+        });
+
+        const result = await instance.requestSubscription();
+
+        expect(result.phase).toBe('active');
+        expect(result.requestedAtMs).toBeNull();
+        expect(typeof result.expiresAtMs).toBe('number');
+      },
+    );
+  });
+
+  it('restores state when the hub rejects the requset', async () => {
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
+      crypto.randomUUID(),
+    );
+
+    await runInDurableObject(
+      subscription,
+      async (instance: YouTubeSubscription) => {
+        vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+          Promise.resolve(
+            new Response('temporarily unavailable', {
+              status: 503,
+              headers: {
+                'content-type': 'text/plain',
+              },
+            }),
+          ),
+        );
+
+        await expect(instance.requestSubscription()).rejects.toThrow(
+          'YouTube WebSub hub rejected the subscription with HTTP 503',
+        );
+
+        const restored = instance.ensureInitialized(env.YOUTUBE_CHANNEL_ID);
+
+        expect(restored.phase).toBe('uninitialized');
+        expect(restored.requestedAtMs).toBeNull();
+        expect(restored.expiresAtMs).toBeNull();
+      },
+    );
   });
 });

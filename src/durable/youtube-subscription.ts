@@ -67,27 +67,57 @@ export class YouTubeSubscription extends DurableObject<Env> {
       secret: this.env.YOUTUBE_WEBSUB_SECRET,
     });
 
-    const response = await fetch(request);
-
-    if (!response.ok) {
-      const responseBody = await response.text();
-
-      throw new Error(
-        `YouTube WebSub hub rejected the subscription with HTTP ${response.status}: ${responseBody}`,
-      );
-    }
-
-    await response.body?.cancel();
+    const requestedAtMs = Date.now();
 
     const awaitingVerification: SubscriptionState = {
       ...state,
       phase: state.phase === 'uninitialized' ? 'pending' : state.phase,
-      requestedAtMs: Date.now(),
+      requestedAtMs,
     };
 
+    // Persist before fetch so an immediate verification callback can succeed.
     this.ctx.storage.kv.put(SUBSCRIPTION_KEY, awaitingVerification);
 
-    return awaitingVerification;
+    try {
+      const response = await fetch(request);
+
+      if (!response.ok) {
+        const responseBody = await response.text();
+
+        throw new Error(
+          `YouTube WebSub hub rejected the subscription with HTTP ${response.status}: ${responseBody}`,
+        );
+      }
+
+      await response.body?.cancel();
+    } catch (error) {
+      this.restoreAfterFailedRequest(requestedAtMs, state);
+      throw error;
+    }
+
+    // Verification may have completed while fetch() was awaiting.
+    const current =
+      this.ctx.storage.kv.get<SubscriptionState>(SUBSCRIPTION_KEY);
+
+    return current ?? awaitingVerification;
+  }
+
+  private restoreAfterFailedRequest(
+    requestedAtMs: number,
+    previous: SubscriptionState,
+  ): void {
+    const current =
+      this.ctx.storage.kv.get<SubscriptionState>(SUBSCRIPTION_KEY);
+
+    if (current === undefined) {
+      return;
+    }
+
+    if (current.requestedAtMs !== requestedAtMs) {
+      return;
+    }
+
+    this.ctx.storage.kv.put(SUBSCRIPTION_KEY, previous);
   }
 
   confirmSubscription(
