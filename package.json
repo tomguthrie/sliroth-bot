@@ -37,5 +37,8 @@
     "workerd@1.20260310.1": true,
     "workerd@1.20260801.1": true,
     "fsevents@2.3.3": true
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.10.1"
   }
 }
