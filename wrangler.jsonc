@@ -3,45 +3,41 @@
  * https://developers.cloudflare.com/workers/wrangler/configuration/
  */
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "sliroth-bot",
-	"main": "src/index.ts",
-	"compatibility_date": "2026-08-06",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
-	"observability": {
-		"enabled": true,
-		"logs": {
-			"head_sampling_rate": 1
-		}
-	},
-	"upload_source_maps": true,
-	"durable_objects": {
-		"bindings": [
-			{
-				"name": "YOUTUBE_SUBSCRIPTIONS",
-				"class_name": "YouTubeSubscription"
-			}
-		]
-	},
-	"exports": {
-		"YouTubeSubscription": {
-			"type": "durable-object",
-			"storage": "sqlite"
-		}
-	},
-	"triggers": {
-		"crons": [
-			"*/15 * * * *"
-		]
-	},
-	"secrets": {
-		"required": [
-			"PUBLIC_BASE_URL",
-			"YOUTUBE_CHANNEL_ID",
-			"YOUTUBE_CALLBACK_TOKEN",
-			"YOUTUBE_WEBSUB_SECRET"
-		]
-	}
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sliroth-bot",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-06",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "head_sampling_rate": 1,
+    },
+  },
+  "upload_source_maps": true,
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "YOUTUBE_SUBSCRIPTIONS",
+        "class_name": "YouTubeSubscription",
+      },
+    ],
+  },
+  "exports": {
+    "YouTubeSubscription": {
+      "type": "durable-object",
+      "storage": "sqlite",
+    },
+  },
+  "triggers": {
+    "crons": ["*/15 * * * *"],
+  },
+  "secrets": {
+    "required": [
+      "PUBLIC_BASE_URL",
+      "YOUTUBE_CHANNEL_ID",
+      "YOUTUBE_CALLBACK_TOKEN",
+      "YOUTUBE_WEBSUB_SECRET",
+    ],
+  },
 }
