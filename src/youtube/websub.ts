@@ -1,7 +1,7 @@
 export const YOUTUBE_WEBSUB_HUB_URL =
   'https://pubsubhubbub.appspot.com/subscribe';
 
-const YOUTUBE_FEED_URL = 'https://www.youtube.com/feeds/videos.xml';
+const YOUTUBE_FEED_URL = 'https://www.youtube.com/xml/feeds/videos.xml';
 const YOUTUBE_SIGNATURE_PREFIX = 'sha1=';
 const SHA1_HEX_LENGTH = 40;
 

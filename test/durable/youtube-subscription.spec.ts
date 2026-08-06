@@ -413,7 +413,7 @@ describe('YouTubeSubscription', () => {
         const topicUrl = new URL(topic);
 
         expect(topicUrl.origin).toBe('https://www.youtube.com');
-        expect(topicUrl.pathname).toBe('/feeds/videos.xml');
+        expect(topicUrl.pathname).toBe('/xml/feeds/videos.xml');
 
         expect(topicUrl.searchParams.get('channel_id')).toBe(
           env.YOUTUBE_CHANNEL_ID,

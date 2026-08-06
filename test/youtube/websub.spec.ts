@@ -27,7 +27,7 @@ describe('createYouTubeWebSubRequest', () => {
     expect(Object.fromEntries(body)).toEqual({
       'hub.mode': 'subscribe',
       'hub.topic':
-        'https://www.youtube.com/feeds/videos.xml?channel_id=UC_TEST_CHANNEL_ID',
+        'https://www.youtube.com/xml/feeds/videos.xml?channel_id=UC_TEST_CHANNEL_ID',
       'hub.callback':
         'https://bot.example.com/youtube/websub/test-callback-token',
       'hub.secret': 'test-websub-secret',
