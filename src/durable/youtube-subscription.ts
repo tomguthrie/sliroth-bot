@@ -90,13 +90,13 @@ export class YouTubeSubscription extends DurableObject<Env> {
       this.ctx.storage.kv.put(SUBSCRIPTION_KEY, state);
     }
 
-    if (
+    /*    if (
       state.phase === 'active' &&
       state.renewsAtMs !== null &&
       nowMs < state.renewsAtMs
     ) {
       return state;
-    }
+    }*/
 
     return this.requestSubscription();
   }
