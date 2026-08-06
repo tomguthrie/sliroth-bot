@@ -6,7 +6,7 @@ import {
   runInDurableObject,
   waitOnExecutionContext,
 } from 'cloudflare:test';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { SubscriptionState } from '../src/durable/youtube-subscription';
 import worker, { YOUTUBE_SUBSCRIPTION_NAME } from '../src/index';
@@ -16,6 +16,7 @@ import {
 } from '../src/youtube/websub';
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await reset();
 });
 
@@ -100,6 +101,10 @@ describe('worker', () => {
   });
 
   it('initializes the YouTube subscription on schedule', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
     const controller = createScheduledController({
       chron: '*/15 * * * *',
       scheduleTime: new Date(0),
@@ -122,12 +127,13 @@ describe('worker', () => {
 
     expect(persisted).toMatchObject({
       schemaVersion: 1,
-      phase: 'uninitialized',
+      phase: 'pending',
       channelId: env.YOUTUBE_CHANNEL_ID,
-      requestedAtMs: null,
       expiresAtMs: null,
     });
 
     expect(typeof persisted?.createdAtMs).toBe('number');
+    expect(typeof persisted?.requestedAtMs).toBe('number');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });

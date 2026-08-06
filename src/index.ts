@@ -32,7 +32,7 @@ export default {
       YOUTUBE_SUBSCRIPTION_NAME,
     );
 
-    await subscription.ensureInitialized(env.YOUTUBE_CHANNEL_ID);
+    await subscription.requestSubscription();
   },
 } satisfies ExportedHandler<Env>;
 
