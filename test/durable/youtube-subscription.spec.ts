@@ -8,9 +8,11 @@ import {
 } from '../../src/youtube/websub';
 
 import type {
+  StoredVideo,
   SubscriptionState,
   YouTubeSubscription,
 } from '../../src/durable/youtube-subscription';
+import type { YouTubeVideoNotification } from '../../src/youtube/notification';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -26,6 +28,134 @@ describe('YouTubeSubscription', () => {
     const second = await subscription.ensureInitialized('UC_TEST_CHANNEL_ID');
 
     expect(second).toEqual(first);
+  });
+
+  it('records videos published before initialization as baseline', async () => {
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
+      crypto.randomUUID(),
+    );
+    const createdAtMs = Date.parse('2026-08-06T12:00:00Z');
+    const notification = createNotification({
+      videoId: 'baseline-video',
+      publishedAt: '2026-08-06T11:00:00Z',
+    });
+
+    await runInDurableObject(subscription, (_instance, state) => {
+      state.storage.kv.put(
+        'subscription',
+        createActiveSubscription(createdAtMs),
+      );
+    });
+
+    const pending = await subscription.recordNotifications([notification]);
+
+    expect(pending).toEqual([]);
+
+    const stored = await runInDurableObject(subscription, (_instance, state) =>
+      state.storage.kv.get<StoredVideo>('video:baseline-video'),
+    );
+
+    expect(stored).toMatchObject({
+      schemaVersion: 1,
+      notification,
+      status: 'baseline',
+    });
+    expect(typeof stored?.firstSeenAtMs).toBe('number');
+  });
+
+  it('records videos published after initialization as pending', async () => {
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
+      crypto.randomUUID(),
+    );
+    const createdAtMs = Date.parse('2026-08-06T12:00:00Z');
+    const notification = createNotification({
+      videoId: 'new-video',
+      publishedAt: '2026-08-06T13:00:00Z',
+    });
+
+    await runInDurableObject(subscription, (_instance, state) => {
+      state.storage.kv.put(
+        'subscription',
+        createActiveSubscription(createdAtMs),
+      );
+    });
+
+    const pending = await subscription.recordNotifications([notification]);
+
+    expect(pending).toEqual([notification]);
+
+    const stored = await runInDurableObject(subscription, (_instance, state) =>
+      state.storage.kv.get<StoredVideo>('video:new-video'),
+    );
+
+    expect(stored).toMatchObject({
+      schemaVersion: 1,
+      notification,
+      status: 'pending',
+    });
+    expect(typeof stored?.firstSeenAtMs).toBe('number');
+  });
+
+  it('returns each video only once', async () => {
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
+      crypto.randomUUID(),
+    );
+    const createdAtMs = Date.parse('2026-08-06T12:00:00Z');
+    const notification = createNotification({
+      videoId: 'duplicate-video',
+      publishedAt: '2026-08-06T13:00:00Z',
+    });
+
+    await runInDurableObject(subscription, (_instance, state) => {
+      state.storage.kv.put(
+        'subscription',
+        createActiveSubscription(createdAtMs),
+      );
+    });
+
+    const first = await subscription.recordNotifications([
+      notification,
+      notification,
+    ]);
+    const second = await subscription.recordNotifications([notification]);
+
+    expect(first).toEqual([notification]);
+    expect(second).toEqual([]);
+  });
+
+  it('rejects notifications for a different channel before storing videos', async () => {
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
+      crypto.randomUUID(),
+    );
+    const createdAtMs = Date.parse('2026-08-06T12:00:00Z');
+    const valid = createNotification({
+      videoId: 'valid-video',
+      publishedAt: '2026-08-06T13:00:00Z',
+    });
+    const wrongChannel = createNotification({
+      videoId: 'wrong-channel-video',
+      channelId: 'UC_OTHER_CHANNEL_ID',
+      publishedAt: '2026-08-06T13:00:00Z',
+    });
+
+    await runInDurableObject(subscription, (_instance, state) => {
+      state.storage.kv.put(
+        'subscription',
+        createActiveSubscription(createdAtMs),
+      );
+    });
+
+    await runInDurableObject(subscription, (instance: YouTubeSubscription) => {
+      expect(() => instance.recordNotifications([valid, wrongChannel])).toThrow(
+        'YouTube notification belongs to a different channel',
+      );
+    });
+
+    const stored = await runInDurableObject(subscription, (_instance, state) =>
+      state.storage.kv.get<StoredVideo>('video:valid-video'),
+    );
+
+    expect(stored).toBeUndefined();
   });
 
   it('waits while subscription verification is still fresh', async () => {
@@ -339,3 +469,27 @@ describe('YouTubeSubscription', () => {
     );
   });
 });
+
+function createActiveSubscription(createdAtMs: number): SubscriptionState {
+  return {
+    schemaVersion: 1,
+    phase: 'active',
+    channelId: env.YOUTUBE_CHANNEL_ID,
+    createdAtMs,
+    requestedAtMs: null,
+    renewsAtMs: createdAtMs + 60 * 60 * 1000,
+    expiresAtMs: createdAtMs + 2 * 60 * 60 * 1000,
+  };
+}
+
+function createNotification(
+  overrides: Partial<YouTubeVideoNotification> = {},
+): YouTubeVideoNotification {
+  return {
+    videoId: 'video-123',
+    channelId: env.YOUTUBE_CHANNEL_ID,
+    title: 'Test video',
+    publishedAt: '2026-08-06T13:00:00Z',
+    ...overrides,
+  };
+}

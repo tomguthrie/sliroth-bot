@@ -5,9 +5,12 @@ import {
   createYouTubeWebSubRequest,
 } from '../youtube/websub';
 
+import type { YouTubeVideoNotification } from '../youtube/notification';
+
 const SUBSCRIPTION_KEY = 'subscription';
 const VERIFICATION_TIMEOUT_MS = 30 * 60 * 1000;
 const RENEWAL_FRACTION = 0.8;
+const VIDEO_KEY_PREFIX = 'video:';
 
 export interface SubscriptionState {
   schemaVersion: 1;
@@ -17,6 +20,13 @@ export interface SubscriptionState {
   requestedAtMs: number | null;
   renewsAtMs: number | null;
   expiresAtMs: number | null;
+}
+
+export interface StoredVideo {
+  schemaVersion: 1;
+  notification: YouTubeVideoNotification;
+  status: 'baseline' | 'pending';
+  firstSeenAtMs: number;
 }
 
 export class YouTubeSubscription extends DurableObject<Env> {
@@ -203,4 +213,70 @@ export class YouTubeSubscription extends DurableObject<Env> {
 
     return active;
   }
+
+  recordNotifications(
+    notifications: YouTubeVideoNotification[],
+  ): YouTubeVideoNotification[] {
+    const subscription = this.ensureInitialized(this.env.YOUTUBE_CHANNEL_ID);
+    const uniqueNotifications = new Map<
+      string,
+      { notification: YouTubeVideoNotification; publishedAtMs: number }
+    >();
+
+    for (const notification of notifications) {
+      if (notification.channelId !== subscription.channelId) {
+        throw new Error('YouTube notification belongs to a different channel');
+      }
+
+      const publishedAtMs = Date.parse(notification.publishedAt);
+
+      if (!Number.isFinite(publishedAtMs)) {
+        throw new Error('YouTube notification has an invalid published date');
+      }
+
+      if (!uniqueNotifications.has(notification.videoId)) {
+        uniqueNotifications.set(notification.videoId, {
+          notification,
+          publishedAtMs,
+        });
+      }
+    }
+
+    const firstSeenAtMs = Date.now();
+    const pending: YouTubeVideoNotification[] = [];
+
+    for (const {
+      notification,
+      publishedAtMs,
+    } of uniqueNotifications.values()) {
+      const storageKey = createVideoStorageKey(notification.videoId);
+      const existing = this.ctx.storage.kv.get<StoredVideo>(storageKey);
+
+      if (existing !== undefined) {
+        continue;
+      }
+
+      const status =
+        publishedAtMs < subscription.createdAtMs ? 'baseline' : 'pending';
+
+      const stored: StoredVideo = {
+        schemaVersion: 1,
+        notification,
+        status,
+        firstSeenAtMs,
+      };
+
+      this.ctx.storage.kv.put(storageKey, stored);
+
+      if (status === 'pending') {
+        pending.push(notification);
+      }
+    }
+
+    return pending;
+  }
+}
+
+function createVideoStorageKey(videoId: string): string {
+  return `${VIDEO_KEY_PREFIX}${videoId}`;
 }
