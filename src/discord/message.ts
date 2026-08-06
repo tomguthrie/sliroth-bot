@@ -56,3 +56,24 @@ function requireSnowflake(value: string, name: string): void {
     throw new Error(`${name} must be a Discord snowflake`);
   }
 }
+
+export async function sendDiscordVideoMessage(
+  options: CreateDiscordVideoMessageRequestOptions,
+): Promise<void> {
+  const request = createDiscordVideoMessageRequest(options);
+  const response = await fetch(request);
+
+  if (!response.ok) {
+    const responseBody = await response.text();
+    const detail =
+      responseBody.trim() === '' ? 'no response body' : responseBody;
+
+    throw new Error(
+      `Discord rejected the video message with HTTP ${response.status}: ${detail}`,
+    );
+  }
+
+  if (response.body !== null) {
+    await response.body.cancel();
+  }
+}
