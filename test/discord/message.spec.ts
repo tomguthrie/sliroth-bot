@@ -38,6 +38,8 @@ describe('createDiscordVideoMessageRequest', () => {
 
     expect(body).toEqual({
       content: `<@&${ROLE_ID}> Sliroth just uploaded a video, go check it out! https://youtu.be/dQw4w9WgXcQ`,
+      nonce: 'dQw4w9WgXcQ',
+      enforce_nonce: true,
       allowed_mentions: {
         parse: [],
         roles: [ROLE_ID],

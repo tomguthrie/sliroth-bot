@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { runInDurableObject } from 'cloudflare:test';
+import { runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -59,6 +59,7 @@ describe('YouTubeSubscription', () => {
       schemaVersion: 1,
       notification,
       status: 'baseline',
+      sentAtMs: null,
     });
     expect(typeof stored?.firstSeenAtMs).toBe('number');
   });
@@ -92,6 +93,7 @@ describe('YouTubeSubscription', () => {
       schemaVersion: 1,
       notification,
       status: 'pending',
+      sentAtMs: null,
     });
     expect(typeof stored?.firstSeenAtMs).toBe('number');
   });
@@ -145,17 +147,115 @@ describe('YouTubeSubscription', () => {
       );
     });
 
-    await runInDurableObject(subscription, (instance: YouTubeSubscription) => {
-      expect(() => instance.recordNotifications([valid, wrongChannel])).toThrow(
-        'YouTube notification belongs to a different channel',
-      );
-    });
+    await runInDurableObject(
+      subscription,
+      async (instance: YouTubeSubscription) => {
+        await expect(
+          instance.recordNotifications([valid, wrongChannel]),
+        ).rejects.toThrow(
+          'YouTube notification belongs to a different channel',
+        );
+      },
+    );
 
     const stored = await runInDurableObject(subscription, (_instance, state) =>
       state.storage.kv.get<StoredVideo>('video:valid-video'),
     );
 
     expect(stored).toBeUndefined();
+  });
+
+  it('delivers pending videos and marks them as sent', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 200 }));
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
+      crypto.randomUUID(),
+    );
+    const createdAtMs = Date.parse('2026-08-06T12:00:00Z');
+    const notification = createNotification({
+      videoId: 'dQw4w9WgXcQ',
+      publishedAt: '2026-08-06T13:00:00Z',
+    });
+
+    await runInDurableObject(subscription, (_instance, state) => {
+      state.storage.kv.put(
+        'subscription',
+        createActiveSubscription(createdAtMs),
+      );
+    });
+
+    await subscription.recordNotifications([notification]);
+
+    expect(await runDurableObjectAlarm(subscription)).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledOnce();
+
+    const stored = await runInDurableObject(subscription, (_instance, state) =>
+      state.storage.kv.get<StoredVideo>('video:dQw4w9WgXcQ'),
+    );
+
+    expect(stored).toMatchObject({
+      schemaVersion: 1,
+      notification,
+      status: 'sent',
+    });
+    expect(typeof stored?.sentAtMs).toBe('number');
+  });
+
+  it('keeps failed deliveries pending and retries them with an alarm', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+    const errorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
+      crypto.randomUUID(),
+    );
+    const createdAtMs = Date.parse('2026-08-06T12:00:00Z');
+    const notification = createNotification({
+      videoId: '9bZkp7q19f0',
+      publishedAt: '2026-08-06T13:00:00Z',
+    });
+
+    await runInDurableObject(subscription, (_instance, state) => {
+      state.storage.kv.put(
+        'subscription',
+        createActiveSubscription(createdAtMs),
+      );
+    });
+
+    await subscription.recordNotifications([notification]);
+
+    expect(await runDurableObjectAlarm(subscription)).toBe(true);
+
+    const afterFailure = await runInDurableObject(
+      subscription,
+      async (_instance, state) => ({
+        video: state.storage.kv.get<StoredVideo>('video:9bZkp7q19f0'),
+        alarm: await state.storage.getAlarm(),
+      }),
+    );
+
+    expect(afterFailure.video).toMatchObject({
+      status: 'pending',
+      sentAtMs: null,
+    });
+    expect(typeof afterFailure.alarm).toBe('number');
+    expect(errorSpy).toHaveBeenCalledOnce();
+
+    expect(await runDurableObjectAlarm(subscription)).toBe(true);
+
+    const afterRetry = await runInDurableObject(
+      subscription,
+      (_instance, state) =>
+        state.storage.kv.get<StoredVideo>('video:9bZkp7q19f0'),
+    );
+
+    expect(afterRetry?.status).toBe('sent');
+    expect(typeof afterRetry?.sentAtMs).toBe('number');
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
   it('waits while subscription verification is still fresh', async () => {

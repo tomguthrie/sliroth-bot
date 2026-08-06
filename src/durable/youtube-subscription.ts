@@ -5,12 +5,16 @@ import {
   createYouTubeWebSubRequest,
 } from '../youtube/websub';
 
+import { sendDiscordVideoMessage } from '../discord/message';
+
 import type { YouTubeVideoNotification } from '../youtube/notification';
 
 const SUBSCRIPTION_KEY = 'subscription';
 const VERIFICATION_TIMEOUT_MS = 30 * 60 * 1000;
 const RENEWAL_FRACTION = 0.8;
 const VIDEO_KEY_PREFIX = 'video:';
+const DISCORD_DELIVERY_DELAY_MS = 1_000;
+const DISCORD_RETRY_DELAY_MS = 5 * 60 * 1000;
 
 export interface SubscriptionState {
   schemaVersion: 1;
@@ -25,8 +29,9 @@ export interface SubscriptionState {
 export interface StoredVideo {
   schemaVersion: 1;
   notification: YouTubeVideoNotification;
-  status: 'baseline' | 'pending';
+  status: 'baseline' | 'pending' | 'sent';
   firstSeenAtMs: number;
+  sentAtMs: number | null;
 }
 
 export class YouTubeSubscription extends DurableObject<Env> {
@@ -214,9 +219,9 @@ export class YouTubeSubscription extends DurableObject<Env> {
     return active;
   }
 
-  recordNotifications(
+  async recordNotifications(
     notifications: YouTubeVideoNotification[],
-  ): YouTubeVideoNotification[] {
+  ): Promise<YouTubeVideoNotification[]> {
     const subscription = this.ensureInitialized(this.env.YOUTUBE_CHANNEL_ID);
     const uniqueNotifications = new Map<
       string,
@@ -264,6 +269,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
         notification,
         status,
         firstSeenAtMs,
+        sentAtMs: null,
       };
 
       this.ctx.storage.kv.put(storageKey, stored);
@@ -273,7 +279,48 @@ export class YouTubeSubscription extends DurableObject<Env> {
       }
     }
 
+    if (pending.length > 0) {
+      await this.ctx.storage.setAlarm(Date.now() + DISCORD_DELIVERY_DELAY_MS);
+    }
+
     return pending;
+  }
+
+  async alarm(): Promise<void> {
+    try {
+      await this.deliverPendingVideos();
+    } catch (error) {
+      console.error('Discord video delivery failed; retry scheduled', error);
+      await this.ctx.storage.setAlarm(Date.now() + DISCORD_RETRY_DELAY_MS);
+    }
+  }
+
+  private async deliverPendingVideos(): Promise<void> {
+    const videos = this.ctx.storage.kv.list<StoredVideo>({
+      prefix: VIDEO_KEY_PREFIX,
+    });
+
+    for (const [storageKey, stored] of videos) {
+      if (stored.status !== 'pending') {
+        continue;
+      }
+
+      await sendDiscordVideoMessage({
+        botToken: this.env.DISCORD_BOT_TOKEN,
+        channelId: this.env.DISCORD_CHANNEL_ID,
+        roleId: this.env.DISCORD_YT_ROLE_ID,
+        applicationUrl: this.env.PUBLIC_BASE_URL,
+        videoId: stored.notification.videoId,
+      });
+
+      const sent: StoredVideo = {
+        ...stored,
+        status: 'sent',
+        sentAtMs: Date.now(),
+      };
+
+      this.ctx.storage.kv.put(storageKey, sent);
+    }
   }
 }
 

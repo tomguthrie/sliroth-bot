@@ -25,6 +25,8 @@ export function createDiscordVideoMessageRequest({
 
   const body = {
     content: `<@&${roleId}> Sliroth just uploaded a video, go check it out! ${videoUrl}`,
+    nonce: videoId,
+    enforce_nonce: true,
     allowed_mentions: {
       parse: [],
       roles: [roleId],
