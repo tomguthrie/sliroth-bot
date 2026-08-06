@@ -1,15 +1,19 @@
 import { DurableObject } from 'cloudflare:workers';
 
-import { createYouTubeWebSubRequest } from '../youtube/websub';
+import {
+  createYouTubeTopicUrl,
+  createYouTubeWebSubRequest,
+} from '../youtube/websub';
 
 const SUBSCRIPTION_KEY = 'subscription';
 
 export interface SubscriptionState {
   schemaVersion: 1;
-  phase: 'uninitialized' | 'pending';
+  phase: 'uninitialized' | 'pending' | 'active';
   channelId: string;
   createdAtMs: number;
   requestedAtMs: number | null;
+  expiresAtMs: number | null;
 }
 
 export class YouTubeSubscription extends DurableObject<Env> {
@@ -41,6 +45,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
       channelId,
       createdAtMs: Date.now(),
       requestedAtMs: null,
+      expiresAtMs: null,
     };
 
     this.ctx.storage.kv.put(SUBSCRIPTION_KEY, created);
@@ -50,7 +55,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
   async requestSubscription(): Promise<SubscriptionState> {
     const state = this.ensureInitialized(this.env.YOUTUBE_CHANNEL_ID);
 
-    if (state.phase === 'pending') {
+    if (state.requestedAtMs !== null) {
       return state;
     }
 
@@ -74,14 +79,53 @@ export class YouTubeSubscription extends DurableObject<Env> {
 
     await response.body?.cancel();
 
-    const pending: SubscriptionState = {
+    const awaitingVerification: SubscriptionState = {
       ...state,
-      phase: 'pending',
+      phase: state.phase === 'uninitialized' ? 'pending' : state.phase,
       requestedAtMs: Date.now(),
     };
 
-    this.ctx.storage.kv.put(SUBSCRIPTION_KEY, pending);
+    this.ctx.storage.kv.put(SUBSCRIPTION_KEY, awaitingVerification);
 
-    return pending;
+    return awaitingVerification;
+  }
+
+  confirmSubscription(topic: string, leaseSeconds: number): SubscriptionState {
+    const state = this.ctx.storage.kv.get<SubscriptionState>(SUBSCRIPTION_KEY);
+
+    if (state === undefined) {
+      throw new Error('Subscription is not initialized');
+    }
+
+    if (state.requestedAtMs === null) {
+      throw new Error('No subscription verification is pending');
+    }
+
+    const expectedTopic = createYouTubeTopicUrl(state.channelId);
+
+    if (topic !== expectedTopic) {
+      throw new Error('WebSub verification topic does not match');
+    }
+
+    if (!Number.isSafeInteger(leaseSeconds) || leaseSeconds <= 0) {
+      throw new Error('WebSub lease must be a positive integer');
+    }
+
+    const expiresAtMs = Date.now() + leaseSeconds * 1000;
+
+    if (!Number.isSafeInteger(expiresAtMs)) {
+      throw new Error('WebSub lease expiration is outside the supported range');
+    }
+
+    const active: SubscriptionState = {
+      ...state,
+      phase: 'active',
+      requestedAtMs: null,
+      expiresAtMs,
+    };
+
+    this.ctx.storage.kv.put(SUBSCRIPTION_KEY, active);
+
+    return active;
   }
 }

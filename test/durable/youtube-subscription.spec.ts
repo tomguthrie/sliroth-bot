@@ -1,7 +1,13 @@
 import { env } from 'cloudflare:workers';
+import { runInDurableObject } from 'cloudflare:test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { YOUTUBE_WEBSUB_HUB_URL } from '../../src/youtube/websub';
+import {
+  createYouTubeTopicUrl,
+  YOUTUBE_WEBSUB_HUB_URL,
+} from '../../src/youtube/websub';
+
+import { YouTubeSubscription } from '../../src/durable/youtube-subscription';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -70,8 +76,63 @@ describe('YouTubeSubscription', () => {
     expect(first.channelId).toBe(env.YOUTUBE_CHANNEL_ID);
     expect(typeof first.createdAtMs).toBe('number');
     expect(typeof first.requestedAtMs).toBe('number');
+    expect(first.expiresAtMs).toBeNull();
 
     expect(second).toEqual(first);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirms a pending subscription lease', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 204 }),
+    );
+
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
+      crypto.randomUUID(),
+    );
+
+    await subscription.requestSubscription();
+
+    const leaseSeconds = 86_400;
+    const beforeConfirmationMs = Date.now();
+
+    await runInDurableObject(subscription, (instance: YouTubeSubscription) => {
+      expect(() =>
+        instance.confirmSubscription(
+          'https://example.com/wrong-topic',
+          leaseSeconds,
+        ),
+      ).toThrow('WebSub verification topic does not match');
+    });
+
+    const active = await subscription.confirmSubscription(
+      createYouTubeTopicUrl(env.YOUTUBE_CHANNEL_ID),
+      leaseSeconds,
+    );
+
+    expect(active.phase).toBe('active');
+    expect(active.requestedAtMs).toBeNull();
+    expect(typeof active.expiresAtMs).toBe('number');
+
+    if (active.expiresAtMs === null) {
+      throw new Error('Expected an active subscriptoin to have an expiration');
+    }
+
+    expect(active.expiresAtMs).toBeGreaterThanOrEqual(
+      beforeConfirmationMs + leaseSeconds * 1000,
+    );
+
+    expect(active.expiresAtMs).toBeLessThanOrEqual(
+      Date.now() + leaseSeconds * 1000,
+    );
+
+    await runInDurableObject(subscription, (instance: YouTubeSubscription) => {
+      expect(() =>
+        instance.confirmSubscription(
+          createYouTubeTopicUrl(env.YOUTUBE_CHANNEL_ID),
+          leaseSeconds,
+        ),
+      ).toThrow('No subscription verification is pending');
+    });
   });
 });
