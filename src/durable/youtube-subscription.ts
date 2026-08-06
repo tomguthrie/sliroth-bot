@@ -90,31 +90,34 @@ export class YouTubeSubscription extends DurableObject<Env> {
     return awaitingVerification;
   }
 
-  confirmSubscription(topic: string, leaseSeconds: number): SubscriptionState {
+  confirmSubscription(
+    topic: string,
+    leaseSeconds: number,
+  ): SubscriptionState | null {
     const state = this.ctx.storage.kv.get<SubscriptionState>(SUBSCRIPTION_KEY);
 
     if (state === undefined) {
-      throw new Error('Subscription is not initialized');
+      return null;
     }
 
     if (state.requestedAtMs === null) {
-      throw new Error('No subscription verification is pending');
+      return null;
     }
 
     const expectedTopic = createYouTubeTopicUrl(state.channelId);
 
     if (topic !== expectedTopic) {
-      throw new Error('WebSub verification topic does not match');
+      return null;
     }
 
     if (!Number.isSafeInteger(leaseSeconds) || leaseSeconds <= 0) {
-      throw new Error('WebSub lease must be a positive integer');
+      return null;
     }
 
     const expiresAtMs = Date.now() + leaseSeconds * 1000;
 
     if (!Number.isSafeInteger(expiresAtMs)) {
-      throw new Error('WebSub lease expiration is outside the supported range');
+      return null;
     }
 
     const active: SubscriptionState = {

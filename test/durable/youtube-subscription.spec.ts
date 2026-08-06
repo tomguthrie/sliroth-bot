@@ -1,13 +1,10 @@
 import { env } from 'cloudflare:workers';
-import { runInDurableObject } from 'cloudflare:test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createYouTubeTopicUrl,
   YOUTUBE_WEBSUB_HUB_URL,
 } from '../../src/youtube/websub';
-
-import { YouTubeSubscription } from '../../src/durable/youtube-subscription';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -96,19 +93,21 @@ describe('YouTubeSubscription', () => {
     const leaseSeconds = 86_400;
     const beforeConfirmationMs = Date.now();
 
-    await runInDurableObject(subscription, (instance: YouTubeSubscription) => {
-      expect(() =>
-        instance.confirmSubscription(
-          'https://example.com/wrong-topic',
-          leaseSeconds,
-        ),
-      ).toThrow('WebSub verification topic does not match');
-    });
+    const rejected = await subscription.confirmSubscription(
+      'https://example.com/wrong-topic',
+      leaseSeconds,
+    );
+
+    expect(rejected).toBeNull();
 
     const active = await subscription.confirmSubscription(
       createYouTubeTopicUrl(env.YOUTUBE_CHANNEL_ID),
       leaseSeconds,
     );
+
+    if (active === null) {
+      throw new Error('Expected subscription confirmation to succeed');
+    }
 
     expect(active.phase).toBe('active');
     expect(active.requestedAtMs).toBeNull();
@@ -126,13 +125,11 @@ describe('YouTubeSubscription', () => {
       Date.now() + leaseSeconds * 1000,
     );
 
-    await runInDurableObject(subscription, (instance: YouTubeSubscription) => {
-      expect(() =>
-        instance.confirmSubscription(
-          createYouTubeTopicUrl(env.YOUTUBE_CHANNEL_ID),
-          leaseSeconds,
-        ),
-      ).toThrow('No subscription verification is pending');
-    });
+    const repeated = await subscription.confirmSubscription(
+      createYouTubeTopicUrl(env.YOUTUBE_CHANNEL_ID),
+      leaseSeconds,
+    );
+
+    expect(repeated).toBeNull();
   });
 });
