@@ -1,5 +1,9 @@
 import { env } from 'cloudflare:workers';
-import { runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
+import {
+  reset,
+  runDurableObjectAlarm,
+  runInDurableObject,
+} from 'cloudflare:test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -14,8 +18,9 @@ import type {
 } from '../../src/durable/youtube-subscription';
 import type { YouTubeVideoNotification } from '../../src/youtube/notification';
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
+  await reset();
 });
 
 describe('YouTubeSubscription', () => {
