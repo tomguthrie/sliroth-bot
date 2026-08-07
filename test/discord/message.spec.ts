@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  createDiscordVideoMessageRequest,
+  createDiscordMessageRequest,
   DISCORD_API_BASE_URL,
-  sendDiscordVideoMessage,
+  sendDiscordMessage,
 } from '../../src/discord/message';
 
 const BOT_TOKEN = 'test-discord-bot-token';
@@ -14,14 +14,19 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('createDiscordVideoMessageRequest', () => {
+describe('createDiscordMessageRequest', () => {
   it('creates an authenticated role-mention message', async () => {
-    const request = createDiscordVideoMessageRequest({
+    const request = createDiscordMessageRequest({
       botToken: BOT_TOKEN,
       channelId: CHANNEL_ID,
-      roleId: ROLE_ID,
       applicationUrl: 'https://bot.example.com/youtube/websub/private-token',
-      videoId: 'dQw4w9WgXcQ',
+      message: {
+        content: `<@&${ROLE_ID}> A new video is available`,
+        nonce: 'dQw4w9WgXcQ',
+        allowedMentions: {
+          roleIds: [ROLE_ID],
+        },
+      },
     });
 
     expect(request.url).toBe(
@@ -37,7 +42,7 @@ describe('createDiscordVideoMessageRequest', () => {
     const body: unknown = await request.json();
 
     expect(body).toEqual({
-      content: `<@&${ROLE_ID}> Sliroth just uploaded a video, go check it out! https://youtu.be/dQw4w9WgXcQ`,
+      content: `<@&${ROLE_ID}> A new video is available`,
       nonce: 'dQw4w9WgXcQ',
       enforce_nonce: true,
       allowed_mentions: {
@@ -47,32 +52,83 @@ describe('createDiscordVideoMessageRequest', () => {
     });
   });
 
+  it('disables mentions by default', async () => {
+    const request = createDiscordMessageRequest({
+      botToken: BOT_TOKEN,
+      channelId: CHANNEL_ID,
+      applicationUrl: 'https://bot.example.com',
+      message: {
+        content: '@everyone This text does not notify anyone',
+      },
+    });
+
+    const body: unknown = await request.json();
+
+    expect(body).toEqual({
+      content: '@everyone This text does not notify anyone',
+      allowed_mentions: {
+        parse: [],
+      },
+    });
+  });
+
+  it('allows explicit user and everyone mentions', async () => {
+    const userId = '345678901234567890';
+    const request = createDiscordMessageRequest({
+      botToken: BOT_TOKEN,
+      channelId: CHANNEL_ID,
+      applicationUrl: 'https://bot.example.com',
+      message: {
+        content: `@everyone <@${userId}> Please take a look`,
+        allowedMentions: {
+          userIds: [userId],
+          everyone: true,
+        },
+      },
+    });
+
+    const body: unknown = await request.json();
+
+    expect(body).toEqual({
+      content: `@everyone <@${userId}> Please take a look`,
+      allowed_mentions: {
+        parse: ['everyone'],
+        users: [userId],
+      },
+    });
+  });
+
   it('rejects an invalid channel ID', () => {
     expect(() =>
-      createDiscordVideoMessageRequest({
+      createDiscordMessageRequest({
         botToken: BOT_TOKEN,
         channelId: 'not-a-snowflake',
-        roleId: ROLE_ID,
         applicationUrl: 'https://bot.example.com',
-        videoId: 'dQw4w9WgXcQ',
+        message: {
+          content: 'A message',
+        },
       }),
     ).toThrow('Discord channel ID must be a Discord snowflake');
   });
 
   it('rejects an invalid role ID', () => {
     expect(() =>
-      createDiscordVideoMessageRequest({
+      createDiscordMessageRequest({
         botToken: BOT_TOKEN,
         channelId: CHANNEL_ID,
-        roleId: 'not-a-snowflake',
         applicationUrl: 'https://bot.example.com',
-        videoId: 'dQw4w9WgXcQ',
+        message: {
+          content: 'A message',
+          allowedMentions: {
+            roleIds: ['not-a-snowflake'],
+          },
+        },
       }),
     ).toThrow('Discord role ID must be a Discord snowflake');
   });
 });
 
-describe('sendDiscordVideoMessage', () => {
+describe('sendDiscordMessage', () => {
   it('sends the message and discards the successful response body', async () => {
     const discordResponse = new Response(
       JSON.stringify({ id: '345678901234567890' }),
@@ -88,7 +144,7 @@ describe('sendDiscordVideoMessage', () => {
       .mockResolvedValue(discordResponse);
 
     await expect(
-      sendDiscordVideoMessage(createMessageOptions()),
+      sendDiscordMessage(createMessageOptions()),
     ).resolves.toBeUndefined();
 
     expect(fetchSpy).toHaveBeenCalledOnce();
@@ -105,10 +161,8 @@ describe('sendDiscordVideoMessage', () => {
       }),
     );
 
-    await expect(
-      sendDiscordVideoMessage(createMessageOptions()),
-    ).rejects.toThrow(
-      'Discord rejected the video message with HTTP 403: {"message":"Missing Access","code":50001}',
+    await expect(sendDiscordMessage(createMessageOptions())).rejects.toThrow(
+      'Discord rejected the message with HTTP 403: {"message":"Missing Access","code":50001}',
     );
   });
 
@@ -117,10 +171,8 @@ describe('sendDiscordVideoMessage', () => {
       new Response(null, { status: 503 }),
     );
 
-    await expect(
-      sendDiscordVideoMessage(createMessageOptions()),
-    ).rejects.toThrow(
-      'Discord rejected the video message with HTTP 503: no response body',
+    await expect(sendDiscordMessage(createMessageOptions())).rejects.toThrow(
+      'Discord rejected the message with HTTP 503: no response body',
     );
   });
 });
@@ -129,8 +181,13 @@ function createMessageOptions() {
   return {
     botToken: BOT_TOKEN,
     channelId: CHANNEL_ID,
-    roleId: ROLE_ID,
     applicationUrl: 'https://bot.example.com',
-    videoId: 'dQw4w9WgXcQ',
+    message: {
+      content: `<@&${ROLE_ID}> A new video is available`,
+      nonce: 'dQw4w9WgXcQ',
+      allowedMentions: {
+        roleIds: [ROLE_ID],
+      },
+    },
   };
 }

@@ -5,7 +5,7 @@ import {
   createYouTubeWebSubRequest,
 } from '../youtube/websub';
 
-import { sendDiscordVideoMessage } from '../discord/message';
+import { sendDiscordMessage } from '../discord/message';
 
 import type { YouTubeVideoNotification } from '../youtube/notification';
 
@@ -305,12 +305,20 @@ export class YouTubeSubscription extends DurableObject<Env> {
         continue;
       }
 
-      await sendDiscordVideoMessage({
+      const videoId = stored.notification.videoId;
+      const videoUrl = `https://youtu.be/${encodeURIComponent(videoId)}`;
+
+      await sendDiscordMessage({
         botToken: this.env.DISCORD_BOT_TOKEN,
         channelId: this.env.DISCORD_CHANNEL_ID,
-        roleId: this.env.DISCORD_YT_ROLE_ID,
         applicationUrl: this.env.PUBLIC_BASE_URL,
-        videoId: stored.notification.videoId,
+        message: {
+          content: `<@&${this.env.DISCORD_YT_ROLE_ID}> Sliroth just uploaded a video, go check it out! ${videoUrl}`,
+          nonce: videoId,
+          allowedMentions: {
+            roleIds: [this.env.DISCORD_YT_ROLE_ID],
+          },
+        },
       });
 
       const sent: StoredVideo = {
