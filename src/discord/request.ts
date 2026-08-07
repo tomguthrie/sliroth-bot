@@ -12,13 +12,69 @@ const LINK_BUTTON_STYLE = 5;
 const ISO_8601_TIMESTAMP =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
+interface DiscordAllowedMentionsPayload {
+  parse: ['everyone'] | [];
+  roles?: string[];
+  users?: string[];
+}
+
+interface DiscordLinkButtonPayload {
+  type: typeof BUTTON_COMPONENT_TYPE;
+  style: typeof LINK_BUTTON_STYLE;
+  label: string;
+  url: string;
+}
+
+interface DiscordActionRowPayload {
+  type: typeof ACTION_ROW_COMPONENT_TYPE;
+  components: DiscordLinkButtonPayload[];
+}
+
+interface DiscordEmbedPayload {
+  author?: {
+    name: string;
+    icon_url?: string;
+  };
+  title?: string;
+  url?: string;
+  color?: number;
+  fields?: {
+    name: string;
+    value: string;
+    inline?: boolean;
+  }[];
+  thumbnail?: { url: string };
+  image?: { url: string };
+  footer?: { text: string };
+  timestamp?: string;
+}
+
+interface DiscordCreateMessagePayload {
+  content: string;
+  nonce?: string;
+  enforce_nonce?: true;
+  allowed_mentions: DiscordAllowedMentionsPayload;
+  embeds?: DiscordEmbedPayload[];
+  components?: DiscordActionRowPayload[];
+}
+
+/** Values required to build an authenticated Discord create-message request. */
 export interface CreateDiscordMessageRequestOptions {
+  /** Secret token used to authenticate the Discord bot. */
   botToken: string;
+  /** Discord channel snowflake that will receive the message. */
   channelId: string;
+  /** Public application URL included in the Discord API user agent. */
   applicationUrl: string;
+  /** Message content and delivery options to serialize for Discord. */
   message: DiscordMessage;
 }
 
+/**
+ * Builds an authenticated Discord create-message request.
+ *
+ * Throws when an option or supported message component is invalid.
+ */
 export function createDiscordMessageRequest({
   botToken,
   channelId,
@@ -33,11 +89,7 @@ export function createDiscordMessageRequest({
     requireNonEmpty(message.nonce, 'Discord message nonce');
   }
 
-  const allowedMentions: {
-    parse: ['everyone'] | [];
-    roles?: string[];
-    users?: string[];
-  } = {
+  const allowedMentions: DiscordAllowedMentionsPayload = {
     parse: message.allowedMentions?.everyone === true ? ['everyone'] : [],
   };
 
@@ -61,7 +113,8 @@ export function createDiscordMessageRequest({
     requireArrayLength(message.embeds, 'Discord message embeds', MAX_EMBEDS);
   }
 
-  const embeds = message.embeds?.map(createEmbedPayload);
+  const embeds: DiscordEmbedPayload[] | undefined =
+    message.embeds?.map(createEmbedPayload);
 
   if (message.linkButtons !== undefined) {
     requireArrayLength(
@@ -71,37 +124,36 @@ export function createDiscordMessageRequest({
     );
   }
 
-  const linkButtons = message.linkButtons?.map((button, index) => {
-    requireNonEmpty(button.label, `Discord link button ${index + 1} label`);
-    requireHttpUrl(button.url, `Discord link button ${index + 1} URL`);
+  const linkButtons: DiscordLinkButtonPayload[] | undefined =
+    message.linkButtons?.map((button, index) => {
+      requireNonEmpty(button.label, `Discord link button ${index + 1} label`);
+      requireHttpUrl(button.url, `Discord link button ${index + 1} URL`);
 
-    return {
-      type: BUTTON_COMPONENT_TYPE,
-      style: LINK_BUTTON_STYLE,
-      label: button.label,
-      url: button.url,
-    };
-  });
+      return {
+        type: BUTTON_COMPONENT_TYPE,
+        style: LINK_BUTTON_STYLE,
+        label: button.label,
+        url: button.url,
+      };
+    });
 
   const applicationOrigin = new URL(applicationUrl).origin;
 
-  const body = {
+  const body: DiscordCreateMessagePayload = {
     content: message.content,
-    ...(message.nonce === undefined
-      ? {}
-      : { nonce: message.nonce, enforce_nonce: true }),
+    nonce: message.nonce,
+    enforce_nonce: message.nonce === undefined ? undefined : true,
     allowed_mentions: allowedMentions,
-    ...(embeds === undefined ? {} : { embeds }),
-    ...(linkButtons === undefined
-      ? {}
-      : {
-          components: [
+    embeds,
+    components:
+      linkButtons === undefined
+        ? undefined
+        : [
             {
               type: ACTION_ROW_COMPONENT_TYPE,
               components: linkButtons,
             },
           ],
-        }),
   };
 
   return new Request(
@@ -118,7 +170,10 @@ export function createDiscordMessageRequest({
   );
 }
 
-function createEmbedPayload(embed: DiscordEmbed, index: number) {
+function createEmbedPayload(
+  embed: DiscordEmbed,
+  index: number,
+): DiscordEmbedPayload {
   const name = `Discord embed ${index + 1}`;
 
   if (embed.author !== undefined) {

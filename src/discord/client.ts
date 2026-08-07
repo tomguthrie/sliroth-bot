@@ -1,6 +1,11 @@
 import type { CreateDiscordMessageRequestOptions } from './request';
 import { createDiscordMessageRequest } from './request';
 
+/**
+ * Sends a message to Discord and discards the successful response body.
+ *
+ * Throws when Discord rejects the request and includes any response details.
+ */
 export async function sendDiscordMessage(
   options: CreateDiscordMessageRequestOptions,
 ): Promise<void> {
