@@ -10,6 +10,7 @@ export default defineConfig(
       '.wrangler/**',
       'coverage/**',
       'dist/**',
+      'src/db/**/migrations/**',
     ],
   },
   js.configs.recommended,
