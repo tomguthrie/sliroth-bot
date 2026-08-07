@@ -5,7 +5,7 @@ import {
   createYouTubeWebSubRequest,
 } from '../youtube/websub';
 
-import { sendDiscordMessage } from '../discord/message';
+import { sendDiscordMessage } from '../discord/client';
 
 import type { YouTubeVideoNotification } from '../youtube/notification';
 
