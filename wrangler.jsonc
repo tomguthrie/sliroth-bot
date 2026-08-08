@@ -16,7 +16,7 @@
   },
   "upload_source_maps": true,
   "secrets": {
-    "required": ["DISCORD_BOT_TOKEN", "PUBLIC_BASE_URL"],
+    "required": ["DISCORD_BOT_TOKEN", "DISCORD_PUBLIC_KEY", "PUBLIC_BASE_URL"],
   },
   "rules": [
     {

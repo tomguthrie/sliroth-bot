@@ -22,6 +22,7 @@ import {
   verifyYouTubeWebSubSignature,
 } from '../youtube/websub';
 import { createYouTubeDiscordMessage } from './discord-message';
+import { channelSubscriptionKey, guildSubscriptionKey } from './index';
 
 const SUBSCRIPTION_INDEX_VALUE = '1';
 const DISCORD_SNOWFLAKE = /^[0-9]{17,20}$/;
@@ -455,21 +456,6 @@ function requireDiscordSnowflake(
   if (typeof value !== 'string' || !DISCORD_SNOWFLAKE.test(value)) {
     throw new Error(`${name} must be a Discord snowflake`);
   }
-}
-
-function guildSubscriptionKey(
-  guildId: string,
-  channelId: string,
-  youtubeChannelId: string,
-): string {
-  return `guild:${guildId}:channel:${channelId}:youtube:${youtubeChannelId}`;
-}
-
-function channelSubscriptionKey(
-  channelId: string,
-  youtubeChannelId: string,
-): string {
-  return `channel:${channelId}:youtube:${youtubeChannelId}`;
 }
 
 function requireNonEmpty(
