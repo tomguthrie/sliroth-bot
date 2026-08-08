@@ -31,6 +31,7 @@ describe('YouTube Discord message', () => {
     );
 
     expect(delivery).toMatchObject({
+      operation: 'create',
       guildId: GUILD_ID,
       channelId: CHANNEL_ID,
       message: {

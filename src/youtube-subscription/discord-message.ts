@@ -26,6 +26,7 @@ export async function createYouTubeDiscordMessage(
     .join(' ');
 
   return {
+    operation: 'create',
     guildId: subscriber.guildId,
     channelId: subscriber.channelId,
     message: {

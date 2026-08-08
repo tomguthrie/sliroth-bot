@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  createDiscordEditMessageRequest,
   createDiscordMessageRequest,
   DISCORD_API_BASE_URL,
 } from '../../src/discord/request';
@@ -8,6 +9,7 @@ import {
 const BOT_TOKEN = 'test-discord-bot-token';
 const CHANNEL_ID = '123456789012345678';
 const ROLE_ID = '234567890123456789';
+const MESSAGE_ID = '345678901234567890';
 
 describe('createDiscordMessageRequest', () => {
   it('creates an authenticated role-mention message', async () => {
@@ -378,6 +380,40 @@ describe('createDiscordMessageRequest', () => {
         },
       }),
     ).toThrow('Discord role ID must be a Discord snowflake');
+  });
+});
+
+describe('createDiscordEditMessageRequest', () => {
+  it('creates an authenticated request for an exact message', async () => {
+    const request = createDiscordEditMessageRequest({
+      botToken: BOT_TOKEN,
+      channelId: CHANNEL_ID,
+      messageId: MESSAGE_ID,
+      applicationUrl: 'https://bot.example.com',
+      message: { content: 'The stream has ended' },
+    });
+
+    expect(request.url).toBe(
+      `${DISCORD_API_BASE_URL}channels/${CHANNEL_ID}/messages/${MESSAGE_ID}`,
+    );
+    expect(request.method).toBe('PATCH');
+    expect(request.headers.get('authorization')).toBe(`Bot ${BOT_TOKEN}`);
+    await expect(request.json()).resolves.toEqual({
+      content: 'The stream has ended',
+      allowed_mentions: { parse: [] },
+    });
+  });
+
+  it('rejects an invalid message ID', () => {
+    expect(() =>
+      createDiscordEditMessageRequest({
+        botToken: BOT_TOKEN,
+        channelId: CHANNEL_ID,
+        messageId: 'not-a-snowflake',
+        applicationUrl: 'https://bot.example.com',
+        message: { content: 'The stream has ended' },
+      }),
+    ).toThrow('Discord message ID must be a Discord snowflake');
   });
 });
 
