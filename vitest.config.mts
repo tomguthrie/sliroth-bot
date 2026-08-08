@@ -12,6 +12,7 @@ export default defineConfig({
           PUBLIC_BASE_URL: 'https://bot.example.com',
           TWITCH_CLIENT_ID: 'test-twitch-client-id',
           TWITCH_CLIENT_SECRET: 'test-twitch-client-secret',
+          TWITCH_EVENTSUB_SECRET: 'test-twitch-eventsub-secret',
         },
       },
       wrangler: {
