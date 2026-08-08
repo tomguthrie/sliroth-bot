@@ -33,6 +33,11 @@
       },
     ],
   },
+  "kv_namespaces": [
+    {
+      "binding": "YOUTUBE_SUBSCRIPTIONS_INDEX",
+    },
+  ],
   "queues": {
     "producers": [
       {
