@@ -16,7 +16,13 @@
   },
   "upload_source_maps": true,
   "secrets": {
-    "required": ["DISCORD_BOT_TOKEN", "DISCORD_PUBLIC_KEY", "PUBLIC_BASE_URL"],
+    "required": [
+      "DISCORD_BOT_TOKEN",
+      "DISCORD_PUBLIC_KEY",
+      "PUBLIC_BASE_URL",
+      "TWITCH_CLIENT_ID",
+      "TWITCH_CLIENT_SECRET",
+    ],
   },
   "rules": [
     {
@@ -34,6 +40,9 @@
     ],
   },
   "kv_namespaces": [
+    {
+      "binding": "TOKEN_STORE",
+    },
     {
       "binding": "YOUTUBE_SUBSCRIPTIONS_INDEX",
     },

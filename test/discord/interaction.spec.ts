@@ -442,39 +442,30 @@ async function interactionContent(response: Response): Promise<string> {
 
 async function interactionBody(response: Response): Promise<{
   type: number;
-  data: { content: string; flags: number; allowed_mentions: unknown };
-}> {
-  const value: unknown = await response.json();
-  if (!isRecord(value) || typeof value.type !== 'number') {
-    throw new Error('Discord response is invalid');
-  }
-  if (!isRecord(value.data) || typeof value.data.content !== 'string') {
-    throw new Error('Discord response data is invalid');
-  }
-  if (typeof value.data.flags !== 'number') {
-    throw new Error('Discord response flags are invalid');
-  }
-  return {
-    type: value.type,
-    data: {
-      content: value.data.content,
-      flags: value.data.flags,
-      allowed_mentions: value.data.allowed_mentions,
-    },
+  data: {
+    content: string;
+    flags: number;
+    allowed_mentions: { parse: string[] };
   };
+}> {
+  return response.json<{
+    type: number;
+    data: {
+      content: string;
+      flags: number;
+      allowed_mentions: { parse: string[] };
+    };
+  }>();
 }
 
 async function deferredInteractionBody(
   response: Response,
 ): Promise<{ type: number; flags: number }> {
-  const value: unknown = await response.json();
-  if (!isRecord(value) || typeof value.type !== 'number') {
-    throw new Error('Discord response is invalid');
-  }
-  if (!isRecord(value.data) || typeof value.data.flags !== 'number') {
-    throw new Error('Discord response data is invalid');
-  }
-  return { type: value.type, flags: value.data.flags };
+  const { type, data } = await response.json<{
+    type: number;
+    data: { flags: number };
+  }>();
+  return { type, flags: data.flags };
 }
 
 function hexToBytes(value: string): Uint8Array<ArrayBuffer> {
@@ -489,8 +480,4 @@ function bytesToHex(value: Uint8Array): string {
   return Array.from(value, (byte) => byte.toString(16).padStart(2, '0')).join(
     '',
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
