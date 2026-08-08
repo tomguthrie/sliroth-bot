@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createYouTubeChannelFeedUrl,
   fetchYouTubeChannelTitle,
+  resolveYouTubeChannel,
 } from '../../src/youtube/channel';
+
+const CHANNEL_ID = 'UC_x5XG1OV2P6uZZ5FSM9Ttw';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -38,5 +41,69 @@ describe('YouTube channel metadata', () => {
     await expect(fetchYouTubeChannelTitle('UC_CHANNEL')).rejects.toThrow(
       'must contain a title',
     );
+  });
+
+  it.each([
+    CHANNEL_ID,
+    `https://www.youtube.com/channel/${CHANNEL_ID}`,
+    `https://m.youtube.com/channel/${CHANNEL_ID}/videos`,
+  ])('resolves a channel ID input: %s', async (input) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('<feed><title>Google for Developers</title></feed>'),
+    );
+
+    await expect(resolveYouTubeChannel(input)).resolves.toEqual({
+      id: CHANNEL_ID,
+      title: 'Google for Developers',
+    });
+  });
+
+  it.each(['@GoogleDevelopers', 'GoogleDevelopers'])(
+    'resolves a handle input: %s',
+    async (input) => {
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(
+          new Response(`before "externalId":"${CHANNEL_ID}" after`),
+        )
+        .mockResolvedValueOnce(
+          new Response('<feed><title>Google for Developers</title></feed>'),
+        );
+
+      await expect(resolveYouTubeChannel(input)).resolves.toEqual({
+        id: CHANNEL_ID,
+        title: 'Google for Developers',
+      });
+      const handleRequest = fetchSpy.mock.calls[0]?.[0];
+      expect(
+        handleRequest instanceof Request
+          ? handleRequest.url
+          : handleRequest?.toString(),
+      ).toBe('https://www.youtube.com/@GoogleDevelopers');
+    },
+  );
+
+  it('resolves a handle URL', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(`"externalId":"${CHANNEL_ID}"`))
+      .mockResolvedValueOnce(
+        new Response('<feed><title>A channel</title></feed>'),
+      );
+
+    await expect(
+      resolveYouTubeChannel('https://youtube.com/@GoogleDevelopers/videos'),
+    ).resolves.toEqual({ id: CHANNEL_ID, title: 'A channel' });
+  });
+
+  it.each([
+    'https://example.com/@GoogleDevelopers',
+    'https://youtube.com/watch?v=video',
+    'https://youtube.com/user/legacy',
+    'https://youtube.com/c/custom',
+  ])('rejects an unsupported channel input: %s', async (input) => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    await expect(resolveYouTubeChannel(input)).rejects.toThrow();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
