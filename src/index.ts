@@ -1,6 +1,6 @@
 import { AutoRouter, type IRequest } from 'itty-router';
 
-import { handleDiscordInteraction } from './discord/interaction';
+import { handleDiscordInteraction } from './discord/interactions';
 import type { DiscordMessageDelivery } from './queue/discord-message';
 import { deliverDiscordMessageBatch } from './queue/discord-message';
 import {

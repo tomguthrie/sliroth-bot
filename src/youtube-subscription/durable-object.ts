@@ -10,6 +10,7 @@ import {
   type SubscriberPing,
   videos,
 } from '../db/youtube-subscription/schema';
+import { requireDiscordSnowflake } from '../discord/snowflake';
 import { enqueueDiscordMessages } from '../queue/discord-message';
 import {
   parseYouTubeVideoNotifications,
@@ -25,7 +26,6 @@ import { createYouTubeDiscordMessage } from './discord-message';
 import { channelSubscriptionKey, guildSubscriptionKey } from './index';
 
 const SUBSCRIPTION_INDEX_VALUE = '1';
-const DISCORD_SNOWFLAKE = /^[0-9]{17,20}$/;
 const WEBSUB_SECRET_KEY = 'websub:secret';
 const WEBSUB_STATUS_KEY = 'websub:status';
 const WEBSUB_RETRY_DELAY_MS = 5 * 60 * 1000;
@@ -446,15 +446,6 @@ function validateSubscriberRegistration(
     registration.ping !== 'here'
   ) {
     requireDiscordSnowflake(registration.ping, 'Discord role ID');
-  }
-}
-
-function requireDiscordSnowflake(
-  value: unknown,
-  name: string,
-): asserts value is string {
-  if (typeof value !== 'string' || !DISCORD_SNOWFLAKE.test(value)) {
-    throw new Error(`${name} must be a Discord snowflake`);
   }
 }
 
