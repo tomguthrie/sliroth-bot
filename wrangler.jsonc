@@ -15,6 +15,9 @@
     },
   },
   "upload_source_maps": true,
+  "secrets": {
+    "required": ["DISCORD_BOT_TOKEN", "PUBLIC_BASE_URL"],
+  },
   "rules": [
     {
       "type": "Text",
@@ -27,6 +30,25 @@
       {
         "name": "YOUTUBE_SUBSCRIPTIONS",
         "class_name": "YouTubeSubscription",
+      },
+    ],
+  },
+  "queues": {
+    "producers": [
+      {
+        "binding": "DISCORD_MESSAGES",
+        "queue": "discord-messages",
+      },
+    ],
+    "consumers": [
+      {
+        "queue": "discord-messages",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "dead_letter_queue": "discord-messages-dlq",
+        "max_concurrency": 1,
+        "retry_delay": 30,
       },
     ],
   },

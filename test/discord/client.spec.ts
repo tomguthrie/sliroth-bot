@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { sendDiscordMessage } from '../../src/discord/client';
+import { DiscordApiError, sendDiscordMessage } from '../../src/discord/client';
 
 const BOT_TOKEN = 'test-discord-bot-token';
 const CHANNEL_ID = '123456789012345678';
@@ -56,6 +56,22 @@ describe('sendDiscordMessage', () => {
     await expect(sendDiscordMessage(createMessageOptions())).rejects.toThrow(
       'Discord rejected the message with HTTP 503: no response body',
     );
+  });
+
+  it('exposes Discord rate-limit retry timing', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('Rate limited', {
+        status: 429,
+        headers: { 'retry-after': '1.25' },
+      }),
+    );
+
+    const error = await sendDiscordMessage(createMessageOptions()).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(DiscordApiError);
+    expect(error).toMatchObject({ status: 429, retryAfterSeconds: 1.25 });
   });
 });
 
