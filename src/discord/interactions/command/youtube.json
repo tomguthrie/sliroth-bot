@@ -1,0 +1,54 @@
+{
+  "type": 1,
+  "name": "youtube",
+  "description": "Manage YouTube upload notifications",
+  "integration_types": [0],
+  "contexts": [0],
+  "default_member_permissions": "32",
+  "options": [
+    {
+      "type": 1,
+      "name": "add",
+      "description": "Notify this channel about uploads from a YouTube channel",
+      "options": [
+        {
+          "type": 3,
+          "name": "youtube",
+          "description": "YouTube channel ID, @handle, or channel URL",
+          "required": true,
+          "max_length": 500
+        },
+        {
+          "type": 8,
+          "name": "role",
+          "description": "Role to mention for each upload"
+        },
+        {
+          "type": 3,
+          "name": "ping",
+          "description": "Mention everyone or active members for each upload",
+          "choices": [
+            { "name": "@everyone", "value": "everyone" },
+            { "name": "@here", "value": "here" }
+          ]
+        },
+        {
+          "type": 3,
+          "name": "message",
+          "description": "Custom text included with each upload",
+          "max_length": 1900
+        }
+      ]
+    },
+    {
+      "type": 1,
+      "name": "list",
+      "description": "List YouTube upload notifications in this server"
+    },
+    {
+      "type": 1,
+      "name": "remove",
+      "description": "Remove all YouTube notifications from this channel"
+    }
+  ]
+}

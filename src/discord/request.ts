@@ -1,4 +1,7 @@
+import { ButtonStyleTypes, MessageComponentTypes } from 'discord-interactions';
+
 import type { DiscordEmbed, DiscordMessage } from './message';
+import { isDiscordSnowflake } from './snowflake';
 
 export const DISCORD_API_BASE_URL = 'https://discord.com/api/v10/';
 
@@ -6,9 +9,6 @@ const MAX_EMBEDS = 10;
 const MAX_EMBED_FIELDS = 25;
 const MAX_LINK_BUTTONS = 5;
 const MAX_EMBED_COLOR = 0xffffff;
-const ACTION_ROW_COMPONENT_TYPE = 1;
-const BUTTON_COMPONENT_TYPE = 2;
-const LINK_BUTTON_STYLE = 5;
 const ISO_8601_TIMESTAMP =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
@@ -22,14 +22,14 @@ interface DiscordAllowedMentionsPayload {
 }
 
 interface DiscordLinkButtonPayload {
-  type: typeof BUTTON_COMPONENT_TYPE;
-  style: typeof LINK_BUTTON_STYLE;
+  type: MessageComponentTypes.BUTTON;
+  style: ButtonStyleTypes.LINK;
   label: string;
   url: string;
 }
 
 interface DiscordActionRowPayload {
-  type: typeof ACTION_ROW_COMPONENT_TYPE;
+  type: MessageComponentTypes.ACTION_ROW;
   components: DiscordLinkButtonPayload[];
 }
 
@@ -133,8 +133,8 @@ export function createDiscordMessageRequest({
       requireHttpUrl(button.url, `Discord link button ${index + 1} URL`);
 
       return {
-        type: BUTTON_COMPONENT_TYPE,
-        style: LINK_BUTTON_STYLE,
+        type: MessageComponentTypes.BUTTON,
+        style: ButtonStyleTypes.LINK,
         label: button.label,
         url: button.url,
       };
@@ -156,7 +156,7 @@ export function createDiscordMessageRequest({
         ? undefined
         : [
             {
-              type: ACTION_ROW_COMPONENT_TYPE,
+              type: MessageComponentTypes.ACTION_ROW,
               components: linkButtons,
             },
           ],
@@ -260,7 +260,7 @@ function requireNonEmpty(value: string, name: string): void {
 }
 
 function requireSnowflake(value: string, name: string): void {
-  if (!/^[0-9]{17,20}$/.test(value)) {
+  if (!isDiscordSnowflake(value)) {
     throw new DiscordRequestValidationError(
       `${name} must be a Discord snowflake`,
     );

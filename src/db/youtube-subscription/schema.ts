@@ -7,8 +7,9 @@ import {
   text,
 } from 'drizzle-orm/sqlite-core';
 
-export type DiscordRoleId = `${bigint}`;
-export type SubscriberPing = 'everyone' | 'here' | DiscordRoleId;
+import type { DiscordSnowflake } from '../../discord/snowflake';
+
+export type SubscriberPing = 'everyone' | 'here' | DiscordSnowflake;
 
 const currentTimestampMs = () =>
   sql`(cast(unixepoch('subsec') * 1000 as integer))`;

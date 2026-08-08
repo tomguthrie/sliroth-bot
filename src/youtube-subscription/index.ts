@@ -1,4 +1,8 @@
-const DISCORD_SNOWFLAKE = /^[0-9]{17,20}$/;
+import {
+  isDiscordSnowflake,
+  requireDiscordSnowflake,
+} from '../discord/snowflake';
+
 const YOUTUBE_TITLE_CACHE_PREFIX = 'youtube:';
 const YOUTUBE_TITLE_CACHE_SUFFIX = ':title';
 
@@ -53,6 +57,30 @@ export async function listGuildYouTubeSubscriptions(
   } while (cursor !== undefined);
 
   return subscriptions;
+}
+
+/** Lists the YouTube channels configured for a Discord channel. */
+export async function listChannelYouTubeSubscriptions(
+  index: KVNamespace,
+  channelId: string,
+): Promise<string[]> {
+  requireDiscordSnowflake(channelId, 'Discord channel ID');
+  const prefix = `channel:${channelId}:youtube:`;
+  const page = await index.list({ prefix });
+
+  return page.keys.flatMap((key) => {
+    const youtubeChannelId = key.name.slice(prefix.length);
+    if (youtubeChannelId === '' || youtubeChannelId.includes(':')) {
+      console.warn(
+        JSON.stringify({
+          event: 'youtube_subscription_index_key_invalid',
+          key: key.name,
+        }),
+      );
+      return [];
+    }
+    return [youtubeChannelId];
+  });
 }
 
 /** Gets cached YouTube channel titles from KV. */
@@ -111,7 +139,7 @@ function parseGuildSubscriptionKey(
   const discordChannelId = suffix.slice(0, separatorOffset);
   const youtubeChannelId = suffix.slice(separatorOffset + separator.length);
   if (
-    !DISCORD_SNOWFLAKE.test(discordChannelId) ||
+    !isDiscordSnowflake(discordChannelId) ||
     youtubeChannelId === '' ||
     youtubeChannelId.includes(':')
   ) {
@@ -119,10 +147,4 @@ function parseGuildSubscriptionKey(
   }
 
   return { discordChannelId, youtubeChannelId };
-}
-
-function requireDiscordSnowflake(value: string, name: string): void {
-  if (!DISCORD_SNOWFLAKE.test(value)) {
-    throw new Error(`${name} must be a Discord snowflake`);
-  }
 }

@@ -10,7 +10,10 @@ const applicationId = requireSnowflake(
 const botToken = requireEnvironmentVariable('DISCORD_BOT_TOKEN');
 const command = JSON.parse(
   await readFile(
-    new URL('../src/discord/youtube-command.json', import.meta.url),
+    new URL(
+      '../src/discord/interactions/command/youtube.json',
+      import.meta.url,
+    ),
     'utf8',
   ),
 );
