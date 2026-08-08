@@ -15,4 +15,25 @@
     },
   },
   "upload_source_maps": true,
+  "rules": [
+    {
+      "type": "Text",
+      "globs": ["**/*.sql"],
+      "fallthrough": true,
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "YOUTUBE_SUBSCRIPTIONS",
+        "class_name": "YouTubeSubscription",
+      },
+    ],
+  },
+  "exports": {
+    "YouTubeSubscription": {
+      "type": "durable-object",
+      "storage": "sqlite",
+    },
+  },
 }
