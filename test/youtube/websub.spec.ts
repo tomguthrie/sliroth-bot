@@ -12,7 +12,6 @@ describe('createYouTubeWebSubRequest', () => {
       mode: 'subscribe',
       channelId: 'UC_TEST_CHANNEL_ID',
       publicBaseUrl: 'https://bot.example.com',
-      callbackToken: 'test-callback-token',
       secret: 'test-websub-secret',
     });
 
@@ -29,7 +28,7 @@ describe('createYouTubeWebSubRequest', () => {
       'hub.topic':
         'https://www.youtube.com/xml/feeds/videos.xml?channel_id=UC_TEST_CHANNEL_ID',
       'hub.callback':
-        'https://bot.example.com/youtube/websub/test-callback-token',
+        'https://bot.example.com/youtube/websub/UC_TEST_CHANNEL_ID',
       'hub.secret': 'test-websub-secret',
     });
   });

@@ -1,12 +1,22 @@
+import { AutoRouter, type IRequest } from 'itty-router';
+
 import type { DiscordMessageDelivery } from './queue/discord-message';
 import { deliverDiscordMessageBatch } from './queue/discord-message';
+import {
+  handleYouTubeWebSubIntent,
+  handleYouTubeWebSubNotification,
+} from './youtube/websub-handler';
 
 export { YouTubeSubscription } from './youtube-subscription/durable-object';
 
+const router = AutoRouter<IRequest, [Env, ExecutionContext], Response>();
+
+router
+  .get('/youtube/websub/:channelId', handleYouTubeWebSubIntent)
+  .post('/youtube/websub/:channelId', handleYouTubeWebSubNotification);
+
 export default {
-  fetch(): Response {
-    return new Response('Not Found', { status: 404 });
-  },
+  fetch: router.fetch,
 
   async queue(
     batch: MessageBatch<DiscordMessageDelivery>,

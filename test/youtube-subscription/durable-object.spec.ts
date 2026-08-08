@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import { runInDurableObject } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { subscribers, videos } from '../../src/db/youtube-subscription/schema';
 import type { YouTubeSubscription } from '../../src/youtube-subscription/durable-object';
@@ -11,6 +11,16 @@ const GUILD_ID = '123456789012345678';
 const OTHER_GUILD_ID = '234567890123456789';
 const CHANNEL_ID = '345678901234567890';
 const ROLE_ID = '456789012345678901' as const;
+
+beforeEach(() => {
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    new Response(null, { status: 202 }),
+  );
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('YouTubeSubscription', () => {
   it('initializes Drizzle migrations before handling events', async () => {

@@ -11,7 +11,6 @@ export interface CreateYouTubeWebSubRequestOptions {
   mode: WebSubMode;
   channelId: string;
   publicBaseUrl: string;
-  callbackToken: string;
   secret: string;
 }
 
@@ -26,13 +25,12 @@ export function createYouTubeWebSubRequest({
   mode,
   channelId,
   publicBaseUrl,
-  callbackToken,
   secret,
 }: CreateYouTubeWebSubRequestOptions): Request {
   const body = new URLSearchParams({
     'hub.mode': mode,
     'hub.topic': createYouTubeTopicUrl(channelId),
-    'hub.callback': createYouTubeCallbackUrl(publicBaseUrl, callbackToken),
+    'hub.callback': createYouTubeCallbackUrl(publicBaseUrl, channelId),
     'hub.secret': secret,
   });
 
@@ -47,10 +45,10 @@ export function createYouTubeWebSubRequest({
 
 export function createYouTubeCallbackUrl(
   publicBaseUrl: string,
-  callbackToken: string,
+  channelId: string,
 ): string {
   return new URL(
-    `/youtube/websub/${encodeURIComponent(callbackToken)}`,
+    `/youtube/websub/${encodeURIComponent(channelId)}`,
     publicBaseUrl,
   ).toString();
 }

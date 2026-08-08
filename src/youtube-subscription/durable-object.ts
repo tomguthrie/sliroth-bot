@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { eq } from 'drizzle-orm';
+import { count, eq } from 'drizzle-orm';
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
@@ -11,11 +11,31 @@ import {
   videos,
 } from '../db/youtube-subscription/schema';
 import { enqueueDiscordMessages } from '../queue/discord-message';
-import type { YouTubeVideoNotification } from '../youtube/notification';
+import {
+  parseYouTubeVideoNotifications,
+  type YouTubeVideoNotification,
+} from '../youtube/notification';
+import {
+  createYouTubeTopicUrl,
+  createYouTubeWebSubRequest,
+  type WebSubMode,
+  verifyYouTubeWebSubSignature,
+} from '../youtube/websub';
 import { createYouTubeDiscordMessage } from './discord-message';
 
 const SUBSCRIPTION_INDEX_VALUE = '1';
 const DISCORD_SNOWFLAKE = /^[0-9]{17,20}$/;
+const WEBSUB_SECRET_KEY = 'websub:secret';
+const WEBSUB_STATUS_KEY = 'websub:status';
+const WEBSUB_RETRY_DELAY_MS = 5 * 60 * 1000;
+const WEBSUB_RENEWAL_FRACTION = 0.8;
+
+type WebSubStatus = 'subscribing' | 'subscribed' | 'unsubscribing';
+
+interface WebSubState {
+  secret?: string;
+  status?: WebSubStatus;
+}
 
 export interface YouTubeSubscriberRegistration {
   guildId: string;
@@ -83,6 +103,8 @@ export class YouTubeSubscription extends DurableObject<Env> {
         SUBSCRIPTION_INDEX_VALUE,
       ),
     ]);
+
+    await this.ensureWebSubSubscribed();
   }
 
   /** Removes a Discord subscriber and its global lookup indexes. */
@@ -110,6 +132,129 @@ export class YouTubeSubscription extends DurableObject<Env> {
         channelSubscriptionKey(channelId, youtubeChannelId),
       ),
     ]);
+
+    await this.ensureWebSubUnsubscribed();
+  }
+
+  /** Confirms a pending WebSub subscription or unsubscription. */
+  async confirmWebSubIntent(
+    mode: WebSubMode,
+    topic: string,
+    leaseSeconds?: number,
+  ): Promise<boolean> {
+    const youtubeChannelId = this.requireYouTubeChannelId();
+    if (topic !== createYouTubeTopicUrl(youtubeChannelId)) {
+      return false;
+    }
+
+    const state = await this.readWebSubState();
+    const expectedStatus =
+      mode === 'subscribe' ? 'subscribing' : 'unsubscribing';
+    if (state.status !== expectedStatus || state.secret === undefined) {
+      return false;
+    }
+
+    if (mode === 'unsubscribe') {
+      await this.clearWebSubState();
+      return true;
+    }
+
+    if (
+      leaseSeconds === undefined ||
+      !Number.isSafeInteger(leaseSeconds) ||
+      leaseSeconds <= 0
+    ) {
+      return false;
+    }
+
+    const renewalDelayMs = Math.floor(
+      leaseSeconds * 1000 * WEBSUB_RENEWAL_FRACTION,
+    );
+    if (!Number.isSafeInteger(renewalDelayMs)) {
+      return false;
+    }
+
+    await Promise.all([
+      this.ctx.storage.put(WEBSUB_STATUS_KEY, 'subscribed'),
+      this.ctx.storage.setAlarm(Date.now() + renewalDelayMs),
+    ]);
+    return true;
+  }
+
+  /** Records that the hub denied the current WebSub intent. */
+  async denyWebSubIntent(topic: string, reason?: string): Promise<boolean> {
+    const youtubeChannelId = this.requireYouTubeChannelId();
+    if (topic !== createYouTubeTopicUrl(youtubeChannelId)) {
+      return false;
+    }
+
+    const state = await this.readWebSubState();
+    if (state.status === undefined) {
+      return false;
+    }
+
+    await this.clearWebSubState();
+    console.warn(
+      JSON.stringify({
+        event: 'youtube_websub_denied',
+        youtubeChannelId,
+        reason,
+      }),
+    );
+    return true;
+  }
+
+  /** Authenticates and records a WebSub content notification. */
+  async receiveWebSubNotification(
+    body: ArrayBuffer,
+    signatureHeader: string | null,
+  ): Promise<boolean> {
+    const state = await this.readWebSubState();
+    if (state.secret === undefined) {
+      return false;
+    }
+
+    const valid = await verifyYouTubeWebSubSignature(
+      body,
+      signatureHeader,
+      state.secret,
+    );
+    if (!valid) {
+      return false;
+    }
+
+    const notifications = parseYouTubeVideoNotifications(
+      new TextDecoder().decode(body),
+    );
+    for (const notification of notifications) {
+      await this.recordVideo(notification);
+    }
+
+    return true;
+  }
+
+  /** Renews or reconciles the WebSub subscription when its alarm fires. */
+  async alarm(): Promise<void> {
+    const subscriberCount = await this.getSubscriberCount();
+    const state = await this.readWebSubState();
+
+    try {
+      if (subscriberCount > 0) {
+        await this.requestWebSub('subscribe', state.secret ?? createSecret());
+      } else if (state.secret !== undefined) {
+        await this.requestWebSub('unsubscribe', state.secret);
+      } else {
+        await this.ctx.storage.deleteAlarm();
+      }
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: 'youtube_websub_alarm_failed',
+          youtubeChannelId: this.requireYouTubeChannelId(),
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
   }
 
   /** Claims a new video and queues notifications for all subscribers. */
@@ -168,6 +313,92 @@ export class YouTubeSubscription extends DurableObject<Env> {
     return publishedAt;
   }
 
+  private async ensureWebSubSubscribed(): Promise<void> {
+    if ((await this.getSubscriberCount()) === 0) {
+      return;
+    }
+
+    const state = await this.readWebSubState();
+    if (state.status === 'subscribing' || state.status === 'subscribed') {
+      return;
+    }
+
+    await this.requestWebSub('subscribe', state.secret ?? createSecret());
+  }
+
+  private async ensureWebSubUnsubscribed(): Promise<void> {
+    if ((await this.getSubscriberCount()) > 0) {
+      return;
+    }
+
+    const state = await this.readWebSubState();
+    if (state.secret === undefined || state.status === 'unsubscribing') {
+      return;
+    }
+
+    await this.requestWebSub('unsubscribe', state.secret);
+  }
+
+  private async requestWebSub(mode: WebSubMode, secret: string): Promise<void> {
+    const status = mode === 'subscribe' ? 'subscribing' : 'unsubscribing';
+    await Promise.all([
+      this.ctx.storage.put({
+        [WEBSUB_SECRET_KEY]: secret,
+        [WEBSUB_STATUS_KEY]: status,
+      }),
+      this.ctx.storage.setAlarm(Date.now() + WEBSUB_RETRY_DELAY_MS),
+    ]);
+
+    const response = await fetch(
+      createYouTubeWebSubRequest({
+        mode,
+        channelId: this.requireYouTubeChannelId(),
+        publicBaseUrl: this.env.PUBLIC_BASE_URL,
+        secret,
+      }),
+    );
+    if (response.ok) {
+      return;
+    }
+
+    if (response.body !== null) {
+      await response.body.cancel();
+    }
+    throw new Error(`YouTube WebSub hub returned HTTP ${response.status}`);
+  }
+
+  private async readWebSubState(): Promise<WebSubState> {
+    const values = await this.ctx.storage.get<string>([
+      WEBSUB_SECRET_KEY,
+      WEBSUB_STATUS_KEY,
+    ]);
+    const secret = values.get(WEBSUB_SECRET_KEY);
+    const status = values.get(WEBSUB_STATUS_KEY);
+
+    if (status !== undefined && !isWebSubStatus(status)) {
+      throw new Error('YouTube WebSub status is invalid');
+    }
+    if ((secret === undefined) !== (status === undefined)) {
+      throw new Error('YouTube WebSub state is incomplete');
+    }
+
+    return { secret, status };
+  }
+
+  private async clearWebSubState(): Promise<void> {
+    await Promise.all([
+      this.ctx.storage.delete([WEBSUB_SECRET_KEY, WEBSUB_STATUS_KEY]),
+      this.ctx.storage.deleteAlarm(),
+    ]);
+  }
+
+  private async getSubscriberCount(): Promise<number> {
+    const [result] = await this.db
+      .select({ subscriberCount: count() })
+      .from(subscribers);
+    return result?.subscriberCount ?? 0;
+  }
+
   private requireYouTubeChannelId(): string {
     const objectName = this.ctx.id.name;
     if (objectName === undefined) {
@@ -176,6 +407,22 @@ export class YouTubeSubscription extends DurableObject<Env> {
 
     return objectName;
   }
+}
+
+function isWebSubStatus(value: string): value is WebSubStatus {
+  return (
+    value === 'subscribing' ||
+    value === 'subscribed' ||
+    value === 'unsubscribing'
+  );
+}
+
+function createSecret(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join(
+    '',
+  );
 }
 
 function validateSubscriberRegistration(
