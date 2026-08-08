@@ -7,6 +7,8 @@ export default defineConfig({
       miniflare: {
         bindings: {
           DISCORD_BOT_TOKEN: 'test-discord-bot-token',
+          DISCORD_PUBLIC_KEY:
+            'd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a',
           PUBLIC_BASE_URL: 'https://bot.example.com',
         },
       },

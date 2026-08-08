@@ -15,6 +15,18 @@ export default defineConfig(
   },
   js.configs.recommended,
   {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        console: 'readonly',
+        fetch: 'readonly',
+        process: 'readonly',
+        structuredClone: 'readonly',
+        URL: 'readonly',
+      },
+    },
+  },
+  {
     files: ['**/*.{ts,mts,cts}'],
     extends: [
       tseslint.configs.recommendedTypeChecked,
