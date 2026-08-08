@@ -7,6 +7,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { subscribers, videos } from '../../src/db/youtube-subscription/schema';
 import type { YouTubeSubscription } from '../../src/youtube-subscription/durable-object';
 
+const GUILD_ID = '123456789012345678';
+const OTHER_GUILD_ID = '234567890123456789';
+const CHANNEL_ID = '345678901234567890';
+const ROLE_ID = '456789012345678901' as const;
+
 describe('YouTubeSubscription', () => {
   it('initializes Drizzle migrations before handling events', async () => {
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
@@ -160,6 +165,150 @@ describe('YouTubeSubscription', () => {
       });
     },
   );
+
+  it('adds a subscriber and creates both global lookup indexes', async () => {
+    const youtubeChannelId = `youtube-${crypto.randomUUID()}`;
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
+
+    await expect(
+      subscription.addSubscriber({
+        guildId: GUILD_ID,
+        channelId: CHANNEL_ID,
+        message: 'A custom message',
+        ping: ROLE_ID,
+      }),
+    ).resolves.toBeUndefined();
+
+    const subscriberRows = await readSubscribers(subscription);
+    expect(subscriberRows).toEqual([
+      expect.objectContaining({
+        guildId: GUILD_ID,
+        channelId: CHANNEL_ID,
+        message: 'A custom message',
+        ping: ROLE_ID,
+      }),
+    ]);
+    await expect(
+      env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(
+        guildSubscriptionKey(GUILD_ID, CHANNEL_ID, youtubeChannelId),
+      ),
+    ).resolves.toBe('1');
+    await expect(
+      env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(
+        channelSubscriptionKey(CHANNEL_ID, youtubeChannelId),
+      ),
+    ).resolves.toBe('1');
+  });
+
+  it('upserts subscriber settings without changing its guild', async () => {
+    const youtubeChannelId = `youtube-${crypto.randomUUID()}`;
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
+
+    await subscription.addSubscriber({
+      guildId: GUILD_ID,
+      channelId: CHANNEL_ID,
+      message: 'A custom message',
+      ping: 'everyone',
+    });
+    await subscription.addSubscriber({
+      guildId: OTHER_GUILD_ID,
+      channelId: CHANNEL_ID,
+    });
+
+    expect(await readSubscribers(subscription)).toEqual([
+      expect.objectContaining({
+        guildId: GUILD_ID,
+        channelId: CHANNEL_ID,
+        message: null,
+        ping: null,
+      }),
+    ]);
+    await expect(
+      env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(
+        guildSubscriptionKey(GUILD_ID, CHANNEL_ID, youtubeChannelId),
+      ),
+    ).resolves.toBe('1');
+    await expect(
+      env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(
+        guildSubscriptionKey(OTHER_GUILD_ID, CHANNEL_ID, youtubeChannelId),
+      ),
+    ).resolves.toBeNull();
+    await expect(
+      env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(
+        channelSubscriptionKey(CHANNEL_ID, youtubeChannelId),
+      ),
+    ).resolves.toBe('1');
+  });
+
+  it('removes a subscriber and both global lookup indexes', async () => {
+    const youtubeChannelId = `youtube-${crypto.randomUUID()}`;
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
+    const guildKey = guildSubscriptionKey(
+      GUILD_ID,
+      CHANNEL_ID,
+      youtubeChannelId,
+    );
+    const channelKey = channelSubscriptionKey(CHANNEL_ID, youtubeChannelId);
+
+    await subscription.addSubscriber({
+      guildId: GUILD_ID,
+      channelId: CHANNEL_ID,
+    });
+    await expect(
+      subscription.removeSubscriber(CHANNEL_ID),
+    ).resolves.toBeUndefined();
+
+    await expect(readSubscribers(subscription)).resolves.toEqual([]);
+    await expect(
+      env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(guildKey),
+    ).resolves.toBeNull();
+    await expect(
+      env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(channelKey),
+    ).resolves.toBeNull();
+    await expect(
+      subscription.removeSubscriber(CHANNEL_ID),
+    ).resolves.toBeUndefined();
+  });
+
+  it('validates subscriber registrations before changing storage', async () => {
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
+      `youtube-${crypto.randomUUID()}`,
+    );
+
+    await expect(
+      runInDurableObject(subscription, (instance: YouTubeSubscription) =>
+        instance.addSubscriber({
+          guildId: 'not-a-guild',
+          channelId: CHANNEL_ID,
+        }),
+      ),
+    ).rejects.toThrow('Discord guild ID must be a Discord snowflake');
+    await expect(
+      runInDurableObject(subscription, (instance: YouTubeSubscription) =>
+        instance.addSubscriber({
+          guildId: GUILD_ID,
+          channelId: CHANNEL_ID,
+          message: '   ',
+        }),
+      ),
+    ).rejects.toThrow('Subscriber message cannot be empty');
+    await expect(
+      runInDurableObject(subscription, (instance: YouTubeSubscription) =>
+        instance.addSubscriber({
+          guildId: GUILD_ID,
+          channelId: CHANNEL_ID,
+          // Intentionally bypass the RPC type to verify runtime validation.
+          ping: 'not-a-role' as `${bigint}`,
+        }),
+      ),
+    ).rejects.toThrow('Discord role ID must be a Discord snowflake');
+    await expect(
+      runInDurableObject(subscription, (instance: YouTubeSubscription) =>
+        instance.removeSubscriber('not-a-channel'),
+      ),
+    ).rejects.toThrow('Discord channel ID must be a Discord snowflake');
+    await expect(readSubscribers(subscription)).resolves.toEqual([]);
+  });
 
   it('records a new video and queues subscriber messages', async () => {
     const youtubeChannelId = `youtube-${crypto.randomUUID()}`;
@@ -348,3 +497,26 @@ describe('YouTubeSubscription', () => {
     ).rejects.toThrow('must be a valid date');
   });
 });
+
+function readSubscribers(
+  subscription: DurableObjectStub<YouTubeSubscription>,
+): Promise<(typeof subscribers.$inferSelect)[]> {
+  return runInDurableObject(subscription, async (_instance, state) =>
+    drizzle(state.storage).select().from(subscribers),
+  );
+}
+
+function guildSubscriptionKey(
+  guildId: string,
+  channelId: string,
+  youtubeChannelId: string,
+): string {
+  return `guild:${guildId}:channel:${channelId}:youtube:${youtubeChannelId}`;
+}
+
+function channelSubscriptionKey(
+  channelId: string,
+  youtubeChannelId: string,
+): string {
+  return `channel:${channelId}:youtube:${youtubeChannelId}`;
+}
