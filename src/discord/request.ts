@@ -12,6 +12,9 @@ const LINK_BUTTON_STYLE = 5;
 const ISO_8601_TIMESTAMP =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
+/** Identifies a Discord request that cannot be sent without changing it. */
+export class DiscordRequestValidationError extends Error {}
+
 interface DiscordAllowedMentionsPayload {
   parse: ['everyone'] | [];
   roles?: string[];
@@ -137,7 +140,10 @@ export function createDiscordMessageRequest({
       };
     });
 
-  const applicationOrigin = new URL(applicationUrl).origin;
+  const applicationOrigin = requireHttpOrigin(
+    applicationUrl,
+    'Discord application URL',
+  );
 
   const body: DiscordCreateMessagePayload = {
     content: message.content,
@@ -249,13 +255,15 @@ function createEmbedPayload(
 
 function requireNonEmpty(value: string, name: string): void {
   if (value.trim() === '') {
-    throw new Error(`${name} cannot be empty`);
+    throw new DiscordRequestValidationError(`${name} cannot be empty`);
   }
 }
 
 function requireSnowflake(value: string, name: string): void {
   if (!/^[0-9]{17,20}$/.test(value)) {
-    throw new Error(`${name} must be a Discord snowflake`);
+    throw new DiscordRequestValidationError(
+      `${name} must be a Discord snowflake`,
+    );
   }
 }
 
@@ -265,7 +273,9 @@ function requireArrayLength(
   maximum: number,
 ): void {
   if (values.length === 0 || values.length > maximum) {
-    throw new Error(`${name} must contain between 1 and ${maximum} items`);
+    throw new DiscordRequestValidationError(
+      `${name} must contain between 1 and ${maximum} items`,
+    );
   }
 }
 
@@ -275,17 +285,22 @@ function requireHttpUrl(value: string, name: string): void {
   try {
     url = new URL(value);
   } catch {
-    throw new Error(`${name} must be an HTTP(S) URL`);
+    throw new DiscordRequestValidationError(`${name} must be an HTTP(S) URL`);
   }
 
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new Error(`${name} must be an HTTP(S) URL`);
+    throw new DiscordRequestValidationError(`${name} must be an HTTP(S) URL`);
   }
+}
+
+function requireHttpOrigin(value: string, name: string): string {
+  requireHttpUrl(value, name);
+  return new URL(value).origin;
 }
 
 function requireColor(value: number, name: string): void {
   if (!Number.isInteger(value) || value < 0 || value > MAX_EMBED_COLOR) {
-    throw new Error(
+    throw new DiscordRequestValidationError(
       `${name} must be an integer between 0 and ${MAX_EMBED_COLOR}`,
     );
   }
@@ -293,6 +308,8 @@ function requireColor(value: number, name: string): void {
 
 function requireIsoTimestamp(value: string, name: string): void {
   if (!ISO_8601_TIMESTAMP.test(value) || Number.isNaN(Date.parse(value))) {
-    throw new Error(`${name} must be a valid ISO 8601 timestamp`);
+    throw new DiscordRequestValidationError(
+      `${name} must be a valid ISO 8601 timestamp`,
+    );
   }
 }
