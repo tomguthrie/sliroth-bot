@@ -138,15 +138,13 @@ function logDeliveryFailure(
   error: unknown,
   retry: boolean,
 ): void {
-  console.error(
-    JSON.stringify({
-      event: 'discord_message_delivery_failed',
-      queueMessageId: queuedMessage.id,
-      guildId: queuedMessage.body.guildId,
-      channelId: queuedMessage.body.channelId,
-      retry,
-      status: error instanceof DiscordApiError ? error.status : undefined,
-      error: error instanceof Error ? error.message : String(error),
-    }),
-  );
+  console.error({
+    event: 'discord_message_delivery_failed',
+    queueMessageId: queuedMessage.id,
+    guildId: queuedMessage.body.guildId,
+    channelId: queuedMessage.body.channelId,
+    retry,
+    status: error instanceof DiscordApiError ? error.status : undefined,
+    error,
+  });
 }

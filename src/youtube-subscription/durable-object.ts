@@ -192,13 +192,11 @@ export class YouTubeSubscription extends DurableObject<Env> {
     }
 
     await this.clearWebSubState();
-    console.warn(
-      JSON.stringify({
-        event: 'youtube_websub_denied',
-        youtubeChannelId,
-        reason,
-      }),
-    );
+    console.warn({
+      event: 'youtube_websub_denied',
+      youtubeChannelId,
+      reason,
+    });
     return true;
   }
 
@@ -245,13 +243,11 @@ export class YouTubeSubscription extends DurableObject<Env> {
         await this.ctx.storage.deleteAlarm();
       }
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          event: 'youtube_websub_alarm_failed',
-          youtubeChannelId: this.requireYouTubeChannelId(),
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
+      console.error({
+        event: 'youtube_websub_alarm_failed',
+        youtubeChannelId: this.requireYouTubeChannelId(),
+        error,
+      });
     }
   }
 

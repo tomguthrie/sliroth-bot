@@ -348,10 +348,5 @@ function parseTwitchAddOptions(
 }
 
 function logInteractionFailure(error: unknown): void {
-  console.error(
-    JSON.stringify({
-      event: 'discord_interaction_failed',
-      error: error instanceof Error ? error.message : String(error),
-    }),
-  );
+  console.error({ event: 'discord_interaction_failed', error });
 }

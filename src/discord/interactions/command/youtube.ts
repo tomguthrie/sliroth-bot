@@ -404,20 +404,9 @@ function logTitleFailure(
   youtubeChannelId: string,
   error: unknown,
 ): void {
-  console.warn(
-    JSON.stringify({
-      event,
-      youtubeChannelId,
-      error: error instanceof Error ? error.message : String(error),
-    }),
-  );
+  console.warn({ event, youtubeChannelId, error });
 }
 
 function logInteractionFailure(error: unknown): void {
-  console.error(
-    JSON.stringify({
-      event: 'discord_interaction_failed',
-      error: error instanceof Error ? error.message : String(error),
-    }),
-  );
+  console.error({ event: 'discord_interaction_failed', error });
 }
