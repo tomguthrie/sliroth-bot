@@ -7,11 +7,7 @@ import * as z from 'zod';
 
 import migrations from '../db/youtube-subscription/migrations/migrations.js';
 import { subscribers, videos } from '../db/youtube-subscription/schema';
-import {
-  type DiscordSnowflake,
-  isDiscordSnowflake,
-  requireDiscordSnowflake,
-} from '../discord/snowflake';
+import { DiscordSnowflake } from '../discord/snowflake';
 import { toLoggableError } from '../log';
 import { enqueueDiscordMessages } from '../queue/discord-message';
 import {
@@ -42,24 +38,20 @@ interface WebSubState {
 
 export const YouTubeSubscriberRegistration = z.object(
   {
-    guildId: discordSnowflakeSchema('Discord guild ID'),
-    channelId: discordSnowflakeSchema('Discord channel ID'),
+    guildId: DiscordSnowflake,
+    channelId: DiscordSnowflake,
     message: nonBlankStringSchema('Subscriber message').optional(),
     ping: z
-      .union(
-        [
-          z.literal('everyone'),
-          z.literal('here'),
-          discordSnowflakeTypeSchema('Discord role ID'),
-        ],
-        { error: 'Discord role ID must be a Discord snowflake' },
-      )
+      .union([z.literal('everyone'), z.literal('here'), DiscordSnowflake])
       .optional(),
   },
   { error: 'YouTube subscriber registration must be an object' },
 );
 
 export type YouTubeSubscriberRegistration = z.infer<
+  typeof YouTubeSubscriberRegistration
+>;
+type YouTubeSubscriberRegistrationInput = z.input<
   typeof YouTubeSubscriberRegistration
 >;
 
@@ -79,23 +71,23 @@ export class YouTubeSubscription extends DurableObject<Env> {
 
   /** Adds or updates a Discord subscriber and its global lookup indexes. */
   async addSubscriber(
-    registration: YouTubeSubscriberRegistration,
+    registration: YouTubeSubscriberRegistrationInput,
   ): Promise<void> {
-    validateSubscriberRegistration(registration);
+    const validated = validateSubscriberRegistration(registration);
     const youtubeChannelId = this.requireYouTubeChannelId();
     const [subscriber] = await this.db
       .insert(subscribers)
       .values({
-        guildId: registration.guildId,
-        channelId: registration.channelId,
-        message: registration.message ?? null,
-        ping: registration.ping ?? null,
+        guildId: validated.guildId,
+        channelId: validated.channelId,
+        message: validated.message ?? null,
+        ping: validated.ping ?? null,
       })
       .onConflictDoUpdate({
         target: subscribers.channelId,
         set: {
-          message: registration.message ?? null,
-          ping: registration.ping ?? null,
+          message: validated.message ?? null,
+          ping: validated.ping ?? null,
           updatedAt: new Date(),
         },
       })
@@ -128,7 +120,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
 
   /** Removes a Discord subscriber and its global lookup indexes. */
   async removeSubscriber(channelId: string): Promise<void> {
-    requireDiscordSnowflake(channelId, 'Discord channel ID');
+    DiscordSnowflake.parse(channelId);
     const youtubeChannelId = this.requireYouTubeChannelId();
     const [subscriber] = await this.db
       .select({ guildId: subscribers.guildId })
@@ -441,8 +433,8 @@ function createSecret(): string {
 }
 
 function validateSubscriberRegistration(
-  registration: YouTubeSubscriberRegistration,
-): void {
+  registration: YouTubeSubscriberRegistrationInput,
+): YouTubeSubscriberRegistration {
   const result = YouTubeSubscriberRegistration.safeParse(registration);
   if (!result.success) {
     throw new Error(
@@ -451,16 +443,7 @@ function validateSubscriberRegistration(
       { cause: result.error },
     );
   }
-}
-
-function discordSnowflakeSchema(name: string) {
-  const error = `${name} must be a Discord snowflake`;
-  return z.string({ error }).regex(/^[0-9]{17,20}$/, { error });
-}
-
-function discordSnowflakeTypeSchema(name: string) {
-  const error = `${name} must be a Discord snowflake`;
-  return z.custom<DiscordSnowflake>(isDiscordSnowflake, { error });
+  return result.data;
 }
 
 function nonBlankStringSchema(name: string) {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { DiscordSnowflake } from '../../src/discord/snowflake';
 import { createYouTubeDiscordMessage } from '../../src/youtube-subscription/discord-message';
 
 const NOTIFICATION = {
@@ -10,7 +11,7 @@ const NOTIFICATION = {
 };
 const GUILD_ID = '123456789012345678';
 const CHANNEL_ID = '234567890123456789';
-const ROLE_ID = '345678901234567890' as const;
+const ROLE_ID = DiscordSnowflake.parse('345678901234567890');
 const CREATED_AT = new Date('2026-08-01T12:00:00.000Z');
 const UPDATED_AT = new Date('2026-08-02T12:00:00.000Z');
 

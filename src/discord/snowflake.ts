@@ -1,25 +1,8 @@
-const DISCORD_SNOWFLAKE = /^[0-9]{17,20}$/;
+import * as z from 'zod';
 
-export type DiscordSnowflake = `${bigint}`;
+export const DiscordSnowflake = z
+  .string()
+  .regex(/^[0-9]{17,20}$/)
+  .brand<'DiscordSnowflake'>();
 
-/** Checks and narrows a Discord snowflake received at a runtime boundary. */
-export function isDiscordSnowflake(value: unknown): value is DiscordSnowflake {
-  return typeof value === 'string' && DISCORD_SNOWFLAKE.test(value);
-}
-
-/** Returns a Discord snowflake received at a runtime boundary, if valid. */
-export function parseDiscordSnowflake(
-  value: unknown,
-): DiscordSnowflake | undefined {
-  return isDiscordSnowflake(value) ? value : undefined;
-}
-
-/** Requires a valid Discord snowflake at a runtime boundary. */
-export function requireDiscordSnowflake(
-  value: unknown,
-  name: string,
-): asserts value is DiscordSnowflake {
-  if (!isDiscordSnowflake(value)) {
-    throw new Error(`${name} must be a Discord snowflake`);
-  }
-}
+export type DiscordSnowflake = z.infer<typeof DiscordSnowflake>;

@@ -8,6 +8,7 @@ import {
   createDiscordEditMessageRequest,
   createDiscordMessageRequest,
 } from './request';
+import { DiscordSnowflake } from './snowflake';
 
 /** Describes a non-successful response returned by Discord's API. */
 export class DiscordApiError extends Error {
@@ -23,8 +24,8 @@ export class DiscordApiError extends Error {
 /** Validates a Discord message response and exposes its delivery receipt. */
 export const DiscordMessageReceipt = z
   .object({
-    id: z.string(),
-    channel_id: z.string(),
+    id: DiscordSnowflake,
+    channel_id: DiscordSnowflake,
   })
   .transform(({ id, channel_id: channelId }) => ({
     messageId: id,

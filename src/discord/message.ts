@@ -11,8 +11,8 @@ export type DiscordMentionTarget = 'everyone' | 'here' | DiscordSnowflake;
  * @see https://docs.discord.com/developers/resources/message#allowed-mentions-object
  */
 export interface DiscordAllowedMentions {
-  roleIds?: string[];
-  userIds?: string[];
+  roleIds?: DiscordSnowflake[];
+  userIds?: DiscordSnowflake[];
   everyone?: boolean;
 }
 

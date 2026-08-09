@@ -1,3 +1,5 @@
+import * as z from 'zod';
+
 import {
   DiscordApiError,
   editDiscordMessage,
@@ -5,6 +7,7 @@ import {
 } from '../discord/client';
 import type { DiscordMessage } from '../discord/message';
 import { DiscordRequestValidationError } from '../discord/request';
+import { DiscordSnowflake } from '../discord/snowflake';
 import { toLoggableError } from '../log';
 import { recordTwitchStreamMessageReceipt } from '../twitch-subscription/message-receipt';
 
@@ -68,7 +71,7 @@ export async function deliverDiscordMessageBatch(
       const options = {
         botToken: env.DISCORD_BOT_TOKEN,
         applicationUrl: env.PUBLIC_BASE_URL,
-        channelId: queuedMessage.body.channelId,
+        channelId: DiscordSnowflake.parse(queuedMessage.body.channelId),
         message: queuedMessage.body.message,
       };
       if (queuedMessage.body.operation === 'create') {
@@ -89,12 +92,15 @@ export async function deliverDiscordMessageBatch(
       } else {
         await editDiscordMessage({
           ...options,
-          messageId: queuedMessage.body.messageId,
+          messageId: DiscordSnowflake.parse(queuedMessage.body.messageId),
         });
       }
       queuedMessage.ack();
     } catch (error) {
-      if (error instanceof DiscordRequestValidationError) {
+      if (
+        error instanceof DiscordRequestValidationError ||
+        error instanceof z.ZodError
+      ) {
         logDeliveryFailure(queuedMessage, error, false);
         queuedMessage.ack();
         continue;

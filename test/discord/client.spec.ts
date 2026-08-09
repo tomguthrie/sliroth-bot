@@ -6,11 +6,12 @@ import {
   editDiscordMessage,
   sendDiscordMessage,
 } from '../../src/discord/client';
+import { DiscordSnowflake } from '../../src/discord/snowflake';
 
 const BOT_TOKEN = 'test-discord-bot-token';
-const CHANNEL_ID = '123456789012345678';
-const ROLE_ID = '234567890123456789';
-const MESSAGE_ID = '345678901234567890';
+const CHANNEL_ID = DiscordSnowflake.parse('123456789012345678');
+const ROLE_ID = DiscordSnowflake.parse('234567890123456789');
+const MESSAGE_ID = DiscordSnowflake.parse('345678901234567890');
 
 afterEach(() => {
   vi.restoreAllMocks();

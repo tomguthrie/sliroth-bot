@@ -16,7 +16,7 @@ import {
   hasDiscordPermission,
   MANAGE_GUILD_PERMISSION,
 } from '../../permission';
-import { parseDiscordSnowflake, type DiscordSnowflake } from '../../snowflake';
+import { DiscordSnowflake } from '../../snowflake';
 import {
   APPLICATION_COMMAND_OPTION_TYPE,
   type DiscordApplicationCommandOption,
@@ -61,8 +61,8 @@ export async function handleTwitchCommand(
     return ephemeralInteractionResponse('This interaction is not supported.');
   }
 
-  const guildId = parseDiscordSnowflake(interaction.guild_id);
-  const channelId = parseDiscordSnowflake(interaction.channel_id);
+  const guildId = interaction.guild_id;
+  const channelId = interaction.channel_id;
   if (guildId === undefined || channelId === undefined) {
     return ephemeralInteractionResponse(
       'This command can only be used in a server.',
@@ -100,7 +100,7 @@ export async function handleTwitchCommand(
       );
     }
 
-    const applicationId = parseDiscordSnowflake(interaction.application_id);
+    const applicationId = interaction.application_id;
     const token = getInteractionString(interaction.token);
     if (applicationId === undefined || token === undefined) {
       return ephemeralInteractionResponse('This interaction is not supported.');
@@ -333,9 +333,9 @@ function parseTwitchAddOptions(
       value.name === 'role' &&
       value.type === APPLICATION_COMMAND_OPTION_TYPE.role
     ) {
-      const input = parseDiscordSnowflake(value.value);
-      if (input === undefined) return 'This interaction is not supported.';
-      roleId = input;
+      const input = DiscordSnowflake.safeParse(value.value);
+      if (!input.success) return 'This interaction is not supported.';
+      roleId = input.data;
     } else {
       return 'This interaction is not supported.';
     }

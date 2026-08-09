@@ -1,6 +1,6 @@
 import * as z from 'zod';
 
-import type { DiscordSnowflake } from '../snowflake';
+import { DiscordSnowflake } from '../snowflake';
 
 export const APPLICATION_COMMAND_OPTION_TYPE = {
   subcommand: 1,
@@ -31,7 +31,10 @@ export const DiscordApplicationCommandData = z.object({
   resolved: z
     .object({
       roles: z
-        .record(z.string(), z.object({ mentionable: z.boolean().optional() }))
+        .record(
+          DiscordSnowflake,
+          z.object({ mentionable: z.boolean().optional() }),
+        )
         .optional(),
     })
     .optional(),
@@ -44,10 +47,10 @@ export type DiscordApplicationCommandData = z.infer<
 /** Validates a Discord interaction received from the webhook boundary. */
 export const DiscordInteraction = z.object({
   type: z.number(),
-  application_id: z.string().optional(),
+  application_id: DiscordSnowflake.optional(),
   token: z.string().optional(),
-  guild_id: z.string().optional(),
-  channel_id: z.string().optional(),
+  guild_id: DiscordSnowflake.optional(),
+  channel_id: DiscordSnowflake.optional(),
   channel: z.object({ type: z.number() }).optional(),
   app_permissions: z.string().optional(),
   member: z.object({ permissions: z.string().optional() }).optional(),

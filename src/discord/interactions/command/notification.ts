@@ -51,7 +51,7 @@ export function resolveNotificationPing(
     roleId?: DiscordSnowflake;
   },
   data: DiscordApplicationCommandData | undefined,
-  guildId: string,
+  guildId: DiscordSnowflake,
   permissions: string | undefined,
 ): { ping?: DiscordMentionTarget } | { error: string } {
   if (options.ping !== undefined) {

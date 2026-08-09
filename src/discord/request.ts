@@ -1,7 +1,7 @@
 import { ButtonStyleTypes, MessageComponentTypes } from 'discord-interactions';
 
 import type { DiscordEmbed, DiscordMessage } from './message';
-import { isDiscordSnowflake } from './snowflake';
+import type { DiscordSnowflake } from './snowflake';
 
 export const DISCORD_API_BASE_URL = 'https://discord.com/api/v10/';
 
@@ -17,8 +17,8 @@ export class DiscordRequestValidationError extends Error {}
 
 interface DiscordAllowedMentionsPayload {
   parse: ['everyone'] | [];
-  roles?: string[];
-  users?: string[];
+  roles?: DiscordSnowflake[];
+  users?: DiscordSnowflake[];
 }
 
 interface DiscordLinkButtonPayload {
@@ -66,7 +66,7 @@ export interface CreateDiscordMessageRequestOptions {
   /** Secret token used to authenticate the Discord bot. */
   botToken: string;
   /** Discord channel snowflake that will receive the message. */
-  channelId: string;
+  channelId: DiscordSnowflake;
   /** Public application URL included in the Discord API user agent. */
   applicationUrl: string;
   /** Message content and delivery options to serialize for Discord. */
@@ -79,7 +79,7 @@ export interface EditDiscordMessageRequestOptions extends Omit<
   'message'
 > {
   /** Discord message snowflake returned by the create-message request. */
-  messageId: string;
+  messageId: DiscordSnowflake;
   /** Complete replacement content for the existing message. */
   message: Omit<DiscordMessage, 'nonce'>;
 }
@@ -96,7 +96,6 @@ export function createDiscordMessageRequest({
   message,
 }: CreateDiscordMessageRequestOptions): Request {
   requireNonEmpty(botToken, 'Discord bot token');
-  requireSnowflake(channelId, 'Discord channel ID');
   requireNonEmpty(message.content, 'Discord message content');
 
   if (message.nonce !== undefined) {
@@ -108,18 +107,10 @@ export function createDiscordMessageRequest({
   };
 
   if (message.allowedMentions?.roleIds !== undefined) {
-    for (const roleId of message.allowedMentions.roleIds) {
-      requireSnowflake(roleId, 'Discord role ID');
-    }
-
     allowedMentions.roles = message.allowedMentions.roleIds;
   }
 
   if (message.allowedMentions?.userIds !== undefined) {
-    for (const userId of message.allowedMentions.userIds) {
-      requireSnowflake(userId, 'Discord user ID');
-    }
-
     allowedMentions.users = message.allowedMentions.userIds;
   }
 
@@ -192,7 +183,6 @@ export function createDiscordEditMessageRequest({
   messageId,
   ...options
 }: EditDiscordMessageRequestOptions): Request {
-  requireSnowflake(messageId, 'Discord message ID');
   const createRequest = createDiscordMessageRequest(options);
 
   return new Request(
@@ -288,14 +278,6 @@ function createEmbedPayload(
 function requireNonEmpty(value: string, name: string): void {
   if (value.trim() === '') {
     throw new DiscordRequestValidationError(`${name} cannot be empty`);
-  }
-}
-
-function requireSnowflake(value: string, name: string): void {
-  if (!isDiscordSnowflake(value)) {
-    throw new DiscordRequestValidationError(
-      `${name} must be a Discord snowflake`,
-    );
   }
 }
 

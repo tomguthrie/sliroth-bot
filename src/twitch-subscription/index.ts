@@ -1,7 +1,4 @@
-import {
-  isDiscordSnowflake,
-  requireDiscordSnowflake,
-} from '../discord/snowflake';
+import { DiscordSnowflake } from '../discord/snowflake';
 
 export interface GuildTwitchSubscription {
   discordChannelId: string;
@@ -30,7 +27,7 @@ export async function listGuildTwitchSubscriptions(
   index: KVNamespace,
   guildId: string,
 ): Promise<GuildTwitchSubscription[]> {
-  requireDiscordSnowflake(guildId, 'Discord guild ID');
+  DiscordSnowflake.parse(guildId);
   const prefix = `guild:${guildId}:channel:`;
   const subscriptions: GuildTwitchSubscription[] = [];
   let cursor: string | undefined;
@@ -56,7 +53,7 @@ export async function listChannelTwitchSubscriptions(
   index: KVNamespace,
   channelId: string,
 ): Promise<string[]> {
-  requireDiscordSnowflake(channelId, 'Discord channel ID');
+  DiscordSnowflake.parse(channelId);
   const prefix = `channel:${channelId}:twitch:`;
   const broadcasterIds: string[] = [];
   let cursor: string | undefined;
@@ -91,7 +88,7 @@ function parseGuildTwitchSubscriptionKey(
   const discordChannelId = suffix.slice(0, separatorOffset);
   const twitchBroadcasterId = suffix.slice(separatorOffset + separator.length);
   if (
-    !isDiscordSnowflake(discordChannelId) ||
+    !DiscordSnowflake.safeParse(discordChannelId).success ||
     !isTwitchBroadcasterId(twitchBroadcasterId)
   ) {
     return undefined;

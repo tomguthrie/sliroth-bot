@@ -5,11 +5,12 @@ import {
   createDiscordMessageRequest,
   DISCORD_API_BASE_URL,
 } from '../../src/discord/request';
+import { DiscordSnowflake } from '../../src/discord/snowflake';
 
 const BOT_TOKEN = 'test-discord-bot-token';
-const CHANNEL_ID = '123456789012345678';
-const ROLE_ID = '234567890123456789';
-const MESSAGE_ID = '345678901234567890';
+const CHANNEL_ID = DiscordSnowflake.parse('123456789012345678');
+const ROLE_ID = DiscordSnowflake.parse('234567890123456789');
+const MESSAGE_ID = DiscordSnowflake.parse('345678901234567890');
 
 describe('createDiscordMessageRequest', () => {
   it('creates an authenticated role-mention message', async () => {
@@ -65,7 +66,7 @@ describe('createDiscordMessageRequest', () => {
   });
 
   it('allows explicit user and everyone mentions', async () => {
-    const userId = '345678901234567890';
+    const userId = DiscordSnowflake.parse('345678901234567890');
     const request = createRequest({
       content: `@everyone <@${userId}> Please take a look`,
       allowedMentions: {
@@ -357,30 +358,6 @@ describe('createDiscordMessageRequest', () => {
       error,
     );
   });
-
-  it('rejects an invalid channel ID', () => {
-    expect(() =>
-      createDiscordMessageRequest({
-        botToken: BOT_TOKEN,
-        channelId: 'not-a-snowflake',
-        applicationUrl: 'https://bot.example.com',
-        message: {
-          content: 'A message',
-        },
-      }),
-    ).toThrow('Discord channel ID must be a Discord snowflake');
-  });
-
-  it('rejects an invalid role ID', () => {
-    expect(() =>
-      createRequest({
-        content: 'A message',
-        allowedMentions: {
-          roleIds: ['not-a-snowflake'],
-        },
-      }),
-    ).toThrow('Discord role ID must be a Discord snowflake');
-  });
 });
 
 describe('createDiscordEditMessageRequest', () => {
@@ -402,18 +379,6 @@ describe('createDiscordEditMessageRequest', () => {
       content: 'The stream has ended',
       allowed_mentions: { parse: [] },
     });
-  });
-
-  it('rejects an invalid message ID', () => {
-    expect(() =>
-      createDiscordEditMessageRequest({
-        botToken: BOT_TOKEN,
-        channelId: CHANNEL_ID,
-        messageId: 'not-a-snowflake',
-        applicationUrl: 'https://bot.example.com',
-        message: { content: 'The stream has ended' },
-      }),
-    ).toThrow('Discord message ID must be a Discord snowflake');
   });
 });
 

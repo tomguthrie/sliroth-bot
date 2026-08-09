@@ -4,6 +4,9 @@ import {
   createDiscordMention,
   createDiscordNonce,
 } from '../../src/discord/message';
+import { DiscordSnowflake } from '../../src/discord/snowflake';
+
+const ROLE_ID = DiscordSnowflake.parse('123456789012345678');
 
 describe('Discord notification messages', () => {
   it('omits an absent mention', () => {
@@ -18,9 +21,9 @@ describe('Discord notification messages', () => {
   });
 
   it('enables one role mention', () => {
-    expect(createDiscordMention('123456789012345678')).toEqual({
-      content: '<@&123456789012345678>',
-      allowedMentions: { roleIds: ['123456789012345678'] },
+    expect(createDiscordMention(ROLE_ID)).toEqual({
+      content: `<@&${ROLE_ID}>`,
+      allowedMentions: { roleIds: [ROLE_ID] },
     });
   });
 

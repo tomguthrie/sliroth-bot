@@ -14,11 +14,7 @@ import {
   twitchSubscribers,
 } from '../db/twitch-subscription/schema';
 import type { DiscordMessageReceipt } from '../discord/client';
-import {
-  type DiscordSnowflake,
-  isDiscordSnowflake,
-  requireDiscordSnowflake,
-} from '../discord/snowflake';
+import { DiscordSnowflake } from '../discord/snowflake';
 import { enqueueDiscordMessages } from '../queue/discord-message';
 import {
   createTwitchApiClient,
@@ -61,23 +57,19 @@ const TwitchBroadcaster: z.ZodType<TwitchUser> = z.object({
 });
 
 export const TwitchSubscriberRegistration = z.object({
-  guildId: discordSnowflakeSchema('Discord guild ID'),
-  channelId: discordSnowflakeSchema('Discord channel ID'),
+  guildId: DiscordSnowflake,
+  channelId: DiscordSnowflake,
   message: nonBlankStringSchema('Subscriber message').optional(),
   offline: nonBlankStringSchema('Subscriber offline message').optional(),
   ping: z
-    .union(
-      [
-        z.literal('everyone'),
-        z.literal('here'),
-        discordSnowflakeTypeSchema('Discord role ID'),
-      ],
-      { error: 'Discord role ID must be a Discord snowflake' },
-    )
+    .union([z.literal('everyone'), z.literal('here'), DiscordSnowflake])
     .optional(),
 });
 
 export type TwitchSubscriberRegistration = z.infer<
+  typeof TwitchSubscriberRegistration
+>;
+type TwitchSubscriberRegistrationInput = z.input<
   typeof TwitchSubscriberRegistration
 >;
 
@@ -111,16 +103,16 @@ export class TwitchSubscription extends DurableObject<Env> {
   /** Adds or updates a subscriber, then reconciles Twitch EventSub state. */
   async addSubscriber(
     broadcaster: TwitchUser,
-    registration: TwitchSubscriberRegistration,
+    registration: TwitchSubscriberRegistrationInput,
   ): Promise<void> {
     validateBroadcaster(broadcaster);
-    validateRegistration(registration);
+    const validated = validateRegistration(registration);
     const [existingSubscriber] = await this.db
       .select({ guildId: twitchSubscribers.guildId })
       .from(twitchSubscribers)
-      .where(eq(twitchSubscribers.channelId, registration.channelId))
+      .where(eq(twitchSubscribers.channelId, validated.channelId))
       .limit(1);
-    const guildId = existingSubscriber?.guildId ?? registration.guildId;
+    const guildId = existingSubscriber?.guildId ?? validated.guildId;
     await this.db
       .insert(broadcasters)
       .values({
@@ -142,31 +134,31 @@ export class TwitchSubscription extends DurableObject<Env> {
     await this.db
       .insert(twitchSubscribers)
       .values({
-        channelId: registration.channelId,
+        channelId: validated.channelId,
         guildId,
-        message: registration.message ?? null,
-        offline: registration.offline ?? null,
-        ping: registration.ping ?? null,
+        message: validated.message ?? null,
+        offline: validated.offline ?? null,
+        ping: validated.ping ?? null,
       })
       .onConflictDoUpdate({
         target: twitchSubscribers.channelId,
         set: {
-          message: registration.message ?? null,
-          offline: registration.offline ?? null,
-          ping: registration.ping ?? null,
+          message: validated.message ?? null,
+          offline: validated.offline ?? null,
+          ping: validated.ping ?? null,
         },
       });
     await Promise.all([
       this.env.TWITCH_SUBSCRIPTIONS_INDEX.put(
         guildTwitchSubscriptionKey(
           guildId,
-          registration.channelId,
+          validated.channelId,
           broadcaster.id,
         ),
         '1',
       ),
       this.env.TWITCH_SUBSCRIPTIONS_INDEX.put(
-        channelTwitchSubscriptionKey(registration.channelId, broadcaster.id),
+        channelTwitchSubscriptionKey(validated.channelId, broadcaster.id),
         '1',
       ),
     ]);
@@ -175,7 +167,7 @@ export class TwitchSubscription extends DurableObject<Env> {
 
   /** Removes the subscriber for a Discord channel and reconciles EventSub. */
   async removeSubscriber(channelId: string): Promise<boolean> {
-    requireDiscordSnowflake(channelId, 'Discord channel ID');
+    DiscordSnowflake.parse(channelId);
     const broadcaster = await this.getBroadcaster();
     const [removed] = await this.db
       .delete(twitchSubscribers)
@@ -204,7 +196,7 @@ export class TwitchSubscription extends DurableObject<Env> {
 
   /** Lists this broadcaster's subscribers in a guild and reconciles EventSub. */
   async listSubscribers(guildId: string): Promise<TwitchSubscriber[]> {
-    requireDiscordSnowflake(guildId, 'Discord guild ID');
+    DiscordSnowflake.parse(guildId);
     const broadcaster = await this.getBroadcaster();
     const rows = await this.db
       .select()
@@ -341,8 +333,8 @@ export class TwitchSubscription extends DurableObject<Env> {
     receipt: DiscordMessageReceipt,
   ): Promise<void> {
     requireNonEmpty(streamId, 'Twitch stream ID');
-    requireDiscordSnowflake(receipt.channelId, 'Discord channel ID');
-    requireDiscordSnowflake(receipt.messageId, 'Discord message ID');
+    DiscordSnowflake.parse(receipt.channelId);
+    DiscordSnowflake.parse(receipt.messageId);
     const [message] = await this.db
       .update(streamMessages)
       .set({ messageId: receipt.messageId })
@@ -584,8 +576,8 @@ function validateBroadcaster(broadcaster: TwitchUser): void {
 }
 
 function validateRegistration(
-  registration: TwitchSubscriberRegistration,
-): void {
+  registration: TwitchSubscriberRegistrationInput,
+): TwitchSubscriberRegistration {
   const result = TwitchSubscriberRegistration.safeParse(registration);
   if (!result.success) {
     throw new Error(
@@ -594,16 +586,7 @@ function validateRegistration(
       { cause: result.error },
     );
   }
-}
-
-function discordSnowflakeSchema(name: string) {
-  const error = `${name} must be a Discord snowflake`;
-  return z.string({ error }).regex(/^[0-9]{17,20}$/, { error });
-}
-
-function discordSnowflakeTypeSchema(name: string) {
-  const error = `${name} must be a Discord snowflake`;
-  return z.custom<DiscordSnowflake>(isDiscordSnowflake, { error });
+  return result.data;
 }
 
 function nonBlankStringSchema(name: string) {
