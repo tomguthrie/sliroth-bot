@@ -21,6 +21,14 @@ interface EventSubEnvelope {
   event?: TwitchStreamOnlineEvent | TwitchStreamOfflineEvent;
 }
 
+interface AuthenticatedEventSubMessage {
+  broadcasterId: string;
+  envelope: EventSubEnvelope;
+  messageId: string;
+  messageType: string;
+  timestamp: string;
+}
+
 export interface TwitchStreamOnlineEvent {
   id: string;
   broadcaster_user_id: string;
@@ -43,6 +51,28 @@ export async function handleTwitchEventSub(
   env: Env,
   _ctx: ExecutionContext,
 ): Promise<Response> {
+  const message = await authenticateEventSubMessage(
+    request,
+    env.TWITCH_EVENTSUB_SECRET,
+  );
+  if (message instanceof Response) {
+    return message;
+  }
+
+  if (message.messageType === 'webhook_callback_verification') {
+    return message.envelope.challenge === undefined
+      ? new Response('Missing EventSub challenge', { status: 400 })
+      : new Response(message.envelope.challenge, {
+          headers: { 'content-type': 'text/plain' },
+        });
+  }
+  return processEventSubDelivery(message, env);
+}
+
+async function authenticateEventSubMessage(
+  request: Request,
+  secret: string,
+): Promise<AuthenticatedEventSubMessage | Response> {
   const messageId = request.headers.get(MESSAGE_ID_HEADER);
   const messageType = request.headers.get(MESSAGE_TYPE_HEADER);
   const timestamp = request.headers.get(MESSAGE_TIMESTAMP_HEADER);
@@ -67,15 +97,7 @@ export async function handleTwitchEventSub(
   }
 
   const body = await request.text();
-  if (
-    !(await verifySignature(
-      env.TWITCH_EVENTSUB_SECRET,
-      messageId,
-      timestamp,
-      body,
-      signature,
-    ))
-  ) {
+  if (!(await verifySignature(secret, messageId, timestamp, body, signature))) {
     return new Response('Invalid EventSub signature', { status: 403 });
   }
 
@@ -85,13 +107,16 @@ export async function handleTwitchEventSub(
   if (broadcasterId === undefined || broadcasterId !== routeBroadcasterId) {
     return new Response('EventSub broadcaster mismatch', { status: 400 });
   }
-  if (messageType === 'webhook_callback_verification') {
-    return envelope.challenge === undefined
-      ? new Response('Missing EventSub challenge', { status: 400 })
-      : new Response(envelope.challenge, {
-          headers: { 'content-type': 'text/plain' },
-        });
-  }
+
+  return { broadcasterId, envelope, messageId, messageType, timestamp };
+}
+
+async function processEventSubDelivery(
+  message: AuthenticatedEventSubMessage,
+  env: Env,
+): Promise<Response> {
+  const { broadcasterId, envelope, messageId, messageType, timestamp } =
+    message;
   if (messageType !== 'notification' && messageType !== 'revocation') {
     return new Response('Unsupported EventSub message type', { status: 400 });
   }
@@ -104,29 +129,20 @@ export async function handleTwitchEventSub(
 
   inFlightMessageIds.add(messageId);
   try {
-    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId);
     if (messageType === 'notification') {
-      if (envelope.event === undefined) {
-        return new Response('Missing EventSub event', { status: 400 });
+      const error = await processEventSubNotification(
+        env,
+        broadcasterId,
+        envelope,
+        timestamp,
+      );
+      if (error !== undefined) {
+        return error;
       }
-      if (envelope.subscription.type === TWITCH_EVENT_STREAM_ONLINE) {
-        if (!('started_at' in envelope.event)) {
-          return new Response('Invalid stream.online event', { status: 400 });
-        }
-        await subscription.streamOnline(envelope.event);
-      } else if (envelope.subscription.type === TWITCH_EVENT_STREAM_OFFLINE) {
-        if (!('id' in envelope.event)) {
-          return new Response('Invalid stream.offline event', { status: 400 });
-        }
-        await subscription.streamOffline(envelope.event, timestamp);
-      } else {
-        return new Response('Unsupported EventSub subscription type', {
-          status: 400,
-        });
-      }
-      await subscription.reconcile();
     } else {
-      await subscription.revokeEventSub(envelope.subscription.id);
+      await env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId).revokeEventSub(
+        envelope.subscription.id,
+      );
     }
     await env.TWITCH_EVENT_IDS.put(messageId, '1', {
       expirationTtl: DEDUPE_TTL_SECONDS,
@@ -135,6 +151,36 @@ export async function handleTwitchEventSub(
   } finally {
     inFlightMessageIds.delete(messageId);
   }
+}
+
+async function processEventSubNotification(
+  env: Env,
+  broadcasterId: string,
+  envelope: EventSubEnvelope,
+  timestamp: string,
+): Promise<Response | undefined> {
+  if (envelope.event === undefined) {
+    return new Response('Missing EventSub event', { status: 400 });
+  }
+  const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId);
+  if (envelope.subscription.type === TWITCH_EVENT_STREAM_ONLINE) {
+    if (!('started_at' in envelope.event)) {
+      return new Response('Invalid stream.online event', { status: 400 });
+    }
+    await subscription.streamOnline(envelope.event);
+  } else if (envelope.subscription.type === TWITCH_EVENT_STREAM_OFFLINE) {
+    if (!('id' in envelope.event)) {
+      return new Response('Invalid stream.offline event', { status: 400 });
+    }
+    await subscription.streamOffline(envelope.event, timestamp);
+  } else {
+    return new Response('Unsupported EventSub subscription type', {
+      status: 400,
+    });
+  }
+
+  await subscription.reconcile();
+  return undefined;
 }
 
 async function verifySignature(
