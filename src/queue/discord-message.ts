@@ -6,7 +6,6 @@ import {
   sendDiscordMessage,
 } from '../discord/client';
 import type { DiscordMessage } from '../discord/message';
-import { DiscordRequestValidationError } from '../discord/request';
 import { DiscordSnowflake } from '../discord/snowflake';
 import { toLoggableError } from '../log';
 import { recordTwitchStreamMessageReceipt } from '../twitch-subscription/message-receipt';
@@ -97,10 +96,7 @@ export async function deliverDiscordMessageBatch(
       }
       queuedMessage.ack();
     } catch (error) {
-      if (
-        error instanceof DiscordRequestValidationError ||
-        error instanceof z.ZodError
-      ) {
+      if (error instanceof z.ZodError) {
         logDeliveryFailure(queuedMessage, error, false);
         queuedMessage.ack();
         continue;

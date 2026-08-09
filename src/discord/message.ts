@@ -1,76 +1,86 @@
-import type { DiscordSnowflake } from './snowflake';
+import * as z from 'zod';
+
+import { DiscordSnowflake } from './snowflake';
 
 const MAX_DISCORD_NONCE_LENGTH = 25;
+const MAX_EMBEDS = 10;
+const MAX_EMBED_FIELDS = 25;
+const MAX_LINK_BUTTONS = 5;
+const MAX_EMBED_COLOR = 0xffffff;
+const NonBlankString = z.string().refine((value) => value.trim() !== '');
+const HttpUrl = z.url({ protocol: /^https?$/ });
 
 /** Identifies a mention that a notification may deliberately enable. */
-export type DiscordMentionTarget = 'everyone' | 'here' | DiscordSnowflake;
+export const DiscordMentionTarget = z.union([
+  z.literal('everyone'),
+  z.literal('here'),
+  DiscordSnowflake,
+]);
+
+export type DiscordMentionTarget = z.infer<typeof DiscordMentionTarget>;
 
 /**
  * Controls which mentions in a Discord message may notify users.
  *
  * @see https://docs.discord.com/developers/resources/message#allowed-mentions-object
  */
-export interface DiscordAllowedMentions {
-  roleIds?: DiscordSnowflake[];
-  userIds?: DiscordSnowflake[];
-  everyone?: boolean;
-}
+const DiscordAllowedMentions = z.object({
+  roleIds: z.array(DiscordSnowflake).optional(),
+  userIds: z.array(DiscordSnowflake).optional(),
+  everyone: z.boolean().optional(),
+});
 
 /**
  * Sets the author displayed at the top of an embed.
  *
  * @see https://docs.discord.com/developers/resources/message#embed-author-structure
  */
-export interface DiscordEmbedAuthor {
-  name: string;
-  iconUrl?: string;
-}
+const DiscordEmbedAuthor = z.object({
+  name: NonBlankString,
+  iconUrl: HttpUrl.optional(),
+});
 
 /**
  * Adds a named piece of information to an embed.
  *
  * @see https://docs.discord.com/developers/resources/message#embed-field-structure
  */
-export interface DiscordEmbedField {
-  name: string;
-  value: string;
-  inline?: boolean;
-}
+const DiscordEmbedField = z.object({
+  name: NonBlankString,
+  value: NonBlankString,
+  inline: z.boolean().optional(),
+});
 
 /**
  * Supplies an image for an embed.
  *
  * @see https://docs.discord.com/developers/resources/message#embed-image-structure
  */
-export interface DiscordEmbedMedia {
-  url: string;
-}
+const DiscordEmbedMedia = z.object({ url: HttpUrl });
 
 /**
  * Adds text to the bottom of an embed.
  *
  * @see https://docs.discord.com/developers/resources/message#embed-footer-structure
  */
-export interface DiscordEmbedFooter {
-  text: string;
-}
+const DiscordEmbedFooter = z.object({ text: NonBlankString });
 
 /**
  * Describes a richly formatted section displayed beneath a message.
  *
  * @see https://docs.discord.com/developers/resources/message#embed-object
  */
-export interface DiscordEmbed {
-  author?: DiscordEmbedAuthor;
-  title?: string;
-  url?: string;
-  color?: number;
-  fields?: DiscordEmbedField[];
-  thumbnail?: DiscordEmbedMedia;
-  image?: DiscordEmbedMedia;
-  footer?: DiscordEmbedFooter;
-  timestamp?: string;
-}
+const DiscordEmbed = z.object({
+  author: DiscordEmbedAuthor.optional(),
+  title: NonBlankString.optional(),
+  url: HttpUrl.optional(),
+  color: z.int().min(0).max(MAX_EMBED_COLOR).optional(),
+  fields: z.array(DiscordEmbedField).min(1).max(MAX_EMBED_FIELDS).optional(),
+  thumbnail: DiscordEmbedMedia.optional(),
+  image: DiscordEmbedMedia.optional(),
+  footer: DiscordEmbedFooter.optional(),
+  timestamp: z.iso.datetime({ offset: true }).optional(),
+});
 
 /**
  * Describes a button that opens an external URL without sending an interaction
@@ -78,66 +88,113 @@ export interface DiscordEmbed {
  *
  * @see https://docs.discord.com/developers/components/reference#button
  */
-export interface DiscordLinkButton {
-  label: string;
-  url: string;
-}
+const DiscordLinkButton = z.object({
+  label: NonBlankString,
+  url: HttpUrl,
+});
 
 /**
  * Describes the content and delivery options for a Discord message.
  *
  * @see https://docs.discord.com/developers/resources/message#create-message
  */
-export interface DiscordMessage {
-  content: string;
-  /**
-   * A short-lived idempotency key. Reusing it causes Discord to return the
-   * existing message instead of creating a duplicate.
-   */
-  nonce?: string;
-  /**
-   * The mentions allowed to notify users. When omitted, mention syntax in the
-   * content will not notify anyone.
-   */
-  allowedMentions?: DiscordAllowedMentions;
-  /** Richly formatted sections displayed beneath the message content. */
-  embeds?: DiscordEmbed[];
-  /** URL buttons displayed beneath the message and its embeds. */
-  linkButtons?: DiscordLinkButton[];
-}
+export const DiscordMessage = z
+  .object({
+    content: NonBlankString,
+    /**
+     * A short-lived idempotency key. Reusing it causes Discord to return the
+     * existing message instead of creating a duplicate.
+     */
+    nonce: NonBlankString.max(MAX_DISCORD_NONCE_LENGTH).optional(),
+    /**
+     * The mentions allowed to notify users. When omitted, mention syntax in the
+     * content will not notify anyone.
+     */
+    allowedMentions: DiscordAllowedMentions.optional(),
+    /** Richly formatted sections displayed beneath the message content. */
+    embeds: z.array(DiscordEmbed).min(1).max(MAX_EMBEDS).optional(),
+    /** URL buttons displayed beneath the message and its embeds. */
+    linkButtons: z
+      .array(DiscordLinkButton)
+      .min(1)
+      .max(MAX_LINK_BUTTONS)
+      .optional(),
+  })
+  .brand<'DiscordMessage'>();
 
-/** Builds notification content and the matching Discord mention allowlist. */
-export function createDiscordMention(ping: DiscordMentionTarget | null): {
-  content?: string;
-  allowedMentions?: DiscordAllowedMentions;
-} {
-  if (ping === null) {
-    return {};
+export type DiscordMessage = z.infer<typeof DiscordMessage>;
+export type DiscordMessageInput = z.input<typeof DiscordMessage>;
+type DiscordAllowedMentions = z.infer<typeof DiscordAllowedMentions>;
+type DiscordAllowedMentionsInput = z.input<typeof DiscordAllowedMentions>;
+type DiscordEmbedInput = z.input<typeof DiscordEmbed>;
+type DiscordLinkButtonInput = z.input<typeof DiscordLinkButton>;
+
+/** Builds and validates a Discord message before it reaches delivery code. */
+export class DiscordMessageBuilder {
+  private readonly message: DiscordMessageInput;
+
+  constructor(content: string) {
+    this.message = { content };
   }
 
-  if (ping === 'everyone' || ping === 'here') {
+  setNonce(nonce: string): this {
+    this.message.nonce = nonce;
+    return this;
+  }
+
+  setAllowedMentions(allowedMentions: DiscordAllowedMentionsInput): this {
+    this.message.allowedMentions = allowedMentions;
+    return this;
+  }
+
+  addEmbed(embed: DiscordEmbedInput): this {
+    (this.message.embeds ??= []).push(embed);
+    return this;
+  }
+
+  addLinkButton(linkButton: DiscordLinkButtonInput): this {
+    (this.message.linkButtons ??= []).push(linkButton);
+    return this;
+  }
+
+  build(): DiscordMessage {
+    return DiscordMessage.parse(this.message);
+  }
+}
+
+/** Derives notification content and its matching Discord mention allowlist. */
+export const DiscordMention = {
+  from(ping: DiscordMentionTarget | null): {
+    content?: string;
+    allowedMentions?: DiscordAllowedMentions;
+  } {
+    if (ping === null) {
+      return {};
+    }
+
+    if (ping === 'everyone' || ping === 'here') {
+      return {
+        content: `@${ping}`,
+        allowedMentions: { everyone: true },
+      };
+    }
+
     return {
-      content: `@${ping}`,
-      allowedMentions: { everyone: true },
+      content: `<@&${ping}>`,
+      allowedMentions: { roleIds: [ping] },
     };
-  }
+  },
+};
 
-  return {
-    content: `<@&${ping}>`,
-    allowedMentions: { roleIds: [ping] },
-  };
-}
-
-/** Creates Discord's bounded idempotency nonce for a notification delivery. */
-export async function createDiscordNonce(
-  sourceId: string,
-  channelId: string,
-): Promise<string> {
-  const bytes = new TextEncoder().encode(`${sourceId}:${channelId}`);
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, '0'),
-  )
-    .join('')
-    .slice(0, MAX_DISCORD_NONCE_LENGTH);
-}
+/** Derives Discord idempotency nonces for notification deliveries. */
+export const DiscordNonce = {
+  async from(sourceId: string, channelId: string): Promise<string> {
+    const bytes = new TextEncoder().encode(`${sourceId}:${channelId}`);
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, '0'),
+    )
+      .join('')
+      .slice(0, MAX_DISCORD_NONCE_LENGTH);
+  },
+};

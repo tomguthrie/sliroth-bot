@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { DiscordSnowflake } from '../../src/discord/snowflake';
-import { createYouTubeDiscordMessage } from '../../src/youtube-subscription/discord-message';
+import { YouTubeDiscordMessage } from '../../src/youtube-subscription/discord-message';
 
 const NOTIFICATION = {
   videoId: 'dQw4w9WgXcQ',
@@ -26,7 +26,7 @@ const SUBSCRIBER = {
 
 describe('YouTube Discord message', () => {
   it('builds the default message without allowing mentions', async () => {
-    const delivery = await createYouTubeDiscordMessage(
+    const delivery = await YouTubeDiscordMessage.build(
       NOTIFICATION,
       SUBSCRIBER,
     );
@@ -37,7 +37,6 @@ describe('YouTube Discord message', () => {
       channelId: CHANNEL_ID,
       message: {
         content: 'A new video has been uploaded! https://youtu.be/dQw4w9WgXcQ',
-        allowedMentions: undefined,
       },
     });
     expect(delivery.message.nonce).toHaveLength(25);
@@ -62,7 +61,7 @@ describe('YouTube Discord message', () => {
   ] as const)(
     'maps the %s ping to Discord content and allowed mentions',
     async (ping, content, allowedMentions) => {
-      const delivery = await createYouTubeDiscordMessage(NOTIFICATION, {
+      const delivery = await YouTubeDiscordMessage.build(NOTIFICATION, {
         ...SUBSCRIBER,
         message: 'A custom message',
         ping,
@@ -74,9 +73,9 @@ describe('YouTube Discord message', () => {
 
   it('creates a stable nonce scoped to the Discord channel', async () => {
     const subscriber = SUBSCRIBER;
-    const first = await createYouTubeDiscordMessage(NOTIFICATION, subscriber);
-    const second = await createYouTubeDiscordMessage(NOTIFICATION, subscriber);
-    const otherChannel = await createYouTubeDiscordMessage(NOTIFICATION, {
+    const first = await YouTubeDiscordMessage.build(NOTIFICATION, subscriber);
+    const second = await YouTubeDiscordMessage.build(NOTIFICATION, subscriber);
+    const otherChannel = await YouTubeDiscordMessage.build(NOTIFICATION, {
       ...subscriber,
       channelId: '456789012345678901',
     });
