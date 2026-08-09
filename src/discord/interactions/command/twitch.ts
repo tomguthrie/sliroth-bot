@@ -2,6 +2,7 @@ import {
   listChannelTwitchSubscriptions,
   listGuildTwitchSubscriptions,
 } from '../../../twitch-subscription/index';
+import { toLoggableError } from '../../../log';
 import type { TwitchSubscriber } from '../../../twitch-subscription/durable-object';
 import {
   resolveTwitchChannel,
@@ -348,5 +349,8 @@ function parseTwitchAddOptions(
 }
 
 function logInteractionFailure(error: unknown): void {
-  console.error({ event: 'discord_interaction_failed', error });
+  console.error({
+    event: 'discord_interaction_failed',
+    error: toLoggableError(error),
+  });
 }
