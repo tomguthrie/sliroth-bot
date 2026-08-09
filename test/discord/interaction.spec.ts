@@ -8,6 +8,7 @@ import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { subscribers } from '../../src/db/youtube-subscription/schema';
+import { twitchSubscribers } from '../../src/db/twitch-subscription/schema';
 import { handleDiscordInteraction } from '../../src/discord/interactions';
 
 const GUILD_ID = '123456789012345678';
@@ -16,6 +17,9 @@ const OTHER_CHANNEL_ID = '345678901234567890';
 const APPLICATION_ID = '456789012345678901';
 const ROLE_ID = '567890123456789012';
 const YOUTUBE_CHANNEL_ID = 'UC_x5XG1OV2P6uZZ5FSM9Ttw';
+const TWITCH_ADD_BROADCASTER_ID = '678901234567890123';
+const TWITCH_LIST_BROADCASTER_ID = '678901234567890124';
+const TWITCH_REMOVE_BROADCASTER_ID = '678901234567890125';
 const PRIVATE_KEY_SEED =
   '9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60';
 const PRIVATE_KEY_PREFIX = '302e020100300506032b657004220420';
@@ -332,6 +336,121 @@ describe('Discord interactions', () => {
       'I need Mention Everyone permission to use @everyone or @here.',
     );
   });
+
+  it('adds a Twitch channel with its live, offline, and ping settings', async () => {
+    const requests = mockTwitchApi(TWITCH_ADD_BROADCASTER_ID, 'sliroth');
+    const ctx = createExecutionContext();
+
+    const response = await handleDiscordInteraction(
+      await createSignedRequest(
+        createTwitchAddInteraction('sliroth', {
+          options: [
+            { type: 8, name: 'role', value: ROLE_ID },
+            { type: 3, name: 'message', value: 'Sliroth is live now!' },
+            { type: 3, name: 'offline', value: 'Sliroth was live.' },
+          ],
+          resolvedRoles: { [ROLE_ID]: { id: ROLE_ID, mentionable: true } },
+        }),
+      ),
+      env,
+      ctx,
+    );
+    expect(await deferredInteractionBody(response)).toEqual({
+      type: 5,
+      flags: 64,
+    });
+    await waitOnExecutionContext(ctx);
+
+    const rows = await runInDurableObject(
+      env.TWITCH_SUBSCRIPTIONS.getByName(TWITCH_ADD_BROADCASTER_ID),
+      async (_instance, state) =>
+        drizzle(state.storage).select().from(twitchSubscribers),
+    );
+    expect(rows).toEqual([
+      expect.objectContaining({
+        channelId: CURRENT_CHANNEL_ID,
+        guildId: GUILD_ID,
+        message: 'Sliroth is live now!',
+        offline: 'Sliroth was live.',
+        ping: ROLE_ID,
+      }),
+    ]);
+    await expect(
+      env.TWITCH_SUBSCRIPTIONS_INDEX.get(
+        `guild:${GUILD_ID}:channel:${CURRENT_CHANNEL_ID}:twitch:${TWITCH_ADD_BROADCASTER_ID}`,
+      ),
+    ).resolves.toBe('1');
+    const editRequest = requests.find(
+      (request) =>
+        request.method === 'PATCH' &&
+        request.url.includes('/messages/@original'),
+    );
+    expect(await editRequest?.json()).toEqual({
+      content: `Streams from **Sliroth** will be posted in <#${CURRENT_CHANNEL_ID}> and mention <@&${ROLE_ID}>.`,
+      allowed_mentions: { parse: [] },
+    });
+  });
+
+  it('lists Twitch subscriptions with the current channel first', async () => {
+    mockTwitchApi(TWITCH_LIST_BROADCASTER_ID, 'sliroth');
+    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(
+      TWITCH_LIST_BROADCASTER_ID,
+    );
+    const broadcaster = twitchBroadcaster(
+      TWITCH_LIST_BROADCASTER_ID,
+      'sliroth',
+    );
+    await subscription.addSubscriber(broadcaster, {
+      guildId: GUILD_ID,
+      channelId: OTHER_CHANNEL_ID,
+    });
+    await subscription.addSubscriber(broadcaster, {
+      guildId: GUILD_ID,
+      channelId: CURRENT_CHANNEL_ID,
+    });
+
+    const response = await handleDiscordInteraction(
+      await createSignedRequest(createTwitchListInteraction()),
+      env,
+      createExecutionContext(),
+    );
+    const content = await interactionContent(response);
+
+    expect(content).toContain(
+      `⭐ [Sliroth](https://www.twitch.tv/sliroth) → <#${CURRENT_CHANNEL_ID}> **— current channel**`,
+    );
+    expect(content.indexOf(CURRENT_CHANNEL_ID)).toBeLessThan(
+      content.indexOf(OTHER_CHANNEL_ID),
+    );
+  });
+
+  it('removes every Twitch notification from the current channel', async () => {
+    mockTwitchApi(TWITCH_REMOVE_BROADCASTER_ID, 'sliroth');
+    await env.TWITCH_SUBSCRIPTIONS.getByName(
+      TWITCH_REMOVE_BROADCASTER_ID,
+    ).addSubscriber(
+      twitchBroadcaster(TWITCH_REMOVE_BROADCASTER_ID, 'sliroth'),
+      { guildId: GUILD_ID, channelId: CURRENT_CHANNEL_ID },
+    );
+    const ctx = createExecutionContext();
+
+    const response = await handleDiscordInteraction(
+      await createSignedRequest(createTwitchRemoveInteraction()),
+      env,
+      ctx,
+    );
+    expect(await deferredInteractionBody(response)).toEqual({
+      type: 5,
+      flags: 64,
+    });
+    await waitOnExecutionContext(ctx);
+
+    await expect(
+      env.TWITCH_SUBSCRIPTIONS_INDEX.get(
+        `channel:${CURRENT_CHANNEL_ID}:twitch:${TWITCH_REMOVE_BROADCASTER_ID}`,
+      ),
+    ).resolves.toBeNull();
+  });
 });
 
 function createListInteraction({ permissions = '32' } = {}) {
@@ -404,6 +523,134 @@ function createRemoveInteraction() {
       name: 'youtube',
       options: [{ type: 1, name: 'remove' }],
     },
+  };
+}
+
+function createTwitchListInteraction() {
+  return {
+    ...createListInteraction(),
+    data: {
+      type: 1,
+      name: 'twitch',
+      options: [{ type: 1, name: 'list' }],
+    },
+  };
+}
+
+function createTwitchAddInteraction(
+  twitch: string,
+  {
+    options = [],
+    resolvedRoles,
+  }: {
+    options?: unknown[];
+    resolvedRoles?: Record<string, unknown>;
+  } = {},
+) {
+  return {
+    ...createListInteraction(),
+    data: {
+      type: 1,
+      name: 'twitch',
+      resolved:
+        resolvedRoles === undefined ? undefined : { roles: resolvedRoles },
+      options: [
+        {
+          type: 1,
+          name: 'add',
+          options: [{ type: 3, name: 'twitch', value: twitch }, ...options],
+        },
+      ],
+    },
+  };
+}
+
+function createTwitchRemoveInteraction() {
+  return {
+    ...createListInteraction(),
+    data: {
+      type: 1,
+      name: 'twitch',
+      options: [{ type: 1, name: 'remove' }],
+    },
+  };
+}
+
+function mockTwitchApi(broadcasterId: string, login: string): Request[] {
+  const requests: Request[] = [];
+  const subscriptions = new Map<string, Record<string, unknown>>();
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const request = new Request(input, init);
+    requests.push(request.clone());
+
+    if (request.url.startsWith('https://id.twitch.tv/oauth2/token')) {
+      return Response.json({ access_token: 'token', expires_in: 3600 });
+    }
+    if (request.url.startsWith('https://api.twitch.tv/helix/users')) {
+      return Response.json({
+        data: [
+          {
+            id: broadcasterId,
+            login,
+            display_name: 'Sliroth',
+            profile_image_url: 'https://example.com/profile.png',
+            offline_image_url: 'https://example.com/offline.png',
+          },
+        ],
+      });
+    }
+    if (
+      request.url.startsWith(
+        'https://api.twitch.tv/helix/eventsub/subscriptions',
+      )
+    ) {
+      if (request.method === 'POST') {
+        const body = await request.json<{
+          type: string;
+          version: string;
+          condition: Record<string, string>;
+          transport: { method: string; callback: string };
+        }>();
+        const subscription = {
+          id: `${broadcasterId}-${body.type}`,
+          status: 'webhook_callback_verification_pending',
+          type: body.type,
+          version: body.version,
+          condition: body.condition,
+          created_at: '2026-08-09T00:00:00Z',
+          transport: body.transport,
+          cost: 1,
+        };
+        subscriptions.set(subscription.id, subscription);
+        return Response.json({ data: [subscription] });
+      }
+      if (request.method === 'GET') {
+        const id = new URL(request.url).searchParams.get('subscription_id');
+        const subscription = id === null ? undefined : subscriptions.get(id);
+        return Response.json({ data: subscription ? [subscription] : [] });
+      }
+      if (request.method === 'DELETE') {
+        return new Response(null, { status: 204 });
+      }
+    }
+    if (
+      request.method === 'PATCH' &&
+      request.url.includes('/messages/@original')
+    ) {
+      return new Response(null, { status: 204 });
+    }
+    throw new Error(`Unexpected fetch: ${request.method} ${request.url}`);
+  });
+  return requests;
+}
+
+function twitchBroadcaster(id: string, login: string) {
+  return {
+    id,
+    login,
+    displayName: 'Sliroth',
+    profileImageUrl: 'https://example.com/profile.png',
+    offlineImageUrl: 'https://example.com/offline.png',
   };
 }
 

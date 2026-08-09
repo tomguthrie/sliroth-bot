@@ -6,6 +6,10 @@ import {
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { handleTwitchEventSub } from '../../src/twitch/eventsub-handler';
+import {
+  channelTwitchSubscriptionKey,
+  guildTwitchSubscriptionKey,
+} from '../../src/twitch-subscription/index';
 
 const BROADCASTER_ID = '123456789012345678';
 const WEBHOOK_BROADCASTER_ID = '123456789012345679';
@@ -83,11 +87,31 @@ describe('TwitchSubscription EventSub reconciliation', () => {
         .map(({ eventType }) => eventType)
         .sort(),
     ).toEqual(['stream.offline', 'stream.online']);
+    await expect(
+      env.TWITCH_SUBSCRIPTIONS_INDEX.get(
+        guildTwitchSubscriptionKey(GUILD_ID, CHANNEL_ID, BROADCASTER_ID),
+      ),
+    ).resolves.toBe('1');
+    await expect(
+      env.TWITCH_SUBSCRIPTIONS_INDEX.get(
+        channelTwitchSubscriptionKey(CHANNEL_ID, BROADCASTER_ID),
+      ),
+    ).resolves.toBe('1');
 
     await expect(subscription.removeSubscriber(CHANNEL_ID)).resolves.toBe(true);
     expect(
       requests.filter((request) => request.method === 'DELETE'),
     ).toHaveLength(2);
+    await expect(
+      env.TWITCH_SUBSCRIPTIONS_INDEX.get(
+        guildTwitchSubscriptionKey(GUILD_ID, CHANNEL_ID, BROADCASTER_ID),
+      ),
+    ).resolves.toBeNull();
+    await expect(
+      env.TWITCH_SUBSCRIPTIONS_INDEX.get(
+        channelTwitchSubscriptionKey(CHANNEL_ID, BROADCASTER_ID),
+      ),
+    ).resolves.toBeNull();
   });
 });
 

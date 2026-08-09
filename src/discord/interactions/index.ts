@@ -4,8 +4,9 @@ import {
   verifyKey,
 } from 'discord-interactions';
 
-import { handleYouTubeCommand } from './command/youtube';
-import { isInteractionRecord } from './data';
+import { handleYouTubeCommand, YOUTUBE_COMMAND_NAME } from './command/youtube';
+import { handleTwitchCommand, TWITCH_COMMAND_NAME } from './command/twitch';
+import type { DiscordInteraction } from './data';
 import { ephemeralInteractionResponse } from './response';
 
 /** Authenticates and dispatches Discord interaction webhooks. */
@@ -25,11 +26,8 @@ export async function handleDiscordInteraction(
     return new Response('Invalid request signature', { status: 401 });
   }
 
-  const interaction = parseJson(body);
-  if (
-    !isInteractionRecord(interaction) ||
-    typeof interaction.type !== 'number'
-  ) {
+  const interaction = await parseJson(body);
+  if (interaction === undefined || typeof interaction.type !== 'number') {
     return new Response('Bad Request', { status: 400 });
   }
   if (interaction.type === Number(InteractionType.PING)) {
@@ -39,12 +37,23 @@ export async function handleDiscordInteraction(
     return ephemeralInteractionResponse('This interaction is not supported.');
   }
 
-  return handleYouTubeCommand(interaction, env, ctx);
+  if (interaction.data?.name === YOUTUBE_COMMAND_NAME) {
+    return handleYouTubeCommand(interaction, env, ctx);
+  }
+  if (interaction.data?.name === TWITCH_COMMAND_NAME) {
+    return handleTwitchCommand(interaction, env, ctx);
+  }
+  return ephemeralInteractionResponse('This interaction is not supported.');
 }
 
-function parseJson(bytes: Uint8Array): unknown {
+async function parseJson(
+  bytes: Uint8Array,
+): Promise<DiscordInteraction | undefined> {
   try {
-    return JSON.parse(new TextDecoder().decode(bytes));
+    const interaction = await new Response(
+      bytes,
+    ).json<DiscordInteraction | null>();
+    return interaction ?? undefined;
   } catch {
     return undefined;
   }

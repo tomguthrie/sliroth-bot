@@ -34,6 +34,10 @@ import {
   createTwitchLiveDiscordMessage,
   createTwitchOfflineDiscordMessage,
 } from './discord-message';
+import {
+  channelTwitchSubscriptionKey,
+  guildTwitchSubscriptionKey,
+} from './index';
 
 const DESIRED_EVENT_TYPES = [
   TWITCH_EVENT_STREAM_ONLINE,
@@ -54,6 +58,8 @@ export interface TwitchSubscriberRegistration {
 
 export interface TwitchSubscriber {
   broadcasterId: string;
+  broadcasterLogin: string;
+  broadcasterDisplayName: string;
   guildId: string;
   channelId: string;
   message?: string;
@@ -84,6 +90,12 @@ export class TwitchSubscription extends DurableObject<Env> {
   ): Promise<void> {
     validateBroadcaster(broadcaster);
     validateRegistration(registration);
+    const [existingSubscriber] = await this.db
+      .select({ guildId: twitchSubscribers.guildId })
+      .from(twitchSubscribers)
+      .where(eq(twitchSubscribers.channelId, registration.channelId))
+      .limit(1);
+    const guildId = existingSubscriber?.guildId ?? registration.guildId;
     await this.db
       .insert(broadcasters)
       .values({
@@ -106,7 +118,7 @@ export class TwitchSubscription extends DurableObject<Env> {
       .insert(twitchSubscribers)
       .values({
         channelId: registration.channelId,
-        guildId: registration.guildId,
+        guildId,
         message: registration.message ?? null,
         offline: registration.offline ?? null,
         ping: registration.ping ?? null,
@@ -114,22 +126,53 @@ export class TwitchSubscription extends DurableObject<Env> {
       .onConflictDoUpdate({
         target: twitchSubscribers.channelId,
         set: {
-          guildId: registration.guildId,
           message: registration.message ?? null,
           offline: registration.offline ?? null,
           ping: registration.ping ?? null,
         },
       });
+    await Promise.all([
+      this.env.TWITCH_SUBSCRIPTIONS_INDEX.put(
+        guildTwitchSubscriptionKey(
+          guildId,
+          registration.channelId,
+          broadcaster.id,
+        ),
+        '1',
+      ),
+      this.env.TWITCH_SUBSCRIPTIONS_INDEX.put(
+        channelTwitchSubscriptionKey(registration.channelId, broadcaster.id),
+        '1',
+      ),
+    ]);
     await this.reconcile();
   }
 
   /** Removes the subscriber for a Discord channel and reconciles EventSub. */
   async removeSubscriber(channelId: string): Promise<boolean> {
     requireDiscordSnowflake(channelId, 'Discord channel ID');
+    const broadcaster = await this.getBroadcaster();
     const [removed] = await this.db
       .delete(twitchSubscribers)
       .where(eq(twitchSubscribers.channelId, channelId))
-      .returning({ channelId: twitchSubscribers.channelId });
+      .returning({
+        channelId: twitchSubscribers.channelId,
+        guildId: twitchSubscribers.guildId,
+      });
+    if (removed !== undefined && broadcaster !== undefined) {
+      await Promise.all([
+        this.env.TWITCH_SUBSCRIPTIONS_INDEX.delete(
+          guildTwitchSubscriptionKey(
+            removed.guildId,
+            removed.channelId,
+            broadcaster.id,
+          ),
+        ),
+        this.env.TWITCH_SUBSCRIPTIONS_INDEX.delete(
+          channelTwitchSubscriptionKey(removed.channelId, broadcaster.id),
+        ),
+      ]);
+    }
     await this.reconcile();
     return removed !== undefined;
   }
@@ -147,6 +190,8 @@ export class TwitchSubscription extends DurableObject<Env> {
     if (broadcaster === undefined) return [];
     return rows.map((row) => ({
       broadcasterId: broadcaster.id,
+      broadcasterLogin: broadcaster.login,
+      broadcasterDisplayName: broadcaster.displayName,
       guildId: row.guildId,
       channelId: row.channelId,
       ...(row.message === null ? {} : { message: row.message }),

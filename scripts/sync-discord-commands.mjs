@@ -8,13 +8,17 @@ const applicationId = requireSnowflake(
   'DISCORD_APPLICATION_ID',
 );
 const botToken = requireEnvironmentVariable('DISCORD_BOT_TOKEN');
-const command = JSON.parse(
-  await readFile(
-    new URL(
-      '../src/discord/interactions/command/youtube.json',
-      import.meta.url,
+const commands = await Promise.all(
+  ['youtube', 'twitch'].map(async (name) =>
+    JSON.parse(
+      await readFile(
+        new URL(
+          `../src/discord/interactions/command/${name}.json`,
+          import.meta.url,
+        ),
+        'utf8',
+      ),
     ),
-    'utf8',
   ),
 );
 
@@ -28,7 +32,7 @@ const response = await fetch(
       'user-agent':
         'DiscordBot (https://github.com/tomguthrie/sliroth-bot, 0.0.0)',
     },
-    body: JSON.stringify([command]),
+    body: JSON.stringify(commands),
   },
 );
 

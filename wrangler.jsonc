@@ -52,6 +52,9 @@
       "binding": "TWITCH_EVENT_IDS",
     },
     {
+      "binding": "TWITCH_SUBSCRIPTIONS_INDEX",
+    },
+    {
       "binding": "YOUTUBE_SUBSCRIPTIONS_INDEX",
     },
   ],
