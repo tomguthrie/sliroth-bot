@@ -8,6 +8,7 @@ import migrations from '../db/youtube-subscription/migrations/migrations.js';
 import { subscribers, videos } from '../db/youtube-subscription/schema';
 import type { DiscordMentionTarget } from '../discord/message';
 import { requireDiscordSnowflake } from '../discord/snowflake';
+import { toLoggableError } from '../log';
 import { enqueueDiscordMessages } from '../queue/discord-message';
 import {
   parseYouTubeVideoNotifications,
@@ -246,7 +247,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
       console.error({
         event: 'youtube_websub_alarm_failed',
         youtubeChannelId: this.requireYouTubeChannelId(),
-        error,
+        error: toLoggableError(error),
       });
     }
   }

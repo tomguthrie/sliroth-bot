@@ -5,6 +5,7 @@ import {
   listChannelYouTubeSubscriptions,
   listGuildYouTubeSubscriptions,
 } from '../../../youtube-subscription/index';
+import { toLoggableError } from '../../../log';
 import {
   fetchYouTubeChannelTitle,
   resolveYouTubeChannel,
@@ -404,9 +405,12 @@ function logTitleFailure(
   youtubeChannelId: string,
   error: unknown,
 ): void {
-  console.warn({ event, youtubeChannelId, error });
+  console.warn({ event, youtubeChannelId, error: toLoggableError(error) });
 }
 
 function logInteractionFailure(error: unknown): void {
-  console.error({ event: 'discord_interaction_failed', error });
+  console.error({
+    event: 'discord_interaction_failed',
+    error: toLoggableError(error),
+  });
 }
