@@ -43,12 +43,10 @@ export async function listGuildYouTubeSubscriptions(
     for (const key of page.keys) {
       const subscription = parseGuildSubscriptionKey(key.name, prefix);
       if (subscription === undefined) {
-        console.warn(
-          JSON.stringify({
-            event: 'youtube_subscription_index_key_invalid',
-            key: key.name,
-          }),
-        );
+        console.warn({
+          event: 'youtube_subscription_index_key_invalid',
+          key: key.name,
+        });
         continue;
       }
       subscriptions.push(subscription);
@@ -71,12 +69,10 @@ export async function listChannelYouTubeSubscriptions(
   return page.keys.flatMap((key) => {
     const youtubeChannelId = key.name.slice(prefix.length);
     if (youtubeChannelId === '' || youtubeChannelId.includes(':')) {
-      console.warn(
-        JSON.stringify({
-          event: 'youtube_subscription_index_key_invalid',
-          key: key.name,
-        }),
-      );
+      console.warn({
+        event: 'youtube_subscription_index_key_invalid',
+        key: key.name,
+      });
       return [];
     }
     return [youtubeChannelId];

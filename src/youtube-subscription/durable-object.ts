@@ -5,11 +5,8 @@ import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
 
 import migrations from '../db/youtube-subscription/migrations/migrations.js';
-import {
-  subscribers,
-  type SubscriberPing,
-  videos,
-} from '../db/youtube-subscription/schema';
+import { subscribers, videos } from '../db/youtube-subscription/schema';
+import type { DiscordMentionTarget } from '../discord/message';
 import { requireDiscordSnowflake } from '../discord/snowflake';
 import { enqueueDiscordMessages } from '../queue/discord-message';
 import {
@@ -42,7 +39,7 @@ export interface YouTubeSubscriberRegistration {
   guildId: string;
   channelId: string;
   message?: string;
-  ping?: SubscriberPing;
+  ping?: DiscordMentionTarget;
 }
 
 export class YouTubeSubscription extends DurableObject<Env> {
@@ -195,13 +192,11 @@ export class YouTubeSubscription extends DurableObject<Env> {
     }
 
     await this.clearWebSubState();
-    console.warn(
-      JSON.stringify({
-        event: 'youtube_websub_denied',
-        youtubeChannelId,
-        reason,
-      }),
-    );
+    console.warn({
+      event: 'youtube_websub_denied',
+      youtubeChannelId,
+      reason,
+    });
     return true;
   }
 
@@ -248,13 +243,11 @@ export class YouTubeSubscription extends DurableObject<Env> {
         await this.ctx.storage.deleteAlarm();
       }
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          event: 'youtube_websub_alarm_failed',
-          youtubeChannelId: this.requireYouTubeChannelId(),
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
+      console.error({
+        event: 'youtube_websub_alarm_failed',
+        youtubeChannelId: this.requireYouTubeChannelId(),
+        error,
+      });
     }
   }
 

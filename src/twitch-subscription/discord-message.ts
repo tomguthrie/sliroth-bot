@@ -1,10 +1,9 @@
 import type {
   broadcasters,
   streams,
-  TwitchSubscriberPing,
   twitchSubscribers,
 } from '../db/twitch-subscription/schema';
-import type { DiscordAllowedMentions } from '../discord/message';
+import { createDiscordMention, createDiscordNonce } from '../discord/message';
 import type {
   DiscordCreateMessageDelivery,
   DiscordEditMessageDelivery,
@@ -14,7 +13,6 @@ import { DISCORD_RECEIPT_TWITCH_STREAM } from '../queue/discord-message';
 const TWITCH_COLOR = 0x9146ff;
 const DEFAULT_LIVE_MESSAGE = 'is live now!';
 const DEFAULT_OFFLINE_MESSAGE = 'was live.';
-const MAX_DISCORD_NONCE_LENGTH = 25;
 
 type Broadcaster = typeof broadcasters.$inferSelect;
 type Stream = typeof streams.$inferSelect;
@@ -27,7 +25,7 @@ export async function createTwitchLiveDiscordMessage(
   subscriber: Subscriber,
 ): Promise<DiscordCreateMessageDelivery> {
   const channelUrl = twitchChannelUrl(broadcaster.login);
-  const mention = createMention(subscriber.ping);
+  const mention = createDiscordMention(subscriber.ping);
   const content = [
     mention.content,
     subscriber.message ?? `${broadcaster.displayName} ${DEFAULT_LIVE_MESSAGE}`,
@@ -144,23 +142,6 @@ function broadcasterAuthor(broadcaster: Broadcaster) {
   };
 }
 
-function createMention(ping: TwitchSubscriberPing | null): {
-  content?: string;
-  allowedMentions?: DiscordAllowedMentions;
-} {
-  if (ping === null) return {};
-  if (ping === 'everyone' || ping === 'here') {
-    return {
-      content: `@${ping}`,
-      allowedMentions: { everyone: true },
-    };
-  }
-  return {
-    content: `<@&${ping}>`,
-    allowedMentions: { roleIds: [ping] },
-  };
-}
-
 function twitchChannelUrl(login: string): string {
   return `https://twitch.tv/${login}`;
 }
@@ -194,17 +175,4 @@ function formatDuration(endedAt: Date, startedAt: Date): string {
   ]
     .filter((part) => part !== undefined)
     .join(' ');
-}
-
-async function createDiscordNonce(
-  streamId: string,
-  channelId: string,
-): Promise<string> {
-  const bytes = new TextEncoder().encode(`${streamId}:${channelId}`);
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, '0'),
-  )
-    .join('')
-    .slice(0, MAX_DISCORD_NONCE_LENGTH);
 }

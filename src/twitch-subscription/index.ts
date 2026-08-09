@@ -105,7 +105,5 @@ function isTwitchBroadcasterId(value: string): boolean {
 }
 
 function logInvalidIndexKey(key: string): void {
-  console.warn(
-    JSON.stringify({ event: 'twitch_subscription_index_key_invalid', key }),
-  );
+  console.warn({ event: 'twitch_subscription_index_key_invalid', key });
 }

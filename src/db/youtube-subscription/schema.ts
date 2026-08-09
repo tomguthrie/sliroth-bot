@@ -7,9 +7,7 @@ import {
   text,
 } from 'drizzle-orm/sqlite-core';
 
-import type { DiscordSnowflake } from '../../discord/snowflake';
-
-export type SubscriberPing = 'everyone' | 'here' | DiscordSnowflake;
+import type { DiscordMentionTarget } from '../../discord/message';
 
 const currentTimestampMs = () =>
   sql`(cast(unixepoch('subsec') * 1000 as integer))`;
@@ -30,7 +28,7 @@ export const subscribers = snakeCase.table(
     channelId: text().notNull(),
     guildId: text().notNull(),
     message: text(),
-    ping: text().$type<SubscriberPing>(),
+    ping: text().$type<DiscordMentionTarget>(),
     createdAt: integer({ mode: 'timestamp_ms' })
       .notNull()
       .default(currentTimestampMs()),

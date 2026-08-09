@@ -1,6 +1,3 @@
-import type { TwitchSubscriberPing } from '../../../db/twitch-subscription/schema';
-import { ChannelTypes } from 'discord-interactions';
-
 import {
   listChannelTwitchSubscriptions,
   listGuildTwitchSubscriptions,
@@ -12,22 +9,18 @@ import {
 } from '../../../twitch/channel';
 import { createTwitchApiClient } from '../../../twitch/client';
 import { escapeDiscordMarkdown } from '../../markdown';
+import type { DiscordMentionTarget } from '../../message';
 import {
+  EMBED_LINKS_PERMISSION,
   hasDiscordPermission,
-  interactionMemberHasPermission,
   MANAGE_GUILD_PERMISSION,
-  MENTION_EVERYONE_PERMISSION,
-  SEND_MESSAGES_PERMISSION,
-  VIEW_CHANNEL_PERMISSION,
 } from '../../permission';
 import { parseDiscordSnowflake, type DiscordSnowflake } from '../../snowflake';
 import {
   APPLICATION_COMMAND_OPTION_TYPE,
-  type DiscordApplicationCommandData,
   type DiscordApplicationCommandOption,
   type DiscordInteraction,
   getInteractionString,
-  getResolvedInteractionRole,
 } from '../data';
 import {
   deferredEphemeralInteractionResponse,
@@ -35,6 +28,13 @@ import {
   ephemeralInteractionResponse,
 } from '../response';
 import twitchCommand from './twitch.json';
+import {
+  canPostInChannel,
+  createPingDescription,
+  isSupportedNotificationChannel,
+  parseNotificationCommand,
+  resolveNotificationPing,
+} from './notification';
 
 export const TWITCH_COMMAND_NAME = twitchCommand.name;
 
@@ -42,7 +42,7 @@ interface TwitchAddOptions {
   twitch: string;
   message?: string;
   offline?: string;
-  ping?: TwitchSubscriberPing;
+  ping?: DiscordMentionTarget;
   roleId?: DiscordSnowflake;
 }
 
@@ -52,7 +52,10 @@ export async function handleTwitchCommand(
   env: Env,
   ctx: ExecutionContext,
 ): Promise<Response> {
-  const command = parseTwitchCommand(interaction.data);
+  const command = parseNotificationCommand(
+    interaction.data,
+    TWITCH_COMMAND_NAME,
+  );
   if (command === undefined) {
     return ephemeralInteractionResponse('This interaction is not supported.');
   }
@@ -66,7 +69,10 @@ export async function handleTwitchCommand(
   }
 
   if (
-    !interactionMemberHasPermission(interaction.member, MANAGE_GUILD_PERMISSION)
+    !hasDiscordPermission(
+      interaction.member?.permissions,
+      MANAGE_GUILD_PERMISSION,
+    )
   ) {
     return ephemeralInteractionResponse(
       'You need the Manage Server permission to use this command.',
@@ -84,6 +90,14 @@ export async function handleTwitchCommand(
         'I need View Channel and Send Messages permissions in this channel.',
       );
     }
+    if (
+      command.name === 'add' &&
+      !hasDiscordPermission(interaction.app_permissions, EMBED_LINKS_PERMISSION)
+    ) {
+      return ephemeralInteractionResponse(
+        'I need Embed Links permission in this channel.',
+      );
+    }
 
     const applicationId = parseDiscordSnowflake(interaction.application_id);
     const token = getInteractionString(interaction.token);
@@ -96,13 +110,13 @@ export async function handleTwitchCommand(
       if (typeof options === 'string') {
         return ephemeralInteractionResponse(options);
       }
-      const pingResult = resolveSubscriberPing(
+      const pingResult = resolveNotificationPing(
         options,
         interaction.data,
         guildId,
         interaction.app_permissions,
       );
-      if (pingResult.error !== undefined) {
+      if ('error' in pingResult) {
         return ephemeralInteractionResponse(pingResult.error);
       }
       ctx.waitUntil(
@@ -177,7 +191,7 @@ async function completeTwitchAdd(
   guildId: DiscordSnowflake,
   channelId: DiscordSnowflake,
   options: TwitchAddOptions,
-  ping: TwitchSubscriberPing | undefined,
+  ping: DiscordMentionTarget | undefined,
 ): Promise<void> {
   try {
     const broadcaster = await resolveTwitchChannel(
@@ -279,35 +293,13 @@ function createTwitchListContent(
   ].join('\n');
 }
 
-function parseTwitchCommand(
-  value: DiscordApplicationCommandData | undefined,
-): { name: string; options: DiscordApplicationCommandOption[] } | undefined {
-  if (value?.name !== TWITCH_COMMAND_NAME) {
-    return undefined;
-  }
-  if (!Array.isArray(value.options) || value.options.length !== 1) {
-    return undefined;
-  }
-  const option = value.options[0];
-  if (
-    option.type !== APPLICATION_COMMAND_OPTION_TYPE.subcommand ||
-    option.name === ''
-  ) {
-    return undefined;
-  }
-  return {
-    name: option.name,
-    options: Array.isArray(option.options) ? option.options : [],
-  };
-}
-
 function parseTwitchAddOptions(
   values: readonly DiscordApplicationCommandOption[],
 ): TwitchAddOptions | string {
   let twitch: string | undefined;
   let message: string | undefined;
   let offline: string | undefined;
-  let ping: TwitchSubscriberPing | undefined;
+  let ping: DiscordMentionTarget | undefined;
   let roleId: DiscordSnowflake | undefined;
   const names = new Set<string>();
 
@@ -355,72 +347,6 @@ function parseTwitchAddOptions(
   return { twitch, message, offline, ping, roleId };
 }
 
-function resolveSubscriberPing(
-  options: TwitchAddOptions,
-  data: DiscordApplicationCommandData | undefined,
-  guildId: string,
-  permissions: unknown,
-): { ping?: TwitchSubscriberPing; error?: string } {
-  if (options.ping !== undefined) {
-    return hasDiscordPermission(permissions, MENTION_EVERYONE_PERMISSION)
-      ? { ping: options.ping }
-      : {
-          error:
-            'I need Mention Everyone permission to use @everyone or @here.',
-        };
-  }
-  if (options.roleId === undefined) return {};
-  if (options.roleId === guildId) {
-    return hasDiscordPermission(permissions, MENTION_EVERYONE_PERMISSION)
-      ? { ping: 'everyone' }
-      : { error: 'I need Mention Everyone permission to mention @everyone.' };
-  }
-
-  const role = getResolvedInteractionRole(data, options.roleId);
-  if (role === undefined) {
-    return { error: 'The selected Discord role could not be resolved.' };
-  }
-  if (
-    role.mentionable !== true &&
-    !hasDiscordPermission(permissions, MENTION_EVERYONE_PERMISSION)
-  ) {
-    return {
-      error: 'I need Mention Everyone permission to mention that role.',
-    };
-  }
-  return { ping: options.roleId };
-}
-
-function createPingDescription(ping: TwitchSubscriberPing | undefined): string {
-  if (ping === undefined) return '';
-  if (ping === 'everyone' || ping === 'here') {
-    return ` and mention @${ping}`;
-  }
-  return ` and mention <@&${ping}>`;
-}
-
-function isSupportedNotificationChannel(
-  value: DiscordInteraction['channel'],
-): boolean {
-  if (value === undefined) return false;
-  return (
-    value.type === Number(ChannelTypes.GUILD_TEXT) ||
-    value.type === Number(ChannelTypes.GUILD_ANNOUNCEMENT)
-  );
-}
-
-function canPostInChannel(value: unknown): boolean {
-  return (
-    hasDiscordPermission(value, VIEW_CHANNEL_PERMISSION) &&
-    hasDiscordPermission(value, SEND_MESSAGES_PERMISSION)
-  );
-}
-
 function logInteractionFailure(error: unknown): void {
-  console.error(
-    JSON.stringify({
-      event: 'discord_interaction_failed',
-      error: error instanceof Error ? error.message : String(error),
-    }),
-  );
+  console.error({ event: 'discord_interaction_failed', error });
 }

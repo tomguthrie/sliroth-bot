@@ -7,9 +7,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 
-import type { DiscordSnowflake } from '../../discord/snowflake';
-
-export type TwitchSubscriberPing = 'everyone' | 'here' | DiscordSnowflake;
+import type { DiscordMentionTarget } from '../../discord/message';
 
 export const broadcasters = snakeCase.table(
   'broadcaster',
@@ -30,7 +28,7 @@ export const twitchSubscribers = snakeCase.table(
     guildId: text().notNull(),
     message: text(),
     offline: text(),
-    ping: text().$type<TwitchSubscriberPing>(),
+    ping: text().$type<DiscordMentionTarget>(),
   },
   (table) => [
     primaryKey({ columns: [table.channelId] }),

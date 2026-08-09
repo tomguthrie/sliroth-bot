@@ -1,3 +1,10 @@
+import type { DiscordSnowflake } from './snowflake';
+
+const MAX_DISCORD_NONCE_LENGTH = 25;
+
+/** Identifies a mention that a notification may deliberately enable. */
+export type DiscordMentionTarget = 'everyone' | 'here' | DiscordSnowflake;
+
 /**
  * Controls which mentions in a Discord message may notify users.
  *
@@ -97,4 +104,40 @@ export interface DiscordMessage {
   embeds?: DiscordEmbed[];
   /** URL buttons displayed beneath the message and its embeds. */
   linkButtons?: DiscordLinkButton[];
+}
+
+/** Builds notification content and the matching Discord mention allowlist. */
+export function createDiscordMention(ping: DiscordMentionTarget | null): {
+  content?: string;
+  allowedMentions?: DiscordAllowedMentions;
+} {
+  if (ping === null) {
+    return {};
+  }
+
+  if (ping === 'everyone' || ping === 'here') {
+    return {
+      content: `@${ping}`,
+      allowedMentions: { everyone: true },
+    };
+  }
+
+  return {
+    content: `<@&${ping}>`,
+    allowedMentions: { roleIds: [ping] },
+  };
+}
+
+/** Creates Discord's bounded idempotency nonce for a notification delivery. */
+export async function createDiscordNonce(
+  sourceId: string,
+  channelId: string,
+): Promise<string> {
+  const bytes = new TextEncoder().encode(`${sourceId}:${channelId}`);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, '0'),
+  )
+    .join('')
+    .slice(0, MAX_DISCORD_NONCE_LENGTH);
 }

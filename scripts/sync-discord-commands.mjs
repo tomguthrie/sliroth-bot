@@ -3,10 +3,7 @@ import { readFile } from 'node:fs/promises';
 const DISCORD_API_BASE_URL = 'https://discord.com/api/v10/';
 const DISCORD_SNOWFLAKE = /^[0-9]{17,20}$/;
 
-const applicationId = requireSnowflake(
-  process.env.DISCORD_APPLICATION_ID,
-  'DISCORD_APPLICATION_ID',
-);
+const applicationId = requireSnowflake('DISCORD_APPLICATION_ID');
 const botToken = requireEnvironmentVariable('DISCORD_BOT_TOKEN');
 const commands = await Promise.all(
   ['youtube', 'twitch'].map(async (name) =>
@@ -55,7 +52,7 @@ function requireEnvironmentVariable(name) {
   return value;
 }
 
-function requireSnowflake(value, name) {
+function requireSnowflake(name) {
   const required = requireEnvironmentVariable(name);
   if (!DISCORD_SNOWFLAKE.test(required)) {
     throw new Error(`${name} must be a Discord snowflake`);

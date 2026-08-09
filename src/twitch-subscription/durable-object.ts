@@ -11,9 +11,9 @@ import {
   streamMessages,
   streams,
   twitchSubscribers,
-  type TwitchSubscriberPing,
 } from '../db/twitch-subscription/schema';
 import type { DiscordMessageReceipt } from '../discord/client';
+import type { DiscordMentionTarget } from '../discord/message';
 import { requireDiscordSnowflake } from '../discord/snowflake';
 import { enqueueDiscordMessages } from '../queue/discord-message';
 import {
@@ -53,7 +53,7 @@ export interface TwitchSubscriberRegistration {
   channelId: string;
   message?: string;
   offline?: string;
-  ping?: TwitchSubscriberPing;
+  ping?: DiscordMentionTarget;
 }
 
 export interface TwitchSubscriber {

@@ -451,6 +451,20 @@ describe('Discord interactions', () => {
       ),
     ).resolves.toBeNull();
   });
+
+  it('rejects Twitch add when the bot cannot embed links', async () => {
+    const response = await exports.default.fetch(
+      await createSignedRequest(
+        createTwitchAddInteraction('sliroth', {
+          appPermissions: '3072',
+        }),
+      ),
+    );
+
+    expect(await interactionContent(response)).toBe(
+      'I need Embed Links permission in this channel.',
+    );
+  });
 });
 
 function createListInteraction({ permissions = '32' } = {}) {
@@ -540,15 +554,18 @@ function createTwitchListInteraction() {
 function createTwitchAddInteraction(
   twitch: string,
   {
+    appPermissions = '19456',
     options = [],
     resolvedRoles,
   }: {
+    appPermissions?: string;
     options?: unknown[];
     resolvedRoles?: Record<string, unknown>;
   } = {},
 ) {
   return {
     ...createListInteraction(),
+    app_permissions: appPermissions,
     data: {
       type: 1,
       name: 'twitch',
