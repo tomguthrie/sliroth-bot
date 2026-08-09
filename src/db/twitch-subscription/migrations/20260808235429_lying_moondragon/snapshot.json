@@ -1,0 +1,198 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "id": "d50836f6-0fea-4394-9744-e4380f19de0e",
+  "prevIds": [
+    "00000000-0000-0000-0000-000000000000"
+  ],
+  "ddl": [
+    {
+      "name": "broadcaster",
+      "entityType": "tables"
+    },
+    {
+      "name": "eventsub_subscriptions",
+      "entityType": "tables"
+    },
+    {
+      "name": "subscribers",
+      "entityType": "tables"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "broadcaster"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "login",
+      "entityType": "columns",
+      "table": "broadcaster"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "display_name",
+      "entityType": "columns",
+      "table": "broadcaster"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "profile_image_url",
+      "entityType": "columns",
+      "table": "broadcaster"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "offline_image_url",
+      "entityType": "columns",
+      "table": "broadcaster"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "type",
+      "entityType": "columns",
+      "table": "eventsub_subscriptions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "subscription_id",
+      "entityType": "columns",
+      "table": "eventsub_subscriptions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "channel_id",
+      "entityType": "columns",
+      "table": "subscribers"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "guild_id",
+      "entityType": "columns",
+      "table": "subscribers"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "message",
+      "entityType": "columns",
+      "table": "subscribers"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "offline",
+      "entityType": "columns",
+      "table": "subscribers"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "ping",
+      "entityType": "columns",
+      "table": "subscribers"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "broadcaster_pk",
+      "entityType": "pks",
+      "table": "broadcaster"
+    },
+    {
+      "columns": [
+        "type"
+      ],
+      "nameExplicit": false,
+      "name": "eventsub_subscriptions_pk",
+      "entityType": "pks",
+      "table": "eventsub_subscriptions"
+    },
+    {
+      "columns": [
+        "channel_id"
+      ],
+      "nameExplicit": false,
+      "name": "subscribers_pk",
+      "entityType": "pks",
+      "table": "subscribers"
+    },
+    {
+      "columns": [
+        {
+          "value": "subscription_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "eventsub_subscriptions_subscription_id_idx",
+      "entityType": "indexes",
+      "table": "eventsub_subscriptions"
+    },
+    {
+      "columns": [
+        {
+          "value": "guild_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "subscribers_guild_id_idx",
+      "entityType": "indexes",
+      "table": "subscribers"
+    }
+  ],
+  "renames": []
+}
