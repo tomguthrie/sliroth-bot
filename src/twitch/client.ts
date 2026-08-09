@@ -144,7 +144,6 @@ interface TwitchEventSubSubscriptionData {
 export class TwitchApiClient {
   constructor(
     private readonly env: Env,
-    private readonly fetcher: typeof fetch = globalThis.fetch,
     private readonly getToken: TwitchTokenGetter = getValidToken,
   ) {}
 
@@ -256,7 +255,7 @@ export class TwitchApiClient {
       if (init?.body !== undefined) {
         headers.set('content-type', 'application/json');
       }
-      const response = await this.fetcher(url, { ...init, headers });
+      const response = await fetch(url, { ...init, headers });
       if (response.status === 401 && attempt === 0) {
         await cancelBody(response);
         await this.env.TOKEN_STORE.delete(TWITCH_TOKEN_KEY);

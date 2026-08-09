@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:test';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   TwitchApiClient,
@@ -27,16 +27,16 @@ const USER = {
   offline_image_url: 'https://example.com/offline.png',
 };
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe('TwitchApiClient', () => {
   it('authenticates Helix requests and parses channel data', async () => {
     const fetcher = vi
-      .fn<typeof fetch>()
+      .spyOn(globalThis, 'fetch')
       .mockResolvedValue(Response.json({ data: [USER] }));
-    const client = new TwitchApiClient(
-      env,
-      fetcher,
-      tokenGetter('access-token'),
-    );
+    const client = new TwitchApiClient(env, tokenGetter('access-token'));
 
     await expect(client.getUserByLogin('sliroth')).resolves.toEqual({
       id: '123',
@@ -56,8 +56,7 @@ describe('TwitchApiClient', () => {
   });
 
   it('parses streams, games, and archive videos', async () => {
-    const fetcher = vi
-      .fn<typeof fetch>()
+    vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(
         Response.json({
           data: [
@@ -107,7 +106,7 @@ describe('TwitchApiClient', () => {
           ],
         }),
       );
-    const client = new TwitchApiClient(env, fetcher, tokenGetter());
+    const client = new TwitchApiClient(env, tokenGetter());
 
     await expect(client.getStreamByUserId('123')).resolves.toMatchObject({
       id: 'stream-1',
@@ -133,10 +132,10 @@ describe('TwitchApiClient', () => {
     await env.TOKEN_STORE.put('twitch', 'old');
     const getToken = tokenGetter('old', 'new');
     const fetcher = vi
-      .fn<typeof fetch>()
+      .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(new Response(null, { status: 401 }))
       .mockResolvedValueOnce(Response.json({ data: [USER] }));
-    const client = new TwitchApiClient(env, fetcher, getToken);
+    const client = new TwitchApiClient(env, getToken);
 
     await expect(client.getUserById('123')).resolves.toMatchObject({
       id: '123',
@@ -149,15 +148,13 @@ describe('TwitchApiClient', () => {
   });
 
   it('surfaces Twitch rate-limit reset time', async () => {
-    const fetcher = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        Response.json(
-          { message: 'Too Many Requests' },
-          { status: 429, headers: { 'ratelimit-reset': '1786233600' } },
-        ),
-      );
-    const client = new TwitchApiClient(env, fetcher, tokenGetter());
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json(
+        { message: 'Too Many Requests' },
+        { status: 429, headers: { 'ratelimit-reset': '1786233600' } },
+      ),
+    );
+    const client = new TwitchApiClient(env, tokenGetter());
 
     const error = await client
       .getUserById('123')
@@ -181,11 +178,11 @@ describe('TwitchApiClient', () => {
       cost: 0,
     };
     const fetcher = vi
-      .fn<typeof fetch>()
+      .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(Response.json({ data: [subscription] }))
       .mockResolvedValueOnce(Response.json({ data: [subscription] }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
-    const client = new TwitchApiClient(env, fetcher, tokenGetter());
+    const client = new TwitchApiClient(env, tokenGetter());
 
     await client.createEventSubSubscription({
       type: 'stream.online',
