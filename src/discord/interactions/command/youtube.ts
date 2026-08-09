@@ -1,4 +1,3 @@
-import type { SubscriberPing } from '../../../db/youtube-subscription/schema';
 import { ChannelTypes } from 'discord-interactions';
 import {
   cacheYouTubeChannelTitle,
@@ -26,6 +25,7 @@ import {
   getResolvedInteractionRole,
 } from '../data';
 import { escapeDiscordMarkdown } from '../../markdown';
+import type { DiscordMentionTarget } from '../../message';
 import {
   hasDiscordPermission,
   MANAGE_GUILD_PERMISSION,
@@ -41,7 +41,7 @@ export const YOUTUBE_COMMAND_NAME = youtubeCommand.name;
 interface YouTubeAddOptions {
   youtube: string;
   message?: string;
-  ping?: SubscriberPing;
+  ping?: DiscordMentionTarget;
   roleId?: DiscordSnowflake;
 }
 
@@ -187,7 +187,7 @@ async function completeYouTubeAdd(
   guildId: DiscordSnowflake,
   channelId: DiscordSnowflake,
   options: YouTubeAddOptions,
-  ping: SubscriberPing | undefined,
+  ping: DiscordMentionTarget | undefined,
 ): Promise<void> {
   try {
     const channel = await resolveYouTubeChannel(options.youtube);
@@ -259,7 +259,7 @@ async function completeYouTubeRemove(
   }
 }
 
-function createPingDescription(ping: SubscriberPing | undefined): string {
+function createPingDescription(ping: DiscordMentionTarget | undefined): string {
   if (ping === undefined) {
     return '';
   }
@@ -377,7 +377,7 @@ function parseYouTubeAddOptions(
 ): YouTubeAddOptions | string {
   let youtube: string | undefined;
   let message: string | undefined;
-  let ping: SubscriberPing | undefined;
+  let ping: DiscordMentionTarget | undefined;
   let roleId: DiscordSnowflake | undefined;
   const names = new Set<string>();
 
@@ -433,7 +433,7 @@ function resolveSubscriberPing(
   data: DiscordApplicationCommandData | undefined,
   guildId: string,
   permissions: string | undefined,
-): { ping?: SubscriberPing; error?: string } {
+): { ping?: DiscordMentionTarget; error?: string } {
   if (options.ping !== undefined) {
     return hasDiscordPermission(permissions, MENTION_EVERYONE_PERMISSION)
       ? { ping: options.ping }

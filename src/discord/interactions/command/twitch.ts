@@ -1,4 +1,3 @@
-import type { TwitchSubscriberPing } from '../../../db/twitch-subscription/schema';
 import { ChannelTypes } from 'discord-interactions';
 
 import {
@@ -12,6 +11,7 @@ import {
 } from '../../../twitch/channel';
 import { createTwitchApiClient } from '../../../twitch/client';
 import { escapeDiscordMarkdown } from '../../markdown';
+import type { DiscordMentionTarget } from '../../message';
 import {
   EMBED_LINKS_PERMISSION,
   hasDiscordPermission,
@@ -42,7 +42,7 @@ interface TwitchAddOptions {
   twitch: string;
   message?: string;
   offline?: string;
-  ping?: TwitchSubscriberPing;
+  ping?: DiscordMentionTarget;
   roleId?: DiscordSnowflake;
 }
 
@@ -188,7 +188,7 @@ async function completeTwitchAdd(
   guildId: DiscordSnowflake,
   channelId: DiscordSnowflake,
   options: TwitchAddOptions,
-  ping: TwitchSubscriberPing | undefined,
+  ping: DiscordMentionTarget | undefined,
 ): Promise<void> {
   try {
     const broadcaster = await resolveTwitchChannel(
@@ -318,7 +318,7 @@ function parseTwitchAddOptions(
   let twitch: string | undefined;
   let message: string | undefined;
   let offline: string | undefined;
-  let ping: TwitchSubscriberPing | undefined;
+  let ping: DiscordMentionTarget | undefined;
   let roleId: DiscordSnowflake | undefined;
   const names = new Set<string>();
 
@@ -371,7 +371,7 @@ function resolveSubscriberPing(
   data: DiscordApplicationCommandData | undefined,
   guildId: string,
   permissions: string | undefined,
-): { ping?: TwitchSubscriberPing; error?: string } {
+): { ping?: DiscordMentionTarget; error?: string } {
   if (options.ping !== undefined) {
     return hasDiscordPermission(permissions, MENTION_EVERYONE_PERMISSION)
       ? { ping: options.ping }
@@ -402,7 +402,7 @@ function resolveSubscriberPing(
   return { ping: options.roleId };
 }
 
-function createPingDescription(ping: TwitchSubscriberPing | undefined): string {
+function createPingDescription(ping: DiscordMentionTarget | undefined): string {
   if (ping === undefined) return '';
   if (ping === 'everyone' || ping === 'here') {
     return ` and mention @${ping}`;
