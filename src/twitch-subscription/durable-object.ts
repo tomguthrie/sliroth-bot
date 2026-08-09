@@ -3,6 +3,7 @@ import { and, asc, count, eq, lt } from 'drizzle-orm';
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
+import * as z from 'zod';
 
 import migrations from '../db/twitch-subscription/migrations/migrations.js';
 import {
@@ -13,8 +14,11 @@ import {
   twitchSubscribers,
 } from '../db/twitch-subscription/schema';
 import type { DiscordMessageReceipt } from '../discord/client';
-import type { DiscordMentionTarget } from '../discord/message';
-import { requireDiscordSnowflake } from '../discord/snowflake';
+import {
+  type DiscordSnowflake,
+  isDiscordSnowflake,
+  requireDiscordSnowflake,
+} from '../discord/snowflake';
 import { enqueueDiscordMessages } from '../queue/discord-message';
 import {
   createTwitchApiClient,
@@ -48,13 +52,34 @@ const ACTIVE_EVENTSUB_STATUSES = new Set([
   'webhook_callback_verification_pending',
 ]);
 
-export interface TwitchSubscriberRegistration {
-  guildId: string;
-  channelId: string;
-  message?: string;
-  offline?: string;
-  ping?: DiscordMentionTarget;
-}
+const TwitchBroadcaster: z.ZodType<TwitchUser> = z.object({
+  id: z.string().regex(/^\d+$/, { error: 'Twitch broadcaster ID is invalid' }),
+  login: nonBlankStringSchema('Twitch login'),
+  displayName: nonBlankStringSchema('Twitch display name'),
+  profileImageUrl: z.string(),
+  offlineImageUrl: z.string(),
+});
+
+export const TwitchSubscriberRegistration = z.object({
+  guildId: discordSnowflakeSchema('Discord guild ID'),
+  channelId: discordSnowflakeSchema('Discord channel ID'),
+  message: nonBlankStringSchema('Subscriber message').optional(),
+  offline: nonBlankStringSchema('Subscriber offline message').optional(),
+  ping: z
+    .union(
+      [
+        z.literal('everyone'),
+        z.literal('here'),
+        discordSnowflakeTypeSchema('Discord role ID'),
+      ],
+      { error: 'Discord role ID must be a Discord snowflake' },
+    )
+    .optional(),
+});
+
+export type TwitchSubscriberRegistration = z.infer<
+  typeof TwitchSubscriberRegistration
+>;
 
 export interface TwitchSubscriber {
   broadcasterId: string;
@@ -549,28 +574,41 @@ function isDesiredSubscription(
 }
 
 function validateBroadcaster(broadcaster: TwitchUser): void {
-  if (!/^\d+$/.test(broadcaster.id))
-    throw new Error('Twitch broadcaster ID is invalid');
-  if (broadcaster.login.trim() === '')
-    throw new Error('Twitch login cannot be empty');
+  const result = TwitchBroadcaster.safeParse(broadcaster);
+  if (!result.success) {
+    throw new Error(
+      result.error.issues[0]?.message ?? 'Twitch broadcaster is invalid',
+      { cause: result.error },
+    );
+  }
 }
 
 function validateRegistration(
   registration: TwitchSubscriberRegistration,
 ): void {
-  requireDiscordSnowflake(registration.guildId, 'Discord guild ID');
-  requireDiscordSnowflake(registration.channelId, 'Discord channel ID');
-  if (registration.message?.trim() === '')
-    throw new Error('Subscriber message cannot be empty');
-  if (registration.offline?.trim() === '')
-    throw new Error('Subscriber offline message cannot be empty');
-  if (
-    registration.ping !== undefined &&
-    registration.ping !== 'everyone' &&
-    registration.ping !== 'here'
-  ) {
-    requireDiscordSnowflake(registration.ping, 'Discord role ID');
+  const result = TwitchSubscriberRegistration.safeParse(registration);
+  if (!result.success) {
+    throw new Error(
+      result.error.issues[0]?.message ??
+        'Twitch subscriber registration is invalid',
+      { cause: result.error },
+    );
   }
+}
+
+function discordSnowflakeSchema(name: string) {
+  const error = `${name} must be a Discord snowflake`;
+  return z.string({ error }).regex(/^[0-9]{17,20}$/, { error });
+}
+
+function discordSnowflakeTypeSchema(name: string) {
+  const error = `${name} must be a Discord snowflake`;
+  return z.custom<DiscordSnowflake>(isDiscordSnowflake, { error });
+}
+
+function nonBlankStringSchema(name: string) {
+  const error = `${name} cannot be empty`;
+  return z.string({ error }).refine((value) => value.trim() !== '', { error });
 }
 
 function requireNonEmpty(value: string, description: string): void {

@@ -6,7 +6,7 @@ import {
 
 import { handleYouTubeCommand, YOUTUBE_COMMAND_NAME } from './command/youtube';
 import { handleTwitchCommand, TWITCH_COMMAND_NAME } from './command/twitch';
-import type { DiscordInteraction } from './data';
+import { DiscordInteraction } from './data';
 import { ephemeralInteractionResponse } from './response';
 
 /** Authenticates and dispatches Discord interaction webhooks. */
@@ -50,10 +50,10 @@ async function parseJson(
   bytes: Uint8Array,
 ): Promise<DiscordInteraction | undefined> {
   try {
-    const interaction = await new Response(
-      bytes,
-    ).json<DiscordInteraction | null>();
-    return interaction ?? undefined;
+    const result = DiscordInteraction.safeParse(
+      await new Response(bytes).json(),
+    );
+    return result.success ? result.data : undefined;
   } catch {
     return undefined;
   }

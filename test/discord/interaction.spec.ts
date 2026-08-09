@@ -38,6 +38,14 @@ describe('Discord interactions', () => {
     expect(await response.json()).toEqual({ type: 1 });
   });
 
+  it('rejects a signed interaction with an invalid payload shape', async () => {
+    const response = await exports.default.fetch(
+      await createSignedRequest({ type: 'ping' }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
   it('rejects an invalid signature', async () => {
     const response = await exports.default.fetch(
       'https://example.com/discord/interactions',

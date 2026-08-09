@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { eventSubSubscriptions } from '../../src/db/twitch-subscription/schema';
 import { handleTwitchEventSub } from '../../src/twitch/eventsub-handler';
+import type { TwitchSubscription } from '../../src/twitch-subscription/durable-object';
 import {
   channelTwitchSubscriptionKey,
   guildTwitchSubscriptionKey,
@@ -26,6 +27,27 @@ beforeEach(async () => {
 });
 
 describe('TwitchSubscription EventSub reconciliation', () => {
+  it('rejects invalid broadcaster data before changing storage', async () => {
+    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(
+      `broadcaster-${crypto.randomUUID()}`,
+    );
+
+    await expect(
+      runInDurableObject(subscription, (instance: TwitchSubscription) =>
+        instance.addSubscriber(
+          {
+            id: BROADCASTER_ID,
+            login: 'sliroth',
+            displayName: '   ',
+            profileImageUrl: 'https://example.com/profile.png',
+            offlineImageUrl: 'https://example.com/offline.png',
+          },
+          { guildId: GUILD_ID, channelId: CHANNEL_ID },
+        ),
+      ),
+    ).rejects.toThrow('Twitch display name cannot be empty');
+  });
+
   it('creates desired subscriptions and deletes them with the last subscriber', async () => {
     const requests: { method: string; url: string; eventType?: string }[] = [];
     let sequence = 0;
@@ -162,6 +184,22 @@ describe('Twitch EventSub webhook', () => {
       (await handleTwitchEventSub(invalid, env, createExecutionContext()))
         .status,
     ).toBe(403);
+  });
+
+  it('rejects a signed payload with an invalid shape', async () => {
+    const request = await signedRequest(
+      'invalid-payload-id',
+      JSON.stringify({ subscription: null }),
+    );
+
+    const response = await handleTwitchEventSub(
+      request,
+      env,
+      createExecutionContext(),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.text()).resolves.toBe('Invalid EventSub payload');
   });
 
   it('reconciles desired subscriptions after a normal notification', async () => {

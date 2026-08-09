@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as z from 'zod';
 
 import {
   DiscordApiError,
@@ -60,6 +61,16 @@ describe('sendDiscordMessage', () => {
     expect(request.url).toBe(
       `https://discord.com/api/v10/channels/${CHANNEL_ID}/messages/${MESSAGE_ID}`,
     );
+  });
+
+  it('rejects an invalid successful response body', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json({ id: 123, channel_id: CHANNEL_ID }),
+    );
+
+    await expect(
+      sendDiscordMessage(createMessageOptions()),
+    ).rejects.toBeInstanceOf(z.ZodError);
   });
 
   it('includes Discord error details when delivery fails', async () => {

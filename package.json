@@ -49,6 +49,7 @@
     "discord-interactions": "^4.4.0",
     "drizzle-orm": "^1.0.0-rc.4",
     "fast-xml-parser": "^5.10.1",
-    "itty-router": "^5.0.24"
+    "itty-router": "^5.0.24",
+    "zod": "^4.4.3"
   }
 }

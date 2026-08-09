@@ -1,3 +1,5 @@
+import * as z from 'zod';
+
 import type {
   CreateDiscordMessageRequestOptions,
   EditDiscordMessageRequestOptions,
@@ -18,11 +20,18 @@ export class DiscordApiError extends Error {
   }
 }
 
-/** Identifies the Discord message created or edited by an API request. */
-export interface DiscordMessageReceipt {
-  messageId: string;
-  channelId: string;
-}
+/** Validates a Discord message response and exposes its delivery receipt. */
+export const DiscordMessageReceipt = z
+  .object({
+    id: z.string(),
+    channel_id: z.string(),
+  })
+  .transform(({ id, channel_id: channelId }) => ({
+    messageId: id,
+    channelId,
+  }));
+
+export type DiscordMessageReceipt = z.infer<typeof DiscordMessageReceipt>;
 
 /** Sends a message to Discord and returns its delivery receipt. */
 export async function sendDiscordMessage(
@@ -55,8 +64,7 @@ async function executeDiscordMessageRequest(
     );
   }
 
-  const message = await response.json<{ id: string; channel_id: string }>();
-  return { messageId: message.id, channelId: message.channel_id };
+  return DiscordMessageReceipt.parse(await response.json());
 }
 
 function parseRetryAfter(value: string | null): number | undefined {

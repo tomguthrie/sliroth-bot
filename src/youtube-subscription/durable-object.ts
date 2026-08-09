@@ -3,11 +3,15 @@ import { count, eq } from 'drizzle-orm';
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
+import * as z from 'zod';
 
 import migrations from '../db/youtube-subscription/migrations/migrations.js';
 import { subscribers, videos } from '../db/youtube-subscription/schema';
-import type { DiscordMentionTarget } from '../discord/message';
-import { requireDiscordSnowflake } from '../discord/snowflake';
+import {
+  type DiscordSnowflake,
+  isDiscordSnowflake,
+  requireDiscordSnowflake,
+} from '../discord/snowflake';
 import { toLoggableError } from '../log';
 import { enqueueDiscordMessages } from '../queue/discord-message';
 import {
@@ -36,12 +40,28 @@ interface WebSubState {
   status?: WebSubStatus;
 }
 
-export interface YouTubeSubscriberRegistration {
-  guildId: string;
-  channelId: string;
-  message?: string;
-  ping?: DiscordMentionTarget;
-}
+export const YouTubeSubscriberRegistration = z.object(
+  {
+    guildId: discordSnowflakeSchema('Discord guild ID'),
+    channelId: discordSnowflakeSchema('Discord channel ID'),
+    message: nonBlankStringSchema('Subscriber message').optional(),
+    ping: z
+      .union(
+        [
+          z.literal('everyone'),
+          z.literal('here'),
+          discordSnowflakeTypeSchema('Discord role ID'),
+        ],
+        { error: 'Discord role ID must be a Discord snowflake' },
+      )
+      .optional(),
+  },
+  { error: 'YouTube subscriber registration must be an object' },
+);
+
+export type YouTubeSubscriberRegistration = z.infer<
+  typeof YouTubeSubscriberRegistration
+>;
 
 export class YouTubeSubscription extends DurableObject<Env> {
   private readonly db: DrizzleSqliteDODatabase;
@@ -423,24 +443,29 @@ function createSecret(): string {
 function validateSubscriberRegistration(
   registration: YouTubeSubscriberRegistration,
 ): void {
-  if (typeof registration !== 'object' || registration === null) {
-    throw new Error('YouTube subscriber registration must be an object');
+  const result = YouTubeSubscriberRegistration.safeParse(registration);
+  if (!result.success) {
+    throw new Error(
+      result.error.issues[0]?.message ??
+        'YouTube subscriber registration is invalid',
+      { cause: result.error },
+    );
   }
+}
 
-  requireDiscordSnowflake(registration.guildId, 'Discord guild ID');
-  requireDiscordSnowflake(registration.channelId, 'Discord channel ID');
+function discordSnowflakeSchema(name: string) {
+  const error = `${name} must be a Discord snowflake`;
+  return z.string({ error }).regex(/^[0-9]{17,20}$/, { error });
+}
 
-  if (registration.message !== undefined) {
-    requireNonEmpty(registration.message, 'Subscriber message');
-  }
+function discordSnowflakeTypeSchema(name: string) {
+  const error = `${name} must be a Discord snowflake`;
+  return z.custom<DiscordSnowflake>(isDiscordSnowflake, { error });
+}
 
-  if (
-    registration.ping !== undefined &&
-    registration.ping !== 'everyone' &&
-    registration.ping !== 'here'
-  ) {
-    requireDiscordSnowflake(registration.ping, 'Discord role ID');
-  }
+function nonBlankStringSchema(name: string) {
+  const error = `${name} cannot be empty`;
+  return z.string({ error }).refine((value) => value.trim() !== '', { error });
 }
 
 function requireNonEmpty(
