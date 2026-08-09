@@ -66,6 +66,16 @@ describe('getValidToken', () => {
     );
   });
 
+  it('replaces a cached token that cannot be used in a header', async () => {
+    await env.TOKEN_STORE.put(TWITCH_TOKEN_KEY, 'invalid\ntoken');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(tokenResponse('new-token'));
+
+    await expect(getValidToken(env)).resolves.toBe('new-token');
+    await expect(env.TOKEN_STORE.get(TWITCH_TOKEN_KEY)).resolves.toBe(
+      'new-token',
+    );
+  });
+
   it('rejects an unsuccessful token request', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(null, { status: 401 }),
@@ -82,5 +92,25 @@ describe('getValidToken', () => {
     );
 
     await expect(getValidToken(env)).rejects.toThrow();
+  });
+
+  it('rejects an unusable token response', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json({ access_token: '', expires_in: 3_600 }),
+    );
+
+    await expect(getValidToken(env)).rejects.toEqual(
+      new TwitchAuthError('Twitch app access token response was unusable'),
+    );
+  });
+
+  it('rejects a token that would expire before KV permits', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      tokenResponse('short-lived-token', 30),
+    );
+
+    await expect(getValidToken(env)).rejects.toEqual(
+      new TwitchAuthError('Twitch app access token response was unusable'),
+    );
   });
 });
