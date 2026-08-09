@@ -1,0 +1,60 @@
+{
+  "type": 1,
+  "name": "twitch",
+  "description": "Manage Twitch stream notifications",
+  "integration_types": [0],
+  "contexts": [0],
+  "default_member_permissions": "32",
+  "options": [
+    {
+      "type": 1,
+      "name": "add",
+      "description": "Notify this channel when a Twitch channel goes live",
+      "options": [
+        {
+          "type": 3,
+          "name": "twitch",
+          "description": "Twitch login, broadcaster ID, or channel URL",
+          "required": true,
+          "max_length": 500
+        },
+        {
+          "type": 8,
+          "name": "role",
+          "description": "Role to mention when the stream starts"
+        },
+        {
+          "type": 3,
+          "name": "ping",
+          "description": "Mention everyone or active members when the stream starts",
+          "choices": [
+            { "name": "@everyone", "value": "everyone" },
+            { "name": "@here", "value": "here" }
+          ]
+        },
+        {
+          "type": 3,
+          "name": "message",
+          "description": "Custom text used when the stream starts",
+          "max_length": 1900
+        },
+        {
+          "type": 3,
+          "name": "offline",
+          "description": "Custom text used when the stream ends",
+          "max_length": 1900
+        }
+      ]
+    },
+    {
+      "type": 1,
+      "name": "list",
+      "description": "List Twitch stream notifications in this server"
+    },
+    {
+      "type": 1,
+      "name": "remove",
+      "description": "Remove all Twitch notifications from this channel"
+    }
+  ]
+}
