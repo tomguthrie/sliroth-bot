@@ -6,6 +6,9 @@ const MAX_MESSAGE_AGE_MS = 10 * 60 * 1000;
 const MAX_FUTURE_SKEW_MS = 60 * 1000;
 const DEDUPE_TTL_SECONDS = 10 * 60;
 
+export const TWITCH_EVENT_STREAM_ONLINE = 'stream.online';
+export const TWITCH_EVENT_STREAM_OFFLINE = 'stream.offline';
+
 const inFlightMessageIds = new Set<string>();
 
 interface EventSubEnvelope {
@@ -15,13 +18,30 @@ interface EventSubEnvelope {
     type: string;
     condition: { broadcaster_user_id?: string };
   };
+  event?: TwitchStreamOnlineEvent | TwitchStreamOfflineEvent;
+}
+
+export interface TwitchStreamOnlineEvent {
+  id: string;
+  broadcaster_user_id: string;
+  broadcaster_user_login: string;
+  broadcaster_user_name: string;
+  type: string;
+  started_at: string;
+}
+
+export interface TwitchStreamOfflineEvent {
+  id: string;
+  broadcaster_user_id: string;
+  broadcaster_user_login: string;
+  broadcaster_user_name: string;
 }
 
 /** Verifies, deduplicates, and routes a Twitch EventSub webhook. */
 export async function handleTwitchEventSub(
   request: Request,
   env: Env,
-  ctx: ExecutionContext,
+  _ctx: ExecutionContext,
 ): Promise<Response> {
   const messageId = request.headers.get(MESSAGE_ID_HEADER);
   const messageType = request.headers.get(MESSAGE_TYPE_HEADER);
@@ -59,41 +79,58 @@ export async function handleTwitchEventSub(
     return new Response('Invalid EventSub signature', { status: 403 });
   }
 
+  const envelope = await new Response(body).json<EventSubEnvelope>();
+  const broadcasterId = envelope.subscription.condition.broadcaster_user_id;
+  const routeBroadcasterId = request.url.split('/').filter(Boolean).at(-1);
+  if (broadcasterId === undefined || broadcasterId !== routeBroadcasterId) {
+    return new Response('EventSub broadcaster mismatch', { status: 400 });
+  }
+  if (messageType === 'webhook_callback_verification') {
+    return envelope.challenge === undefined
+      ? new Response('Missing EventSub challenge', { status: 400 })
+      : new Response(envelope.challenge, {
+          headers: { 'content-type': 'text/plain' },
+        });
+  }
+  if (messageType !== 'notification' && messageType !== 'revocation') {
+    return new Response('Unsupported EventSub message type', { status: 400 });
+  }
   if (
     inFlightMessageIds.has(messageId) ||
     (await env.TWITCH_EVENT_IDS.get(messageId)) !== null
   ) {
     return new Response(null, { status: 204 });
   }
+
   inFlightMessageIds.add(messageId);
   try {
-    const envelope = JSON.parse(body) as EventSubEnvelope;
-    const broadcasterId = envelope.subscription.condition.broadcaster_user_id;
-    const routeBroadcasterId = request.url.split('/').filter(Boolean).at(-1);
-    if (broadcasterId === undefined || broadcasterId !== routeBroadcasterId) {
-      return new Response('EventSub broadcaster mismatch', { status: 400 });
+    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId);
+    if (messageType === 'notification') {
+      if (envelope.event === undefined) {
+        return new Response('Missing EventSub event', { status: 400 });
+      }
+      if (envelope.subscription.type === TWITCH_EVENT_STREAM_ONLINE) {
+        if (!('started_at' in envelope.event)) {
+          return new Response('Invalid stream.online event', { status: 400 });
+        }
+        await subscription.streamOnline(envelope.event);
+      } else if (envelope.subscription.type === TWITCH_EVENT_STREAM_OFFLINE) {
+        if (!('id' in envelope.event)) {
+          return new Response('Invalid stream.offline event', { status: 400 });
+        }
+        await subscription.streamOffline(envelope.event, timestamp);
+      } else {
+        return new Response('Unsupported EventSub subscription type', {
+          status: 400,
+        });
+      }
+    } else {
+      await subscription.revokeEventSub(envelope.subscription.id);
     }
     await env.TWITCH_EVENT_IDS.put(messageId, '1', {
       expirationTtl: DEDUPE_TTL_SECONDS,
     });
-    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId);
-
-    if (messageType === 'webhook_callback_verification') {
-      return envelope.challenge === undefined
-        ? new Response('Missing EventSub challenge', { status: 400 })
-        : new Response(envelope.challenge, {
-            headers: { 'content-type': 'text/plain' },
-          });
-    }
-    if (messageType === 'notification') {
-      ctx.waitUntil(subscription.reconcile());
-      return new Response(null, { status: 204 });
-    }
-    if (messageType === 'revocation') {
-      ctx.waitUntil(subscription.revokeEventSub(envelope.subscription.id));
-      return new Response(null, { status: 204 });
-    }
-    return new Response('Unsupported EventSub message type', { status: 400 });
+    return new Response(null, { status: 204 });
   } finally {
     inFlightMessageIds.delete(messageId);
   }

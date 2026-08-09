@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { asc, count, eq } from 'drizzle-orm';
+import { and, asc, count, eq, lt } from 'drizzle-orm';
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
@@ -8,18 +8,37 @@ import migrations from '../db/twitch-subscription/migrations/migrations.js';
 import {
   broadcasters,
   eventSubSubscriptions,
+  streamMessages,
+  streams,
   twitchSubscribers,
   type TwitchSubscriberPing,
 } from '../db/twitch-subscription/schema';
+import type { DiscordMessageReceipt } from '../discord/client';
 import { requireDiscordSnowflake } from '../discord/snowflake';
+import { enqueueDiscordMessages } from '../queue/discord-message';
 import {
   createTwitchApiClient,
   TwitchApiError,
   type TwitchEventSubSubscription,
   type TwitchUser,
 } from '../twitch/client';
+import type {
+  TwitchStreamOfflineEvent,
+  TwitchStreamOnlineEvent,
+} from '../twitch/eventsub-handler';
+import {
+  TWITCH_EVENT_STREAM_OFFLINE,
+  TWITCH_EVENT_STREAM_ONLINE,
+} from '../twitch/eventsub-handler';
+import {
+  createTwitchLiveDiscordMessage,
+  createTwitchOfflineDiscordMessage,
+} from './discord-message';
 
-const DESIRED_EVENT_TYPES = ['stream.online', 'stream.offline'] as const;
+const DESIRED_EVENT_TYPES = [
+  TWITCH_EVENT_STREAM_ONLINE,
+  TWITCH_EVENT_STREAM_OFFLINE,
+] as const;
 const ACTIVE_EVENTSUB_STATUSES = new Set([
   'enabled',
   'webhook_callback_verification_pending',
@@ -136,6 +155,139 @@ export class TwitchSubscription extends DurableObject<Env> {
     }));
   }
 
+  /** Claims a live stream and queues one notification per subscriber. */
+  async streamOnline(event: TwitchStreamOnlineEvent): Promise<void> {
+    const broadcaster = await this.requireBroadcaster(
+      event.broadcaster_user_id,
+    );
+    requireNonEmpty(event.id, 'Twitch stream ID');
+    const startedAt = requireTimestamp(
+      event.started_at,
+      'Twitch stream start timestamp',
+    );
+    const client = createTwitchApiClient(this.env);
+    const liveStream = await client.getStreamByUserId(broadcaster.id);
+    if (liveStream?.id !== event.id) {
+      throw new Error(`Twitch stream ${event.id} is not live`);
+    }
+    const game =
+      liveStream.gameId === ''
+        ? undefined
+        : await client.getGameById(liveStream.gameId);
+
+    const [stream] = await this.db
+      .insert(streams)
+      .values({
+        id: event.id,
+        title:
+          liveStream.title.trim() === ''
+            ? `${broadcaster.displayName} is live`
+            : liveStream.title,
+        gameName:
+          liveStream.gameName.trim() === ''
+            ? 'No Category'
+            : liveStream.gameName,
+        viewerCount: liveStream.viewerCount,
+        gameBoxArtUrl: game?.boxArtUrl ?? null,
+        previewImageUrl: liveStream.thumbnailUrl,
+        startedAt,
+      })
+      .onConflictDoNothing({ target: streams.id })
+      .returning();
+    if (stream === undefined) return;
+
+    try {
+      const subscriberRows = await this.db.select().from(twitchSubscribers);
+      if (subscriberRows.length !== 0) {
+        await this.db
+          .insert(streamMessages)
+          .values(
+            subscriberRows.map((subscriber) => ({
+              streamId: stream.id,
+              channelId: subscriber.channelId,
+              enqueuedRevision: stream.revision,
+            })),
+          )
+          .onConflictDoNothing();
+      }
+      const deliveries = await Promise.all(
+        subscriberRows.map((subscriber) =>
+          createTwitchLiveDiscordMessage(broadcaster, stream, subscriber),
+        ),
+      );
+      await enqueueDiscordMessages(this.env.DISCORD_MESSAGES, deliveries);
+    } catch (error) {
+      await this.db
+        .delete(streamMessages)
+        .where(eq(streamMessages.streamId, stream.id));
+      await this.db.delete(streams).where(eq(streams.id, stream.id));
+      throw error;
+    }
+  }
+
+  /** Marks the current stream offline and edits delivered notifications. */
+  async streamOffline(
+    event: TwitchStreamOfflineEvent,
+    endedAtValue: string,
+  ): Promise<void> {
+    const broadcaster = await this.requireBroadcaster(
+      event.broadcaster_user_id,
+    );
+    requireNonEmpty(event.id, 'Twitch stream ID');
+    const endedAt = requireTimestamp(
+      endedAtValue,
+      'Twitch stream end timestamp',
+    );
+    const [stream] = await this.db
+      .select()
+      .from(streams)
+      .where(eq(streams.id, event.id))
+      .limit(1);
+    if (stream === undefined) return;
+
+    const vods = await createTwitchApiClient(this.env).getArchiveVideosByUserId(
+      broadcaster.id,
+    );
+    const vod = vods.find((candidate) => candidate.streamId === stream.id);
+    const revisionChanged =
+      stream.endedAt === null || (stream.vodUrl === null && vod !== undefined);
+    const [updatedStream] = await this.db
+      .update(streams)
+      .set({
+        endedAt: stream.endedAt ?? endedAt,
+        vodUrl: stream.vodUrl ?? vod?.url ?? null,
+        revision: revisionChanged ? stream.revision + 1 : stream.revision,
+      })
+      .where(eq(streams.id, stream.id))
+      .returning({ id: streams.id });
+    if (updatedStream !== undefined) {
+      await this.queueStreamUpdates(updatedStream.id);
+    }
+  }
+
+  /** Records Discord's create-message receipt for a queued live message. */
+  async recordDiscordMessage(
+    streamId: string,
+    receipt: DiscordMessageReceipt,
+  ): Promise<void> {
+    requireNonEmpty(streamId, 'Twitch stream ID');
+    requireDiscordSnowflake(receipt.channelId, 'Discord channel ID');
+    requireDiscordSnowflake(receipt.messageId, 'Discord message ID');
+    const [message] = await this.db
+      .update(streamMessages)
+      .set({ messageId: receipt.messageId })
+      .where(
+        and(
+          eq(streamMessages.streamId, streamId),
+          eq(streamMessages.channelId, receipt.channelId),
+        ),
+      )
+      .returning({ channelId: streamMessages.channelId });
+    if (message !== undefined) {
+      await this.queueStreamUpdates(streamId, message.channelId);
+    }
+  }
+
   /** Removes a revoked local subscription so reconciliation recreates it. */
   async revokeEventSub(subscriptionId: string): Promise<void> {
     await this.db
@@ -209,6 +361,92 @@ export class TwitchSubscription extends DurableObject<Env> {
           set: { subscriptionId: created.id },
         });
     }
+  }
+
+  private async requireBroadcaster(
+    broadcasterId: string,
+  ): Promise<typeof broadcasters.$inferSelect> {
+    const broadcaster = await this.getBroadcaster();
+    if (broadcaster === undefined) {
+      throw new Error('Twitch broadcaster has not been registered');
+    }
+    if (broadcaster.id !== broadcasterId) {
+      throw new Error(
+        `Twitch broadcaster ${broadcasterId} does not match ${broadcaster.id}`,
+      );
+    }
+    return broadcaster;
+  }
+
+  private async queueStreamUpdates(
+    streamId: string,
+    channelId?: string,
+  ): Promise<void> {
+    const [broadcaster, stream] = await Promise.all([
+      this.getBroadcaster(),
+      this.db
+        .select()
+        .from(streams)
+        .where(eq(streams.id, streamId))
+        .limit(1)
+        .then(([value]) => value),
+    ]);
+    if (broadcaster === undefined || stream?.endedAt == null) {
+      return;
+    }
+
+    const messages = await this.db
+      .select()
+      .from(streamMessages)
+      .where(
+        channelId === undefined
+          ? and(
+              eq(streamMessages.streamId, streamId),
+              lt(streamMessages.enqueuedRevision, stream.revision),
+            )
+          : and(
+              eq(streamMessages.streamId, streamId),
+              eq(streamMessages.channelId, channelId),
+              lt(streamMessages.enqueuedRevision, stream.revision),
+            ),
+      );
+    const subscriberRows = await this.db.select().from(twitchSubscribers);
+    const subscribersByChannel = new Map(
+      subscriberRows.map((subscriber) => [subscriber.channelId, subscriber]),
+    );
+    const deliveredMessages = messages.flatMap((message) => {
+      const subscriber = subscribersByChannel.get(message.channelId);
+      if (message.messageId === null || subscriber === undefined) return [];
+      return [
+        {
+          channelId: message.channelId,
+          delivery: createTwitchOfflineDiscordMessage(
+            broadcaster,
+            stream,
+            subscriber,
+            message.messageId,
+          ),
+        },
+      ];
+    });
+
+    await enqueueDiscordMessages(
+      this.env.DISCORD_MESSAGES,
+      deliveredMessages.map(({ delivery }) => delivery),
+    );
+    await Promise.all(
+      deliveredMessages.map(({ channelId: deliveredChannelId }) =>
+        this.db
+          .update(streamMessages)
+          .set({ enqueuedRevision: stream.revision })
+          .where(
+            and(
+              eq(streamMessages.streamId, streamId),
+              eq(streamMessages.channelId, deliveredChannelId),
+            ),
+          ),
+      ),
+    );
   }
 
   private async getBroadcaster(): Promise<
@@ -288,4 +526,16 @@ function validateRegistration(
   ) {
     requireDiscordSnowflake(registration.ping, 'Discord role ID');
   }
+}
+
+function requireNonEmpty(value: string, description: string): void {
+  if (value.trim() === '') throw new Error(`${description} cannot be empty`);
+}
+
+function requireTimestamp(value: string, description: string): Date {
+  const timestamp = new Date(value);
+  if (Number.isNaN(timestamp.getTime())) {
+    throw new Error(`${description} is invalid`);
+  }
+  return timestamp;
 }

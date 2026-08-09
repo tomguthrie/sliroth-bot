@@ -135,18 +135,18 @@ describe('Twitch EventSub webhook', () => {
     ).toBe(403);
   });
 
-  it('deduplicates notification message IDs in KV', async () => {
+  it('deduplicates Twitch message IDs in KV', async () => {
     const messageId = `notification-${crypto.randomUUID()}`;
     const body = eventBody();
     const firstContext = createExecutionContext();
     const first = await handleTwitchEventSub(
-      await signedRequest(messageId, body),
+      await signedRequest(messageId, body, { type: 'revocation' }),
       env,
       firstContext,
     );
     await waitOnExecutionContext(firstContext);
     const second = await handleTwitchEventSub(
-      await signedRequest(messageId, body),
+      await signedRequest(messageId, body, { type: 'revocation' }),
       env,
       createExecutionContext(),
     );

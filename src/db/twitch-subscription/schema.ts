@@ -1,5 +1,6 @@
 import {
   index,
+  integer,
   primaryKey,
   snakeCase,
   text,
@@ -49,4 +50,32 @@ export const eventSubSubscriptions = snakeCase.table(
       table.subscriptionId,
     ),
   ],
+);
+
+export const streams = snakeCase.table(
+  'streams',
+  {
+    id: text().notNull(),
+    title: text().notNull(),
+    gameName: text().notNull(),
+    viewerCount: integer().notNull(),
+    gameBoxArtUrl: text(),
+    previewImageUrl: text().notNull(),
+    startedAt: integer({ mode: 'timestamp_ms' }).notNull(),
+    endedAt: integer({ mode: 'timestamp_ms' }),
+    vodUrl: text(),
+    revision: integer().notNull().default(1),
+  },
+  (table) => [primaryKey({ columns: [table.id] })],
+);
+
+export const streamMessages = snakeCase.table(
+  'stream_messages',
+  {
+    streamId: text().notNull(),
+    channelId: text().notNull(),
+    messageId: text(),
+    enqueuedRevision: integer().notNull().default(1),
+  },
+  (table) => [primaryKey({ columns: [table.streamId, table.channelId] })],
 );
