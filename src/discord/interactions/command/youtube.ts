@@ -1,4 +1,3 @@
-import { ChannelTypes } from 'discord-interactions';
 import {
   cacheYouTubeChannelTitle,
   getCachedYouTubeChannelTitles,
@@ -18,22 +17,24 @@ import {
 } from '../response';
 import {
   APPLICATION_COMMAND_OPTION_TYPE,
-  type DiscordApplicationCommandData,
   type DiscordApplicationCommandOption,
   type DiscordInteraction,
   getInteractionString,
-  getResolvedInteractionRole,
 } from '../data';
 import { escapeDiscordMarkdown } from '../../markdown';
 import type { DiscordMentionTarget } from '../../message';
 import {
   hasDiscordPermission,
   MANAGE_GUILD_PERMISSION,
-  MENTION_EVERYONE_PERMISSION,
-  SEND_MESSAGES_PERMISSION,
-  VIEW_CHANNEL_PERMISSION,
 } from '../../permission';
 import { parseDiscordSnowflake, type DiscordSnowflake } from '../../snowflake';
+import {
+  canPostInChannel,
+  createPingDescription,
+  isSupportedNotificationChannel,
+  parseNotificationCommand,
+  resolveNotificationPing,
+} from './notification';
 import youtubeCommand from './youtube.json';
 
 export const YOUTUBE_COMMAND_NAME = youtubeCommand.name;
@@ -51,7 +52,10 @@ export async function handleYouTubeCommand(
   env: Env,
   ctx: ExecutionContext,
 ): Promise<Response> {
-  const command = parseYouTubeCommand(interaction.data);
+  const command = parseNotificationCommand(
+    interaction.data,
+    YOUTUBE_COMMAND_NAME,
+  );
   if (command === undefined) {
     return ephemeralInteractionResponse('This interaction is not supported.');
   }
@@ -99,13 +103,13 @@ export async function handleYouTubeCommand(
         return ephemeralInteractionResponse(options);
       }
 
-      const pingResult = resolveSubscriberPing(
+      const pingResult = resolveNotificationPing(
         options,
         interaction.data,
         guildId,
         interaction.app_permissions,
       );
-      if (pingResult.error !== undefined) {
+      if ('error' in pingResult) {
         return ephemeralInteractionResponse(pingResult.error);
       }
 
@@ -259,16 +263,6 @@ async function completeYouTubeRemove(
   }
 }
 
-function createPingDescription(ping: DiscordMentionTarget | undefined): string {
-  if (ping === undefined) {
-    return '';
-  }
-  if (ping === 'everyone' || ping === 'here') {
-    return ` and mention @${ping}`;
-  }
-  return ` and mention <@&${ping}>`;
-}
-
 async function resolveYouTubeChannelTitles(
   index: KVNamespace,
   channelIds: readonly string[],
@@ -349,29 +343,6 @@ function displayTitle(
   );
 }
 
-function parseYouTubeCommand(
-  value: DiscordApplicationCommandData | undefined,
-): { name: string; options: DiscordApplicationCommandOption[] } | undefined {
-  if (value?.name !== YOUTUBE_COMMAND_NAME) {
-    return undefined;
-  }
-  if (!Array.isArray(value.options) || value.options.length !== 1) {
-    return undefined;
-  }
-
-  const option = value.options[0];
-  if (
-    option.type !== APPLICATION_COMMAND_OPTION_TYPE.subcommand ||
-    option.name === ''
-  ) {
-    return undefined;
-  }
-  return {
-    name: option.name,
-    options: Array.isArray(option.options) ? option.options : [],
-  };
-}
-
 function parseYouTubeAddOptions(
   values: readonly DiscordApplicationCommandOption[],
 ): YouTubeAddOptions | string {
@@ -426,61 +397,6 @@ function parseYouTubeAddOptions(
     return 'Choose either a role or an @everyone/@here ping, not both.';
   }
   return { youtube, message, ping, roleId };
-}
-
-function resolveSubscriberPing(
-  options: YouTubeAddOptions,
-  data: DiscordApplicationCommandData | undefined,
-  guildId: string,
-  permissions: string | undefined,
-): { ping?: DiscordMentionTarget; error?: string } {
-  if (options.ping !== undefined) {
-    return hasDiscordPermission(permissions, MENTION_EVERYONE_PERMISSION)
-      ? { ping: options.ping }
-      : {
-          error:
-            'I need Mention Everyone permission to use @everyone or @here.',
-        };
-  }
-  if (options.roleId === undefined) {
-    return {};
-  }
-  if (options.roleId === guildId) {
-    return hasDiscordPermission(permissions, MENTION_EVERYONE_PERMISSION)
-      ? { ping: 'everyone' }
-      : { error: 'I need Mention Everyone permission to mention @everyone.' };
-  }
-
-  const role = getResolvedInteractionRole(data, options.roleId);
-  if (role === undefined) {
-    return { error: 'The selected Discord role could not be resolved.' };
-  }
-  if (
-    role.mentionable !== true &&
-    !hasDiscordPermission(permissions, MENTION_EVERYONE_PERMISSION)
-  ) {
-    return {
-      error: 'I need Mention Everyone permission to mention that role.',
-    };
-  }
-  return { ping: options.roleId };
-}
-
-function isSupportedNotificationChannel(
-  value: DiscordInteraction['channel'],
-): boolean {
-  if (value === undefined) return false;
-  return (
-    value.type === Number(ChannelTypes.GUILD_TEXT) ||
-    value.type === Number(ChannelTypes.GUILD_ANNOUNCEMENT)
-  );
-}
-
-function canPostInChannel(value: string | undefined): boolean {
-  return (
-    hasDiscordPermission(value, VIEW_CHANNEL_PERMISSION) &&
-    hasDiscordPermission(value, SEND_MESSAGES_PERMISSION)
-  );
 }
 
 function logTitleFailure(
