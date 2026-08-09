@@ -13,6 +13,7 @@ import {
 import { createTwitchApiClient } from '../../../twitch/client';
 import { escapeDiscordMarkdown } from '../../markdown';
 import {
+  EMBED_LINKS_PERMISSION,
   hasDiscordPermission,
   interactionMemberHasPermission,
   MANAGE_GUILD_PERMISSION,
@@ -82,6 +83,14 @@ export async function handleTwitchCommand(
     if (!canPostInChannel(interaction.app_permissions)) {
       return ephemeralInteractionResponse(
         'I need View Channel and Send Messages permissions in this channel.',
+      );
+    }
+    if (
+      command.name === 'add' &&
+      !hasDiscordPermission(interaction.app_permissions, EMBED_LINKS_PERMISSION)
+    ) {
+      return ephemeralInteractionResponse(
+        'I need Embed Links permission in this channel.',
       );
     }
 

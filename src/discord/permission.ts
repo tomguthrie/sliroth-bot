@@ -3,6 +3,7 @@ const ADMINISTRATOR_PERMISSION = 1n << 3n;
 export const MANAGE_GUILD_PERMISSION = 1n << 5n;
 export const VIEW_CHANNEL_PERMISSION = 1n << 10n;
 export const SEND_MESSAGES_PERMISSION = 1n << 11n;
+export const EMBED_LINKS_PERMISSION = 1n << 14n;
 export const MENTION_EVERYONE_PERMISSION = 1n << 17n;
 
 /** Checks a Discord permission string, including Administrator. */
