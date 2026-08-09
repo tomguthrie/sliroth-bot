@@ -1,0 +1,365 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "id": "489b1df8-a245-411b-851a-d7c356417f3e",
+  "prevIds": [
+    "d50836f6-0fea-4394-9744-e4380f19de0e"
+  ],
+  "ddl": [
+    {
+      "name": "broadcaster",
+      "entityType": "tables"
+    },
+    {
+      "name": "eventsub_subscriptions",
+      "entityType": "tables"
+    },
+    {
+      "name": "stream_messages",
+      "entityType": "tables"
+    },
+    {
+      "name": "streams",
+      "entityType": "tables"
+    },
+    {
+      "name": "subscribers",
+      "entityType": "tables"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "broadcaster"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "login",
+      "entityType": "columns",
+      "table": "broadcaster"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "display_name",
+      "entityType": "columns",
+      "table": "broadcaster"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "profile_image_url",
+      "entityType": "columns",
+      "table": "broadcaster"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "offline_image_url",
+      "entityType": "columns",
+      "table": "broadcaster"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "type",
+      "entityType": "columns",
+      "table": "eventsub_subscriptions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "subscription_id",
+      "entityType": "columns",
+      "table": "eventsub_subscriptions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "stream_id",
+      "entityType": "columns",
+      "table": "stream_messages"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "channel_id",
+      "entityType": "columns",
+      "table": "stream_messages"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "message_id",
+      "entityType": "columns",
+      "table": "stream_messages"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "1",
+      "generated": null,
+      "name": "enqueued_revision",
+      "entityType": "columns",
+      "table": "stream_messages"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "title",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "game_name",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "viewer_count",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "game_box_art_url",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "preview_image_url",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "started_at",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "ended_at",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "vod_url",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "1",
+      "generated": null,
+      "name": "revision",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "channel_id",
+      "entityType": "columns",
+      "table": "subscribers"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "guild_id",
+      "entityType": "columns",
+      "table": "subscribers"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "message",
+      "entityType": "columns",
+      "table": "subscribers"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "offline",
+      "entityType": "columns",
+      "table": "subscribers"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "ping",
+      "entityType": "columns",
+      "table": "subscribers"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "broadcaster_pk",
+      "entityType": "pks",
+      "table": "broadcaster"
+    },
+    {
+      "columns": [
+        "type"
+      ],
+      "nameExplicit": false,
+      "name": "eventsub_subscriptions_pk",
+      "entityType": "pks",
+      "table": "eventsub_subscriptions"
+    },
+    {
+      "columns": [
+        "stream_id",
+        "channel_id"
+      ],
+      "nameExplicit": false,
+      "name": "stream_messages_pk",
+      "entityType": "pks",
+      "table": "stream_messages"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "streams_pk",
+      "entityType": "pks",
+      "table": "streams"
+    },
+    {
+      "columns": [
+        "channel_id"
+      ],
+      "nameExplicit": false,
+      "name": "subscribers_pk",
+      "entityType": "pks",
+      "table": "subscribers"
+    },
+    {
+      "columns": [
+        {
+          "value": "subscription_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "eventsub_subscriptions_subscription_id_idx",
+      "entityType": "indexes",
+      "table": "eventsub_subscriptions"
+    },
+    {
+      "columns": [
+        {
+          "value": "guild_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "subscribers_guild_id_idx",
+      "entityType": "indexes",
+      "table": "subscribers"
+    }
+  ],
+  "renames": []
+}

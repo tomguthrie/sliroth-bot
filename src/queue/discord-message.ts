@@ -5,6 +5,7 @@ import {
 } from '../discord/client';
 import type { DiscordMessage } from '../discord/message';
 import { DiscordRequestValidationError } from '../discord/request';
+import { recordTwitchStreamMessageReceipt } from '../twitch-subscription/message-receipt';
 
 const MAX_QUEUE_RETRY_DELAY_SECONDS = 24 * 60 * 60;
 
@@ -14,8 +15,20 @@ interface DiscordMessageDeliveryBase {
   message: DiscordMessage;
 }
 
+export const DISCORD_RECEIPT_IGNORE = 'ignore';
+export const DISCORD_RECEIPT_TWITCH_STREAM = 'twitch-stream';
+
+export type DiscordMessageReceiptTarget =
+  | { type: typeof DISCORD_RECEIPT_IGNORE }
+  | {
+      type: typeof DISCORD_RECEIPT_TWITCH_STREAM;
+      broadcasterId: string;
+      streamId: string;
+    };
+
 export interface DiscordCreateMessageDelivery extends DiscordMessageDeliveryBase {
   operation: 'create';
+  receiptTarget: DiscordMessageReceiptTarget;
 }
 
 export interface DiscordEditMessageDelivery extends DiscordMessageDeliveryBase {
@@ -58,7 +71,20 @@ export async function deliverDiscordMessageBatch(
         message: queuedMessage.body.message,
       };
       if (queuedMessage.body.operation === 'create') {
-        await sendDiscordMessage(options);
+        const receipt = await sendDiscordMessage(options);
+        const target = queuedMessage.body.receiptTarget;
+        switch (target.type) {
+          case DISCORD_RECEIPT_IGNORE:
+            break;
+          case DISCORD_RECEIPT_TWITCH_STREAM:
+            await recordTwitchStreamMessageReceipt(
+              target.broadcasterId,
+              target.streamId,
+              receipt,
+              env,
+            );
+            break;
+        }
       } else {
         await editDiscordMessage({
           ...options,

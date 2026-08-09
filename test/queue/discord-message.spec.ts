@@ -3,11 +3,20 @@ import {
   createMessageBatch,
   env,
   getQueueResult,
+  runInDurableObject,
 } from 'cloudflare:test';
+import { eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { DiscordMessageDelivery } from '../../src/queue/discord-message';
+import { streamMessages } from '../../src/db/twitch-subscription/schema';
+import type {
+  DiscordCreateMessageDelivery,
+  DiscordMessageDelivery,
+} from '../../src/queue/discord-message';
 import {
+  DISCORD_RECEIPT_IGNORE,
+  DISCORD_RECEIPT_TWITCH_STREAM,
   deliverDiscordMessageBatch,
   enqueueDiscordMessages,
 } from '../../src/queue/discord-message';
@@ -91,6 +100,42 @@ describe('Discord Queue consumer', () => {
     if (!(request instanceof Request)) throw new Error('Expected a Request');
     expect(request.method).toBe('PATCH');
     expect(request.url).toContain('/messages/345678901234567890');
+  });
+
+  it('routes a Twitch create-message receipt', async () => {
+    const broadcasterId = '567890123456789012';
+    const streamId = `stream-${crypto.randomUUID()}`;
+    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId);
+    await runInDurableObject(subscription, async (_instance, state) => {
+      await drizzle(state.storage).insert(streamMessages).values({
+        streamId,
+        channelId: CHANNEL_ID,
+      });
+    });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json({ id: '345678901234567890', channel_id: CHANNEL_ID }),
+    );
+    const delivery = {
+      ...createDelivery('receipt'),
+      receiptTarget: {
+        type: DISCORD_RECEIPT_TWITCH_STREAM,
+        broadcasterId,
+        streamId,
+      },
+    } satisfies DiscordMessageDelivery;
+
+    const result = await consume(delivery);
+
+    expect(result.explicitAcks).toEqual(['receipt']);
+    const [stored] = await runInDurableObject(
+      subscription,
+      async (_instance, state) =>
+        drizzle(state.storage)
+          .select()
+          .from(streamMessages)
+          .where(eq(streamMessages.streamId, streamId)),
+    );
+    expect(stored?.messageId).toBe('345678901234567890');
   });
 
   it.each([400, 401, 403, 404])(
@@ -178,9 +223,10 @@ describe('Discord Queue consumer', () => {
   );
 });
 
-function createDelivery(id: string): DiscordMessageDelivery {
+function createDelivery(id: string): DiscordCreateMessageDelivery {
   return {
     operation: 'create',
+    receiptTarget: { type: DISCORD_RECEIPT_IGNORE },
     guildId: GUILD_ID,
     channelId: CHANNEL_ID,
     message: {

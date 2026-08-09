@@ -4,6 +4,7 @@ import type {
 } from '../db/youtube-subscription/schema';
 import type { DiscordAllowedMentions } from '../discord/message';
 import type { DiscordMessageDelivery } from '../queue/discord-message';
+import { DISCORD_RECEIPT_IGNORE } from '../queue/discord-message';
 import type { YouTubeVideoNotification } from '../youtube/notification';
 
 const DEFAULT_MESSAGE = 'A new video has been uploaded!';
@@ -27,6 +28,7 @@ export async function createYouTubeDiscordMessage(
 
   return {
     operation: 'create',
+    receiptTarget: { type: DISCORD_RECEIPT_IGNORE },
     guildId: subscriber.guildId,
     channelId: subscriber.channelId,
     message: {
