@@ -124,6 +124,7 @@ export async function handleTwitchEventSub(
           status: 400,
         });
       }
+      await subscription.reconcile();
     } else {
       await subscription.revokeEventSub(envelope.subscription.id);
     }

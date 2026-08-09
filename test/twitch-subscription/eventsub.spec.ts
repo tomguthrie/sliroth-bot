@@ -1,10 +1,14 @@
 import {
   createExecutionContext,
   env,
+  runInDurableObject,
   waitOnExecutionContext,
 } from 'cloudflare:test';
+import { eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { eventSubSubscriptions } from '../../src/db/twitch-subscription/schema';
 import { handleTwitchEventSub } from '../../src/twitch/eventsub-handler';
 import {
   channelTwitchSubscriptionKey,
@@ -13,6 +17,7 @@ import {
 
 const BROADCASTER_ID = '123456789012345678';
 const WEBHOOK_BROADCASTER_ID = '123456789012345679';
+const RECONCILE_BROADCASTER_ID = '123456789012345680';
 const GUILD_ID = '234567890123456789';
 const CHANNEL_ID = '345678901234567890';
 
@@ -159,6 +164,86 @@ describe('Twitch EventSub webhook', () => {
     ).toBe(403);
   });
 
+  it('reconciles desired subscriptions after a normal notification', async () => {
+    const createdTypes: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const request = new Request(input, init);
+      if (request.url.startsWith('https://id.twitch.tv/oauth2/token')) {
+        return Response.json({ access_token: 'token', expires_in: 3600 });
+      }
+      if (request.method === 'POST') {
+        const body = await request.json<{
+          type: string;
+          version: string;
+          condition: Record<string, string>;
+          transport: { method: string; callback: string };
+        }>();
+        const remote = {
+          id: `subscription-${body.type}`,
+          status: 'webhook_callback_verification_pending',
+          type: body.type,
+          version: body.version,
+          condition: body.condition,
+          created_at: '2026-08-09T00:00:00Z',
+          transport: body.transport,
+          cost: 1,
+        };
+        createdTypes.push(body.type);
+        return Response.json({ data: [remote] });
+      }
+      if (request.method === 'GET') {
+        return Response.json({ data: [] });
+      }
+      throw new Error(
+        `Unexpected Twitch request: ${request.method} ${request.url}`,
+      );
+    });
+
+    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(
+      RECONCILE_BROADCASTER_ID,
+    );
+    await subscription.addSubscriber(
+      {
+        id: RECONCILE_BROADCASTER_ID,
+        login: 'sliroth',
+        displayName: 'Sliroth',
+        profileImageUrl: 'https://example.com/profile.png',
+        offlineImageUrl: 'https://example.com/offline.png',
+      },
+      { guildId: GUILD_ID, channelId: CHANNEL_ID },
+    );
+    await runInDurableObject(subscription, async (_instance, state) => {
+      await drizzle(state.storage)
+        .delete(eventSubSubscriptions)
+        .where(eq(eventSubSubscriptions.type, 'stream.online'));
+    });
+    createdTypes.length = 0;
+
+    const body = JSON.stringify({
+      subscription: {
+        id: 'subscription-stream.offline',
+        type: 'stream.offline',
+        condition: { broadcaster_user_id: RECONCILE_BROADCASTER_ID },
+      },
+      event: {
+        id: 'stream-id',
+        broadcaster_user_id: RECONCILE_BROADCASTER_ID,
+        broadcaster_user_login: 'sliroth',
+        broadcaster_user_name: 'Sliroth',
+      },
+    });
+    const response = await handleTwitchEventSub(
+      await signedRequest(`notification-${crypto.randomUUID()}`, body, {
+        broadcasterId: RECONCILE_BROADCASTER_ID,
+      }),
+      env,
+      createExecutionContext(),
+    );
+
+    expect(response.status).toBe(204);
+    expect(createdTypes.sort()).toEqual(['stream.offline', 'stream.online']);
+  });
+
   it('deduplicates Twitch message IDs in KV', async () => {
     const messageId = `notification-${crypto.randomUUID()}`;
     const body = eventBody();
@@ -195,7 +280,7 @@ function eventBody(): string {
 async function signedRequest(
   messageId: string,
   body: string,
-  options: { type?: string; timestamp?: string } = {},
+  options: { broadcasterId?: string; type?: string; timestamp?: string } = {},
 ): Promise<Request> {
   const timestamp = options.timestamp ?? new Date().toISOString();
   const key = await crypto.subtle.importKey(
@@ -213,7 +298,7 @@ async function signedRequest(
     ),
   );
   return new Request(
-    `https://bot.example.com/twitch/eventsub/${WEBHOOK_BROADCASTER_ID}`,
+    `https://bot.example.com/twitch/eventsub/${options.broadcasterId ?? WEBHOOK_BROADCASTER_ID}`,
     {
       method: 'POST',
       headers: {
