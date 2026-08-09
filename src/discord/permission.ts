@@ -8,7 +8,7 @@ export const MENTION_EVERYONE_PERMISSION = 1n << 17n;
 
 /** Checks a Discord permission string, including Administrator. */
 export function hasDiscordPermission(
-  value: unknown,
+  value: string | undefined,
   permission: bigint,
 ): boolean {
   if (typeof value !== 'string') {
@@ -23,19 +23,4 @@ export function hasDiscordPermission(
   } catch {
     return false;
   }
-}
-
-/** Checks a permission on an interaction's partial guild member. */
-export function interactionMemberHasPermission(
-  member: unknown,
-  permission: bigint,
-): boolean {
-  if (!isRecord(member)) {
-    return false;
-  }
-  return hasDiscordPermission(member.permissions, permission);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

@@ -15,7 +15,6 @@ import { escapeDiscordMarkdown } from '../../markdown';
 import {
   EMBED_LINKS_PERMISSION,
   hasDiscordPermission,
-  interactionMemberHasPermission,
   MANAGE_GUILD_PERMISSION,
   MENTION_EVERYONE_PERMISSION,
   SEND_MESSAGES_PERMISSION,
@@ -67,7 +66,10 @@ export async function handleTwitchCommand(
   }
 
   if (
-    !interactionMemberHasPermission(interaction.member, MANAGE_GUILD_PERMISSION)
+    !hasDiscordPermission(
+      interaction.member?.permissions,
+      MANAGE_GUILD_PERMISSION,
+    )
   ) {
     return ephemeralInteractionResponse(
       'You need the Manage Server permission to use this command.',
@@ -368,7 +370,7 @@ function resolveSubscriberPing(
   options: TwitchAddOptions,
   data: DiscordApplicationCommandData | undefined,
   guildId: string,
-  permissions: unknown,
+  permissions: string | undefined,
 ): { ping?: TwitchSubscriberPing; error?: string } {
   if (options.ping !== undefined) {
     return hasDiscordPermission(permissions, MENTION_EVERYONE_PERMISSION)
@@ -418,7 +420,7 @@ function isSupportedNotificationChannel(
   );
 }
 
-function canPostInChannel(value: unknown): boolean {
+function canPostInChannel(value: string | undefined): boolean {
   return (
     hasDiscordPermission(value, VIEW_CHANNEL_PERMISSION) &&
     hasDiscordPermission(value, SEND_MESSAGES_PERMISSION)
