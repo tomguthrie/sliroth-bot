@@ -1,5 +1,11 @@
-import type { CreateDiscordMessageRequestOptions } from './request';
-import { createDiscordMessageRequest } from './request';
+import type {
+  CreateDiscordMessageRequestOptions,
+  EditDiscordMessageRequestOptions,
+} from './request';
+import {
+  createDiscordEditMessageRequest,
+  createDiscordMessageRequest,
+} from './request';
 
 /** Describes a non-successful response returned by Discord's API. */
 export class DiscordApiError extends Error {
@@ -12,15 +18,29 @@ export class DiscordApiError extends Error {
   }
 }
 
-/**
- * Sends a message to Discord and discards the successful response body.
- *
- * Throws when Discord rejects the request and includes any response details.
- */
+/** Identifies the Discord message created or edited by an API request. */
+export interface DiscordMessageReceipt {
+  messageId: string;
+  channelId: string;
+}
+
+/** Sends a message to Discord and returns its delivery receipt. */
 export async function sendDiscordMessage(
   options: CreateDiscordMessageRequestOptions,
-): Promise<void> {
-  const request = createDiscordMessageRequest(options);
+): Promise<DiscordMessageReceipt> {
+  return executeDiscordMessageRequest(createDiscordMessageRequest(options));
+}
+
+/** Edits an existing Discord message and returns its delivery receipt. */
+export async function editDiscordMessage(
+  options: EditDiscordMessageRequestOptions,
+): Promise<DiscordMessageReceipt> {
+  return executeDiscordMessageRequest(createDiscordEditMessageRequest(options));
+}
+
+async function executeDiscordMessageRequest(
+  request: Request,
+): Promise<DiscordMessageReceipt> {
   const response = await fetch(request);
 
   if (!response.ok) {
@@ -35,9 +55,8 @@ export async function sendDiscordMessage(
     );
   }
 
-  if (response.body !== null) {
-    await response.body.cancel();
-  }
+  const message = await response.json<{ id: string; channel_id: string }>();
+  return { messageId: message.id, channelId: message.channel_id };
 }
 
 function parseRetryAfter(value: string | null): number | undefined {

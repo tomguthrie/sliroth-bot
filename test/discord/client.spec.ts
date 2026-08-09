@@ -1,19 +1,24 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { DiscordApiError, sendDiscordMessage } from '../../src/discord/client';
+import {
+  DiscordApiError,
+  editDiscordMessage,
+  sendDiscordMessage,
+} from '../../src/discord/client';
 
 const BOT_TOKEN = 'test-discord-bot-token';
 const CHANNEL_ID = '123456789012345678';
 const ROLE_ID = '234567890123456789';
+const MESSAGE_ID = '345678901234567890';
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 describe('sendDiscordMessage', () => {
-  it('sends the message and discards the successful response body', async () => {
+  it('sends the message and returns its receipt', async () => {
     const discordResponse = new Response(
-      JSON.stringify({ id: '345678901234567890' }),
+      JSON.stringify({ id: MESSAGE_ID, channel_id: CHANNEL_ID }),
       {
         status: 200,
         headers: {
@@ -25,12 +30,36 @@ describe('sendDiscordMessage', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(discordResponse);
 
-    await expect(
-      sendDiscordMessage(createMessageOptions()),
-    ).resolves.toBeUndefined();
+    await expect(sendDiscordMessage(createMessageOptions())).resolves.toEqual({
+      messageId: MESSAGE_ID,
+      channelId: CHANNEL_ID,
+    });
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     expect(discordResponse.bodyUsed).toBe(true);
+  });
+
+  it('edits an exact message and returns its receipt', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        Response.json({ id: MESSAGE_ID, channel_id: CHANNEL_ID }),
+      );
+
+    await expect(
+      editDiscordMessage({
+        ...createMessageOptions(),
+        messageId: MESSAGE_ID,
+      }),
+    ).resolves.toEqual({ messageId: MESSAGE_ID, channelId: CHANNEL_ID });
+
+    const request = fetchSpy.mock.calls[0]?.[0];
+    expect(request).toBeInstanceOf(Request);
+    if (!(request instanceof Request)) throw new Error('Expected a Request');
+    expect(request.method).toBe('PATCH');
+    expect(request.url).toBe(
+      `https://discord.com/api/v10/channels/${CHANNEL_ID}/messages/${MESSAGE_ID}`,
+    );
   });
 
   it('includes Discord error details when delivery fails', async () => {

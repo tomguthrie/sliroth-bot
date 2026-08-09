@@ -73,6 +73,17 @@ export interface CreateDiscordMessageRequestOptions {
   message: DiscordMessage;
 }
 
+/** Values required to edit a message previously sent by the bot. */
+export interface EditDiscordMessageRequestOptions extends Omit<
+  CreateDiscordMessageRequestOptions,
+  'message'
+> {
+  /** Discord message snowflake returned by the create-message request. */
+  messageId: string;
+  /** Complete replacement content for the existing message. */
+  message: Omit<DiscordMessage, 'nonce'>;
+}
+
 /**
  * Builds an authenticated Discord create-message request.
  *
@@ -172,6 +183,27 @@ export function createDiscordMessageRequest({
         'user-agent': `DiscordBot (${applicationOrigin}, 0.0.0)`,
       },
       body: JSON.stringify(body),
+    },
+  );
+}
+
+/** Builds an authenticated Discord edit-message request. */
+export function createDiscordEditMessageRequest({
+  messageId,
+  ...options
+}: EditDiscordMessageRequestOptions): Request {
+  requireSnowflake(messageId, 'Discord message ID');
+  const createRequest = createDiscordMessageRequest(options);
+
+  return new Request(
+    new URL(
+      `channels/${options.channelId}/messages/${messageId}`,
+      DISCORD_API_BASE_URL,
+    ),
+    {
+      method: 'PATCH',
+      headers: createRequest.headers,
+      body: createRequest.body,
     },
   );
 }

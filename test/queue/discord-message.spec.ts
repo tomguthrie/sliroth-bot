@@ -61,12 +61,36 @@ describe('Discord Queue producer', () => {
 
 describe('Discord Queue consumer', () => {
   it('acknowledges a successful delivery', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json({ id: '345678901234567890', channel_id: CHANNEL_ID }),
+    );
 
     const result = await consume(createDelivery('success'));
 
     expect(result.explicitAcks).toEqual(['success']);
     expect(result.retryMessages).toEqual([]);
+  });
+
+  it('edits and acknowledges an exact Discord message', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        Response.json({ id: '345678901234567890', channel_id: CHANNEL_ID }),
+      );
+    const delivery = {
+      ...createDelivery('edit'),
+      operation: 'edit',
+      messageId: '345678901234567890',
+    } satisfies DiscordMessageDelivery;
+
+    const result = await consume(delivery);
+
+    expect(result.explicitAcks).toEqual(['edit']);
+    const request = fetchSpy.mock.calls[0]?.[0];
+    expect(request).toBeInstanceOf(Request);
+    if (!(request instanceof Request)) throw new Error('Expected a Request');
+    expect(request.method).toBe('PATCH');
+    expect(request.url).toContain('/messages/345678901234567890');
   });
 
   it.each([400, 401, 403, 404])(
@@ -156,6 +180,7 @@ describe('Discord Queue consumer', () => {
 
 function createDelivery(id: string): DiscordMessageDelivery {
   return {
+    operation: 'create',
     guildId: GUILD_ID,
     channelId: CHANNEL_ID,
     message: {

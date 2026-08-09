@@ -1,14 +1,30 @@
-import { DiscordApiError, sendDiscordMessage } from '../discord/client';
+import {
+  DiscordApiError,
+  editDiscordMessage,
+  sendDiscordMessage,
+} from '../discord/client';
 import type { DiscordMessage } from '../discord/message';
 import { DiscordRequestValidationError } from '../discord/request';
 
 const MAX_QUEUE_RETRY_DELAY_SECONDS = 24 * 60 * 60;
 
-export interface DiscordMessageDelivery {
+interface DiscordMessageDeliveryBase {
   guildId: string;
   channelId: string;
   message: DiscordMessage;
 }
+
+export interface DiscordCreateMessageDelivery extends DiscordMessageDeliveryBase {
+  operation: 'create';
+}
+
+export interface DiscordEditMessageDelivery extends DiscordMessageDeliveryBase {
+  operation: 'edit';
+  messageId: string;
+}
+
+export type DiscordMessageDelivery =
+  DiscordCreateMessageDelivery | DiscordEditMessageDelivery;
 
 interface DiscordMessageQueue {
   sendBatch(
@@ -35,12 +51,20 @@ export async function deliverDiscordMessageBatch(
 ): Promise<void> {
   for (const queuedMessage of batch.messages) {
     try {
-      await sendDiscordMessage({
+      const options = {
         botToken: env.DISCORD_BOT_TOKEN,
         applicationUrl: env.PUBLIC_BASE_URL,
         channelId: queuedMessage.body.channelId,
         message: queuedMessage.body.message,
-      });
+      };
+      if (queuedMessage.body.operation === 'create') {
+        await sendDiscordMessage(options);
+      } else {
+        await editDiscordMessage({
+          ...options,
+          messageId: queuedMessage.body.messageId,
+        });
+      }
       queuedMessage.ack();
     } catch (error) {
       if (error instanceof DiscordRequestValidationError) {
