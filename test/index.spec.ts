@@ -8,6 +8,7 @@ import { createYouTubeTopicUrl } from '../src/youtube/websub';
 
 const GUILD_ID = '123456789012345678';
 const DISCORD_CHANNEL_ID = '234567890123456789';
+const YOUTUBE_CHANNEL_TITLE = 'YouTube channel';
 
 beforeEach(() => {
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -36,6 +37,7 @@ describe('worker', () => {
     await env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId).addSubscriber({
       guildId: GUILD_ID,
       channelId: DISCORD_CHANNEL_ID,
+      channelTitle: YOUTUBE_CHANNEL_TITLE,
     });
     const query = new URLSearchParams({
       'hub.mode': 'subscribe',
@@ -84,6 +86,7 @@ describe('worker', () => {
     await subscription.addSubscriber({
       guildId: GUILD_ID,
       channelId: DISCORD_CHANNEL_ID,
+      channelTitle: YOUTUBE_CHANNEL_TITLE,
     });
     const secret = await runInDurableObject(
       subscription,
@@ -124,6 +127,7 @@ describe('worker', () => {
     await env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId).addSubscriber({
       guildId: GUILD_ID,
       channelId: DISCORD_CHANNEL_ID,
+      channelTitle: YOUTUBE_CHANNEL_TITLE,
     });
 
     const response = await exports.default.fetch(

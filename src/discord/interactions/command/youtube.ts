@@ -1,13 +1,10 @@
 import {
-  cacheYouTubeChannelTitle,
-  getCachedYouTubeChannelTitles,
   type GuildYouTubeSubscription,
   listChannelYouTubeSubscriptions,
   listGuildYouTubeSubscriptions,
 } from '../../../youtube-subscription/index';
 import { toLoggableError } from '../../../log';
 import {
-  fetchYouTubeChannelTitle,
   resolveYouTubeChannel,
   YouTubeChannelResolutionError,
 } from '../../../youtube/channel';
@@ -154,28 +151,8 @@ export async function handleYouTubeCommand(
       );
     }
 
-    const titles = await getCachedYouTubeChannelTitles(
-      env.YOUTUBE_SUBSCRIPTIONS_INDEX,
-      subscriptions.map((subscription) => subscription.youtubeChannelId),
-    );
-    const missingChannelIds = Array.from(
-      new Set(
-        subscriptions
-          .map((subscription) => subscription.youtubeChannelId)
-          .filter((youtubeChannelId) => !titles.has(youtubeChannelId)),
-      ),
-    );
-
-    if (missingChannelIds.length > 0) {
-      await resolveYouTubeChannelTitles(
-        env.YOUTUBE_SUBSCRIPTIONS_INDEX,
-        missingChannelIds,
-        titles,
-      );
-    }
-
     return ephemeralInteractionResponse(
-      createYouTubeListContent(subscriptions, titles, channelId),
+      createYouTubeListContent(subscriptions, channelId),
     );
   } catch (error) {
     logInteractionFailure(error);
@@ -199,18 +176,10 @@ async function completeYouTubeAdd(
     await env.YOUTUBE_SUBSCRIPTIONS.getByName(channel.id).addSubscriber({
       guildId,
       channelId,
+      channelTitle: channel.title,
       message: options.message,
       ping,
     });
-    try {
-      await cacheYouTubeChannelTitle(
-        env.YOUTUBE_SUBSCRIPTIONS_INDEX,
-        channel.id,
-        channel.title,
-      );
-    } catch (error) {
-      logTitleFailure('youtube_channel_title_cache_failed', channel.id, error);
-    }
 
     const mention = createPingDescription(ping);
     await editInteractionResponse(
@@ -264,35 +233,8 @@ async function completeYouTubeRemove(
   }
 }
 
-async function resolveYouTubeChannelTitles(
-  index: KVNamespace,
-  channelIds: readonly string[],
-  titles: Map<string, string>,
-): Promise<void> {
-  await Promise.all(
-    channelIds.map(async (channelId) => {
-      try {
-        const title = await fetchYouTubeChannelTitle(channelId);
-        titles.set(channelId, title);
-        try {
-          await cacheYouTubeChannelTitle(index, channelId, title);
-        } catch (error) {
-          logTitleFailure(
-            'youtube_channel_title_cache_failed',
-            channelId,
-            error,
-          );
-        }
-      } catch (error) {
-        logTitleFailure('youtube_channel_title_fetch_failed', channelId, error);
-      }
-    }),
-  );
-}
-
 function createYouTubeListContent(
   subscriptions: readonly GuildYouTubeSubscription[],
-  titles: ReadonlyMap<string, string>,
   currentChannelId: string,
 ): string {
   const sorted = [...subscriptions].sort((left, right) => {
@@ -302,8 +244,8 @@ function createYouTubeListContent(
       return leftCurrent ? -1 : 1;
     }
 
-    const titleOrder = displayTitle(left, titles).localeCompare(
-      displayTitle(right, titles),
+    const titleOrder = left.youtubeChannelTitle.localeCompare(
+      right.youtubeChannelTitle,
       'en',
       { sensitivity: 'base' },
     );
@@ -315,33 +257,23 @@ function createYouTubeListContent(
   });
 
   const lines = sorted.map((subscription) =>
-    createSubscriptionLine(subscription, titles, currentChannelId),
+    createSubscriptionLine(subscription, currentChannelId),
   );
   return ['**YouTube notifications in this server**', ...lines].join('\n');
 }
 
 function createSubscriptionLine(
   subscription: GuildYouTubeSubscription,
-  titles: ReadonlyMap<string, string>,
   currentChannelId: string,
 ): string {
   const current = subscription.discordChannelId === currentChannelId;
   const marker = current ? '⭐' : '•';
   const currentLabel = current ? ' **— current channel**' : '';
-  const title = escapeDiscordMarkdown(displayTitle(subscription, titles));
+  const title = escapeDiscordMarkdown(subscription.youtubeChannelTitle);
   const channelUrl = `https://www.youtube.com/channel/${encodeURIComponent(
     subscription.youtubeChannelId,
   )}`;
   return `${marker} [${title}](${channelUrl}) → <#${subscription.discordChannelId}>${currentLabel}`;
-}
-
-function displayTitle(
-  subscription: GuildYouTubeSubscription,
-  titles: ReadonlyMap<string, string>,
-): string {
-  return (
-    titles.get(subscription.youtubeChannelId) ?? subscription.youtubeChannelId
-  );
 }
 
 function parseYouTubeAddOptions(
@@ -398,14 +330,6 @@ function parseYouTubeAddOptions(
     return 'Choose either a role or an @everyone/@here ping, not both.';
   }
   return { youtube, message, ping, roleId };
-}
-
-function logTitleFailure(
-  event: string,
-  youtubeChannelId: string,
-  error: unknown,
-): void {
-  console.warn({ event, youtubeChannelId, error: toLoggableError(error) });
 }
 
 function logInteractionFailure(error: unknown): void {

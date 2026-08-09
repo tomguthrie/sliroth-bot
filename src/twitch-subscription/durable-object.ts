@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { and, asc, count, eq, lt } from 'drizzle-orm';
+import { and, count, eq, lt } from 'drizzle-orm';
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
@@ -37,6 +37,7 @@ import {
 import {
   channelTwitchSubscriptionKey,
   guildTwitchSubscriptionKey,
+  type TwitchSubscriptionMetadata,
 } from './index';
 
 const DESIRED_EVENT_TYPES = [
@@ -72,17 +73,6 @@ export type TwitchSubscriberRegistration = z.infer<
 type TwitchSubscriberRegistrationInput = z.input<
   typeof TwitchSubscriberRegistration
 >;
-
-export interface TwitchSubscriber {
-  broadcasterId: string;
-  broadcasterLogin: string;
-  broadcasterDisplayName: string;
-  guildId: string;
-  channelId: string;
-  message?: string;
-  offline?: string;
-  ping?: string;
-}
 
 /** Coordinates subscribers and EventSub state for one Twitch broadcaster. */
 export class TwitchSubscription extends DurableObject<Env> {
@@ -148,6 +138,10 @@ export class TwitchSubscription extends DurableObject<Env> {
           ping: validated.ping ?? null,
         },
       });
+    const metadata: TwitchSubscriptionMetadata = {
+      login: broadcaster.login,
+      displayName: broadcaster.displayName,
+    };
     await Promise.all([
       this.env.TWITCH_SUBSCRIPTIONS_INDEX.put(
         guildTwitchSubscriptionKey(
@@ -156,6 +150,7 @@ export class TwitchSubscription extends DurableObject<Env> {
           broadcaster.id,
         ),
         '1',
+        { metadata },
       ),
       this.env.TWITCH_SUBSCRIPTIONS_INDEX.put(
         channelTwitchSubscriptionKey(validated.channelId, broadcaster.id),
@@ -192,29 +187,6 @@ export class TwitchSubscription extends DurableObject<Env> {
     }
     await this.reconcile();
     return removed !== undefined;
-  }
-
-  /** Lists this broadcaster's subscribers in a guild and reconciles EventSub. */
-  async listSubscribers(guildId: string): Promise<TwitchSubscriber[]> {
-    DiscordSnowflake.parse(guildId);
-    const broadcaster = await this.getBroadcaster();
-    const rows = await this.db
-      .select()
-      .from(twitchSubscribers)
-      .where(eq(twitchSubscribers.guildId, guildId))
-      .orderBy(asc(twitchSubscribers.channelId));
-    await this.reconcile();
-    if (broadcaster === undefined) return [];
-    return rows.map((row) => ({
-      broadcasterId: broadcaster.id,
-      broadcasterLogin: broadcaster.login,
-      broadcasterDisplayName: broadcaster.displayName,
-      guildId: row.guildId,
-      channelId: row.channelId,
-      ...(row.message === null ? {} : { message: row.message }),
-      ...(row.offline === null ? {} : { offline: row.offline }),
-      ...(row.ping === null ? {} : { ping: row.ping }),
-    }));
   }
 
   /** Claims a live stream and queues one notification per subscriber. */

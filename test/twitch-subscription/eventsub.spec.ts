@@ -47,7 +47,6 @@ describe('TwitchSubscription EventSub reconciliation', () => {
       ),
     ).rejects.toThrow('Twitch display name cannot be empty');
   });
-
   it('creates desired subscriptions and deletes them with the last subscriber', async () => {
     const requests: { method: string; url: string; eventType?: string }[] = [];
     let sequence = 0;
@@ -115,15 +114,18 @@ describe('TwitchSubscription EventSub reconciliation', () => {
         .sort(),
     ).toEqual(['stream.offline', 'stream.online']);
     await expect(
-      env.TWITCH_SUBSCRIPTIONS_INDEX.get(
+      env.TWITCH_SUBSCRIPTIONS_INDEX.getWithMetadata(
         guildTwitchSubscriptionKey(GUILD_ID, CHANNEL_ID, BROADCASTER_ID),
       ),
-    ).resolves.toBe('1');
+    ).resolves.toMatchObject({
+      value: '1',
+      metadata: { login: 'sliroth', displayName: 'Sliroth' },
+    });
     await expect(
-      env.TWITCH_SUBSCRIPTIONS_INDEX.get(
+      env.TWITCH_SUBSCRIPTIONS_INDEX.getWithMetadata(
         channelTwitchSubscriptionKey(CHANNEL_ID, BROADCASTER_ID),
       ),
-    ).resolves.toBe('1');
+    ).resolves.toMatchObject({ value: '1', metadata: null });
 
     await expect(subscription.removeSubscriber(CHANNEL_ID)).resolves.toBe(true);
     expect(

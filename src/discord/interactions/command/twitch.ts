@@ -1,9 +1,9 @@
 import {
+  type GuildTwitchSubscription,
   listChannelTwitchSubscriptions,
   listGuildTwitchSubscriptions,
 } from '../../../twitch-subscription/index';
 import { toLoggableError } from '../../../log';
-import type { TwitchSubscriber } from '../../../twitch-subscription/durable-object';
 import {
   resolveTwitchChannel,
   TwitchChannelResolutionError,
@@ -148,27 +148,10 @@ export async function handleTwitchCommand(
   }
 
   try {
-    const indexed = await listGuildTwitchSubscriptions(
+    const subscriptions = await listGuildTwitchSubscriptions(
       env.TWITCH_SUBSCRIPTIONS_INDEX,
       guildId,
     );
-    if (indexed.length === 0) {
-      return ephemeralInteractionResponse(
-        'No Twitch notifications are configured for this server.',
-      );
-    }
-    const broadcasterIds = Array.from(
-      new Set(indexed.map(({ twitchBroadcasterId }) => twitchBroadcasterId)),
-    );
-    const subscriptions = (
-      await Promise.all(
-        broadcasterIds.map((broadcasterId) =>
-          env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId).listSubscribers(
-            guildId,
-          ),
-        ),
-      )
-    ).flat();
     if (subscriptions.length === 0) {
       return ephemeralInteractionResponse(
         'No Twitch notifications are configured for this server.',
@@ -262,34 +245,36 @@ async function completeTwitchRemove(
 }
 
 function createTwitchListContent(
-  subscriptions: readonly TwitchSubscriber[],
+  subscriptions: readonly GuildTwitchSubscription[],
   currentChannelId: string,
 ): string {
   const sorted = [...subscriptions].sort((left, right) => {
-    const leftCurrent = left.channelId === currentChannelId;
-    const rightCurrent = right.channelId === currentChannelId;
+    const leftCurrent = left.discordChannelId === currentChannelId;
+    const rightCurrent = right.discordChannelId === currentChannelId;
     if (leftCurrent !== rightCurrent) return leftCurrent ? -1 : 1;
 
     return (
-      left.broadcasterDisplayName.localeCompare(
-        right.broadcasterDisplayName,
+      left.twitchBroadcasterDisplayName.localeCompare(
+        right.twitchBroadcasterDisplayName,
         'en',
         { sensitivity: 'base' },
       ) ||
-      left.channelId.localeCompare(right.channelId) ||
-      left.broadcasterId.localeCompare(right.broadcasterId)
+      left.discordChannelId.localeCompare(right.discordChannelId) ||
+      left.twitchBroadcasterId.localeCompare(right.twitchBroadcasterId)
     );
   });
 
   return [
     '**Twitch notifications in this server**',
     ...sorted.map((subscription) => {
-      const current = subscription.channelId === currentChannelId;
+      const current = subscription.discordChannelId === currentChannelId;
       const marker = current ? '⭐' : '•';
       const currentLabel = current ? ' **— current channel**' : '';
-      const name = escapeDiscordMarkdown(subscription.broadcasterDisplayName);
-      const url = `https://www.twitch.tv/${encodeURIComponent(subscription.broadcasterLogin)}`;
-      return `${marker} [${name}](${url}) → <#${subscription.channelId}>${currentLabel}`;
+      const name = escapeDiscordMarkdown(
+        subscription.twitchBroadcasterDisplayName,
+      );
+      const url = `https://www.twitch.tv/${encodeURIComponent(subscription.twitchBroadcasterLogin)}`;
+      return `${marker} [${name}](${url}) → <#${subscription.discordChannelId}>${currentLabel}`;
     }),
   ].join('\n');
 }

@@ -77,18 +77,12 @@ describe('Discord interactions', () => {
       env.YOUTUBE_SUBSCRIPTIONS_INDEX.put(
         `guild:${GUILD_ID}:channel:${OTHER_CHANNEL_ID}:youtube:UC_OTHER`,
         '1',
+        { metadata: { title: 'Other channel' } },
       ),
       env.YOUTUBE_SUBSCRIPTIONS_INDEX.put(
         `guild:${GUILD_ID}:channel:${CURRENT_CHANNEL_ID}:youtube:UC_CURRENT`,
         '1',
-      ),
-      env.YOUTUBE_SUBSCRIPTIONS_INDEX.put(
-        'youtube:UC_OTHER:title',
-        'Other channel',
-      ),
-      env.YOUTUBE_SUBSCRIPTIONS_INDEX.put(
-        'youtube:UC_CURRENT:title',
-        'Current channel',
+        { metadata: { title: 'Current channel' } },
       ),
     ]);
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
@@ -110,58 +104,27 @@ describe('Discord interactions', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('fetches and caches a missing title before responding', async () => {
+  it('ignores a YouTube subscription without metadata', async () => {
     await env.YOUTUBE_SUBSCRIPTIONS_INDEX.put(
       `guild:${GUILD_ID}:channel:${CURRENT_CHANNEL_ID}:youtube:UC_MISSING`,
       '1',
     );
-    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
-      const request = new Request(input, init);
-      if (request.url.startsWith('https://www.youtube.com/feeds/videos.xml')) {
-        return Promise.resolve(
-          new Response(
-            '<feed xmlns="http://www.w3.org/2005/Atom"><title>Fetched title</title></feed>',
-          ),
-        );
-      }
-      return Promise.reject(
-        new Error(`Unexpected fetch: ${request.method} ${request.url}`),
-      );
+    const warnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    const response = await handleDiscordInteraction(
+      await createSignedRequest(createListInteraction()),
+      env,
+      createExecutionContext(),
+    );
+    expect(await interactionContent(response)).not.toContain('UC_MISSING');
+    expect(warnSpy).toHaveBeenCalledWith({
+      event: 'youtube_subscription_index_key_invalid',
+      key: `guild:${GUILD_ID}:channel:${CURRENT_CHANNEL_ID}:youtube:UC_MISSING`,
     });
-
-    const response = await handleDiscordInteraction(
-      await createSignedRequest(createListInteraction()),
-      env,
-      createExecutionContext(),
-    );
-    const body = await interactionBody(response);
-
-    expect(body.type).toBe(4);
-    expect(body.data.content).toContain('[Fetched title]');
-    expect(
-      await env.YOUTUBE_SUBSCRIPTIONS_INDEX.get('youtube:UC_MISSING:title'),
-    ).toBe('Fetched title');
-  });
-
-  it('falls back to the YouTube channel ID when a title fetch fails', async () => {
-    await env.YOUTUBE_SUBSCRIPTIONS_INDEX.put(
-      `guild:${GUILD_ID}:channel:${CURRENT_CHANNEL_ID}:youtube:UC_FALLBACK`,
-      '1',
-    );
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(null, { status: 503 }),
-    );
-
-    const response = await handleDiscordInteraction(
-      await createSignedRequest(createListInteraction()),
-      env,
-      createExecutionContext(),
-    );
-
-    expect(await interactionContent(response)).toContain(
-      '[UC\\_FALLBACK](https://www.youtube.com/channel/UC_FALLBACK)',
-    );
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('adds a YouTube channel and completes the deferred response', async () => {
@@ -206,16 +169,19 @@ describe('Discord interactions', () => {
         `channel:${CURRENT_CHANNEL_ID}:youtube:${YOUTUBE_CHANNEL_ID}`,
       ),
     ).toBe('1');
-    expect(
-      await env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(
+    await expect(
+      env.YOUTUBE_SUBSCRIPTIONS_INDEX.getWithMetadata(
         `guild:${GUILD_ID}:channel:${CURRENT_CHANNEL_ID}:youtube:${YOUTUBE_CHANNEL_ID}`,
       ),
-    ).toBe('1');
-    expect(
-      await env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(
+    ).resolves.toMatchObject({
+      value: '1',
+      metadata: { title: 'Google for Developers' },
+    });
+    await expect(
+      env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(
         `youtube:${YOUTUBE_CHANNEL_ID}:title`,
       ),
-    ).toBe('Google for Developers');
+    ).resolves.toBeNull();
 
     const editRequest = requests.find(
       (request) =>
@@ -249,6 +215,7 @@ describe('Discord interactions', () => {
       {
         guildId: GUILD_ID,
         channelId: CURRENT_CHANNEL_ID,
+        channelTitle: 'Google for Developers',
       },
     );
     const ctx = createExecutionContext();
@@ -384,10 +351,13 @@ describe('Discord interactions', () => {
       }),
     ]);
     await expect(
-      env.TWITCH_SUBSCRIPTIONS_INDEX.get(
+      env.TWITCH_SUBSCRIPTIONS_INDEX.getWithMetadata(
         `guild:${GUILD_ID}:channel:${CURRENT_CHANNEL_ID}:twitch:${TWITCH_ADD_BROADCASTER_ID}`,
       ),
-    ).resolves.toBe('1');
+    ).resolves.toMatchObject({
+      value: '1',
+      metadata: { login: 'sliroth', displayName: 'Sliroth' },
+    });
     const editRequest = requests.find(
       (request) =>
         request.method === 'PATCH' &&
@@ -400,7 +370,7 @@ describe('Discord interactions', () => {
   });
 
   it('lists Twitch subscriptions with the current channel first', async () => {
-    mockTwitchApi(TWITCH_LIST_BROADCASTER_ID, 'sliroth');
+    const requests = mockTwitchApi(TWITCH_LIST_BROADCASTER_ID, 'sliroth');
     const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(
       TWITCH_LIST_BROADCASTER_ID,
     );
@@ -416,6 +386,7 @@ describe('Discord interactions', () => {
       guildId: GUILD_ID,
       channelId: CURRENT_CHANNEL_ID,
     });
+    const requestCount = requests.length;
 
     const response = await handleDiscordInteraction(
       await createSignedRequest(createTwitchListInteraction()),
@@ -430,6 +401,31 @@ describe('Discord interactions', () => {
     expect(content.indexOf(CURRENT_CHANNEL_ID)).toBeLessThan(
       content.indexOf(OTHER_CHANNEL_ID),
     );
+    expect(requests).toHaveLength(requestCount);
+  });
+
+  it('ignores a Twitch subscription without metadata', async () => {
+    const key = `guild:${GUILD_ID}:channel:${CURRENT_CHANNEL_ID}:twitch:${TWITCH_LIST_BROADCASTER_ID}`;
+    await env.TWITCH_SUBSCRIPTIONS_INDEX.put(key, '1');
+    const warnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    const response = await handleDiscordInteraction(
+      await createSignedRequest(createTwitchListInteraction()),
+      env,
+      createExecutionContext(),
+    );
+
+    expect(await interactionContent(response)).not.toContain(
+      TWITCH_LIST_BROADCASTER_ID,
+    );
+    expect(warnSpy).toHaveBeenCalledWith({
+      event: 'twitch_subscription_index_key_invalid',
+      key,
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('removes every Twitch notification from the current channel', async () => {

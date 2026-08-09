@@ -21,7 +21,11 @@ import {
   verifyYouTubeWebSubSignature,
 } from '../youtube/websub';
 import { YouTubeDiscordMessage } from './discord-message';
-import { channelSubscriptionKey, guildSubscriptionKey } from './index';
+import {
+  channelSubscriptionKey,
+  guildSubscriptionKey,
+  type YouTubeSubscriptionMetadata,
+} from './index';
 
 const SUBSCRIPTION_INDEX_VALUE = '1';
 const WEBSUB_SECRET_KEY = 'websub:secret';
@@ -40,6 +44,7 @@ export const YouTubeSubscriberRegistration = z.object(
   {
     guildId: DiscordSnowflake,
     channelId: DiscordSnowflake,
+    channelTitle: nonBlankStringSchema('YouTube channel title'),
     message: nonBlankStringSchema('Subscriber message').optional(),
     ping: z
       .union([z.literal('everyone'), z.literal('here'), DiscordSnowflake])
@@ -100,6 +105,9 @@ export class YouTubeSubscription extends DurableObject<Env> {
       throw new Error('Failed to store YouTube subscriber');
     }
 
+    const metadata: YouTubeSubscriptionMetadata = {
+      title: validated.channelTitle,
+    };
     await Promise.all([
       this.env.YOUTUBE_SUBSCRIPTIONS_INDEX.put(
         guildSubscriptionKey(
@@ -108,6 +116,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
           youtubeChannelId,
         ),
         SUBSCRIPTION_INDEX_VALUE,
+        { metadata },
       ),
       this.env.YOUTUBE_SUBSCRIPTIONS_INDEX.put(
         channelSubscriptionKey(subscriber.channelId, youtubeChannelId),
