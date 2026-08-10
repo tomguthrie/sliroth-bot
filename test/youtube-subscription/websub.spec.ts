@@ -18,6 +18,7 @@ import type { YouTubeSubscription } from '../../src/youtube-subscription/durable
 const GUILD_ID = '123456789012345678';
 const CHANNEL_ID = '234567890123456789';
 const OTHER_CHANNEL_ID = '345678901234567890';
+const CHANNEL_TITLE = 'YouTube channel';
 const WEBSUB_SECRET_KEY = 'websub:secret';
 const WEBSUB_STATUS_KEY = 'websub:status';
 
@@ -44,10 +45,12 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
     await subscription.addSubscriber({
       guildId: GUILD_ID,
       channelId: CHANNEL_ID,
+      channelTitle: CHANNEL_TITLE,
     });
     await subscription.addSubscriber({
       guildId: GUILD_ID,
       channelId: OTHER_CHANNEL_ID,
+      channelTitle: CHANNEL_TITLE,
     });
 
     expect(fetchSpy).toHaveBeenCalledOnce();
@@ -69,6 +72,7 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
     await subscription.addSubscriber({
       guildId: GUILD_ID,
       channelId: CHANNEL_ID,
+      channelTitle: CHANNEL_TITLE,
     });
 
     const beforeConfirmation = Date.now();
@@ -100,10 +104,12 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
     await subscription.addSubscriber({
       guildId: GUILD_ID,
       channelId: CHANNEL_ID,
+      channelTitle: CHANNEL_TITLE,
     });
     await subscription.addSubscriber({
       guildId: GUILD_ID,
       channelId: OTHER_CHANNEL_ID,
+      channelTitle: CHANNEL_TITLE,
     });
 
     await subscription.removeSubscriber(CHANNEL_ID);
@@ -141,6 +147,7 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
         instance.addSubscriber({
           guildId: GUILD_ID,
           channelId: CHANNEL_ID,
+          channelTitle: CHANNEL_TITLE,
         }),
       ),
     ).rejects.toThrow('YouTube WebSub hub returned HTTP 503');
@@ -163,6 +170,7 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
     await subscription.addSubscriber({
       guildId: GUILD_ID,
       channelId: CHANNEL_ID,
+      channelTitle: CHANNEL_TITLE,
     });
 
     await expect(
@@ -188,6 +196,7 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
     await subscription.addSubscriber({
       guildId: GUILD_ID,
       channelId: CHANNEL_ID,
+      channelTitle: CHANNEL_TITLE,
     });
 
     await expect(

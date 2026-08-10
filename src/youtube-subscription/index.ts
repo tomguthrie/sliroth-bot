@@ -1,11 +1,21 @@
+import * as z from 'zod';
+
 import { DiscordSnowflake } from '../discord/snowflake';
 
-const YOUTUBE_TITLE_CACHE_PREFIX = 'youtube:';
-const YOUTUBE_TITLE_CACHE_SUFFIX = ':title';
+const NonBlankString = z.string().refine((value) => value.trim() !== '');
+
+export const YouTubeSubscriptionMetadata = z.object({
+  title: NonBlankString,
+});
+
+export type YouTubeSubscriptionMetadata = z.infer<
+  typeof YouTubeSubscriptionMetadata
+>;
 
 export interface GuildYouTubeSubscription {
   discordChannelId: string;
   youtubeChannelId: string;
+  youtubeChannelTitle: string;
 }
 
 /** Builds the guild-scoped lookup key for a YouTube subscription. */
@@ -32,26 +42,23 @@ export async function listGuildYouTubeSubscriptions(
 ): Promise<GuildYouTubeSubscription[]> {
   DiscordSnowflake.parse(guildId);
   const prefix = `guild:${guildId}:channel:`;
-  const subscriptions: GuildYouTubeSubscription[] = [];
-  let cursor: string | undefined;
+  const page = await index.list<YouTubeSubscriptionMetadata>({ prefix });
 
-  do {
-    const page = await index.list({ prefix, cursor });
-    for (const key of page.keys) {
-      const subscription = parseGuildSubscriptionKey(key.name, prefix);
-      if (subscription === undefined) {
-        console.warn({
-          event: 'youtube_subscription_index_key_invalid',
-          key: key.name,
-        });
-        continue;
-      }
-      subscriptions.push(subscription);
+  return page.keys.flatMap((key) => {
+    const subscription = parseGuildSubscriptionKey(
+      key.name,
+      prefix,
+      key.metadata,
+    );
+    if (subscription === undefined) {
+      console.warn({
+        event: 'youtube_subscription_index_key_invalid',
+        key: key.name,
+      });
+      return [];
     }
-    cursor = page.list_complete ? undefined : page.cursor;
-  } while (cursor !== undefined);
-
-  return subscriptions;
+    return [subscription];
+  });
 }
 
 /** Lists the YouTube channels configured for a Discord channel. */
@@ -76,47 +83,10 @@ export async function listChannelYouTubeSubscriptions(
   });
 }
 
-/** Gets cached YouTube channel titles from KV. */
-export async function getCachedYouTubeChannelTitles(
-  index: KVNamespace,
-  channelIds: readonly string[],
-): Promise<Map<string, string>> {
-  const uniqueChannelIds = Array.from(new Set(channelIds));
-  const values = await index.get(uniqueChannelIds.map(youtubeChannelTitleKey));
-  const titles = new Map<string, string>();
-
-  for (const channelId of uniqueChannelIds) {
-    const value = values.get(youtubeChannelTitleKey(channelId));
-    if (typeof value === 'string' && value.trim() !== '') {
-      titles.set(channelId, value);
-    }
-  }
-
-  return titles;
-}
-
-/** Stores a YouTube channel title without expiry. */
-export function cacheYouTubeChannelTitle(
-  index: KVNamespace,
-  channelId: string,
-  title: string,
-): Promise<void> {
-  if (title.trim() === '') {
-    throw new Error('YouTube channel title cannot be empty');
-  }
-  return index.put(youtubeChannelTitleKey(channelId), title);
-}
-
-function youtubeChannelTitleKey(channelId: string): string {
-  if (channelId.trim() === '') {
-    throw new Error('YouTube channel ID cannot be empty');
-  }
-  return `${YOUTUBE_TITLE_CACHE_PREFIX}${channelId}${YOUTUBE_TITLE_CACHE_SUFFIX}`;
-}
-
 function parseGuildSubscriptionKey(
   key: string,
   prefix: string,
+  metadata: unknown,
 ): GuildYouTubeSubscription | undefined {
   if (!key.startsWith(prefix)) {
     return undefined;
@@ -131,13 +101,19 @@ function parseGuildSubscriptionKey(
 
   const discordChannelId = suffix.slice(0, separatorOffset);
   const youtubeChannelId = suffix.slice(separatorOffset + separator.length);
+  const parsedMetadata = YouTubeSubscriptionMetadata.safeParse(metadata);
   if (
     !DiscordSnowflake.safeParse(discordChannelId).success ||
     youtubeChannelId === '' ||
-    youtubeChannelId.includes(':')
+    youtubeChannelId.includes(':') ||
+    !parsedMetadata.success
   ) {
     return undefined;
   }
 
-  return { discordChannelId, youtubeChannelId };
+  return {
+    discordChannelId,
+    youtubeChannelId,
+    youtubeChannelTitle: parsedMetadata.data.title,
+  };
 }

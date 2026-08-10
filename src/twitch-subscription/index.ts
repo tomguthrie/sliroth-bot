@@ -1,8 +1,30 @@
+import * as z from 'zod';
+
 import { DiscordSnowflake } from '../discord/snowflake';
+
+const NonBlankString = z.string().refine((value) => value.trim() !== '');
+
+export const TwitchBroadcasterId = z
+  .string()
+  .regex(/^\d+$/)
+  .brand<'TwitchBroadcasterId'>();
+
+export type TwitchBroadcasterId = z.infer<typeof TwitchBroadcasterId>;
+
+export const TwitchSubscriptionMetadata = z.object({
+  login: NonBlankString,
+  displayName: NonBlankString,
+});
+
+export type TwitchSubscriptionMetadata = z.infer<
+  typeof TwitchSubscriptionMetadata
+>;
 
 export interface GuildTwitchSubscription {
   discordChannelId: string;
-  twitchBroadcasterId: string;
+  twitchBroadcasterId: TwitchBroadcasterId;
+  twitchBroadcasterLogin: string;
+  twitchBroadcasterDisplayName: string;
 }
 
 /** Builds the guild-scoped lookup key for a Twitch subscription. */
@@ -29,54 +51,46 @@ export async function listGuildTwitchSubscriptions(
 ): Promise<GuildTwitchSubscription[]> {
   DiscordSnowflake.parse(guildId);
   const prefix = `guild:${guildId}:channel:`;
-  const subscriptions: GuildTwitchSubscription[] = [];
-  let cursor: string | undefined;
+  const page = await index.list<TwitchSubscriptionMetadata>({ prefix });
 
-  do {
-    const page = await index.list({ prefix, cursor });
-    for (const key of page.keys) {
-      const subscription = parseGuildTwitchSubscriptionKey(key.name, prefix);
-      if (subscription === undefined) {
-        logInvalidIndexKey(key.name);
-        continue;
-      }
-      subscriptions.push(subscription);
+  return page.keys.flatMap((key) => {
+    const subscription = parseGuildTwitchSubscriptionKey(
+      key.name,
+      prefix,
+      key.metadata,
+    );
+    if (subscription === undefined) {
+      logInvalidIndexKey(key.name);
+      return [];
     }
-    cursor = page.list_complete ? undefined : page.cursor;
-  } while (cursor !== undefined);
-
-  return subscriptions;
+    return [subscription];
+  });
 }
 
 /** Lists the Twitch broadcasters configured for a Discord channel. */
 export async function listChannelTwitchSubscriptions(
   index: KVNamespace,
   channelId: string,
-): Promise<string[]> {
+): Promise<TwitchBroadcasterId[]> {
   DiscordSnowflake.parse(channelId);
   const prefix = `channel:${channelId}:twitch:`;
-  const broadcasterIds: string[] = [];
-  let cursor: string | undefined;
+  const page = await index.list({ prefix });
 
-  do {
-    const page = await index.list({ prefix, cursor });
-    for (const key of page.keys) {
-      const broadcasterId = key.name.slice(prefix.length);
-      if (!isTwitchBroadcasterId(broadcasterId)) {
-        logInvalidIndexKey(key.name);
-        continue;
-      }
-      broadcasterIds.push(broadcasterId);
+  return page.keys.flatMap((key) => {
+    const broadcasterId = key.name.slice(prefix.length);
+    const result = TwitchBroadcasterId.safeParse(broadcasterId);
+    if (!result.success) {
+      logInvalidIndexKey(key.name);
+      return [];
     }
-    cursor = page.list_complete ? undefined : page.cursor;
-  } while (cursor !== undefined);
-
-  return broadcasterIds;
+    return [result.data];
+  });
 }
 
 function parseGuildTwitchSubscriptionKey(
   key: string,
   prefix: string,
+  metadata: unknown,
 ): GuildTwitchSubscription | undefined {
   if (!key.startsWith(prefix)) return undefined;
 
@@ -87,18 +101,23 @@ function parseGuildTwitchSubscriptionKey(
 
   const discordChannelId = suffix.slice(0, separatorOffset);
   const twitchBroadcasterId = suffix.slice(separatorOffset + separator.length);
+  const parsedBroadcasterId =
+    TwitchBroadcasterId.safeParse(twitchBroadcasterId);
+  const parsedMetadata = TwitchSubscriptionMetadata.safeParse(metadata);
   if (
     !DiscordSnowflake.safeParse(discordChannelId).success ||
-    !isTwitchBroadcasterId(twitchBroadcasterId)
+    !parsedBroadcasterId.success ||
+    !parsedMetadata.success
   ) {
     return undefined;
   }
 
-  return { discordChannelId, twitchBroadcasterId };
-}
-
-function isTwitchBroadcasterId(value: string): boolean {
-  return /^\d+$/.test(value);
+  return {
+    discordChannelId,
+    twitchBroadcasterId: parsedBroadcasterId.data,
+    twitchBroadcasterLogin: parsedMetadata.data.login,
+    twitchBroadcasterDisplayName: parsedMetadata.data.displayName,
+  };
 }
 
 function logInvalidIndexKey(key: string): void {

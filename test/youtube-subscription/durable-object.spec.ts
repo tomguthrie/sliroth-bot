@@ -184,6 +184,7 @@ describe('YouTubeSubscription', () => {
       subscription.addSubscriber({
         guildId: GUILD_ID,
         channelId: CHANNEL_ID,
+        channelTitle: 'YouTube channel',
         message: 'A custom message',
         ping: ROLE_ID,
       }),
@@ -199,15 +200,18 @@ describe('YouTubeSubscription', () => {
       }),
     ]);
     await expect(
-      env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(
+      env.YOUTUBE_SUBSCRIPTIONS_INDEX.getWithMetadata(
         guildSubscriptionKey(GUILD_ID, CHANNEL_ID, youtubeChannelId),
       ),
-    ).resolves.toBe('1');
+    ).resolves.toMatchObject({
+      value: '1',
+      metadata: { title: 'YouTube channel' },
+    });
     await expect(
-      env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(
+      env.YOUTUBE_SUBSCRIPTIONS_INDEX.getWithMetadata(
         channelSubscriptionKey(CHANNEL_ID, youtubeChannelId),
       ),
-    ).resolves.toBe('1');
+    ).resolves.toMatchObject({ value: '1', metadata: null });
   });
 
   it('upserts subscriber settings without changing its guild', async () => {
@@ -217,12 +221,14 @@ describe('YouTubeSubscription', () => {
     await subscription.addSubscriber({
       guildId: GUILD_ID,
       channelId: CHANNEL_ID,
+      channelTitle: 'Original title',
       message: 'A custom message',
       ping: 'everyone',
     });
     await subscription.addSubscriber({
       guildId: OTHER_GUILD_ID,
       channelId: CHANNEL_ID,
+      channelTitle: 'Updated title',
     });
 
     expect(await readSubscribers(subscription)).toEqual([
@@ -234,10 +240,13 @@ describe('YouTubeSubscription', () => {
       }),
     ]);
     await expect(
-      env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(
+      env.YOUTUBE_SUBSCRIPTIONS_INDEX.getWithMetadata(
         guildSubscriptionKey(GUILD_ID, CHANNEL_ID, youtubeChannelId),
       ),
-    ).resolves.toBe('1');
+    ).resolves.toMatchObject({
+      value: '1',
+      metadata: { title: 'Updated title' },
+    });
     await expect(
       env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(
         guildSubscriptionKey(OTHER_GUILD_ID, CHANNEL_ID, youtubeChannelId),
@@ -263,6 +272,7 @@ describe('YouTubeSubscription', () => {
     await subscription.addSubscriber({
       guildId: GUILD_ID,
       channelId: CHANNEL_ID,
+      channelTitle: 'YouTube channel',
     });
     await expect(
       subscription.removeSubscriber(CHANNEL_ID),
@@ -290,6 +300,7 @@ describe('YouTubeSubscription', () => {
         instance.addSubscriber({
           guildId: 'not-a-guild',
           channelId: CHANNEL_ID,
+          channelTitle: 'YouTube channel',
         }),
       ),
     ).rejects.toThrow();
@@ -298,6 +309,16 @@ describe('YouTubeSubscription', () => {
         instance.addSubscriber({
           guildId: GUILD_ID,
           channelId: CHANNEL_ID,
+          channelTitle: '   ',
+        }),
+      ),
+    ).rejects.toThrow('YouTube channel title cannot be empty');
+    await expect(
+      runInDurableObject(subscription, (instance: YouTubeSubscription) =>
+        instance.addSubscriber({
+          guildId: GUILD_ID,
+          channelId: CHANNEL_ID,
+          channelTitle: 'YouTube channel',
           message: '   ',
         }),
       ),
@@ -307,6 +328,7 @@ describe('YouTubeSubscription', () => {
         instance.addSubscriber({
           guildId: GUILD_ID,
           channelId: CHANNEL_ID,
+          channelTitle: 'YouTube channel',
           ping: 'not-a-role',
         }),
       ),
