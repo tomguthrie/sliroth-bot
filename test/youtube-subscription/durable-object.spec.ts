@@ -5,6 +5,7 @@ import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { subscribers, videos } from '../../src/db/youtube-subscription/schema';
+import { YouTubeChannelId } from '../../src/youtube/data';
 import type { YouTubeSubscription } from '../../src/youtube-subscription/durable-object';
 
 const GUILD_ID = '123456789012345678';
@@ -177,7 +178,7 @@ describe('YouTubeSubscription', () => {
   );
 
   it('adds a subscriber and creates both global lookup indexes', async () => {
-    const youtubeChannelId = `youtube-${crypto.randomUUID()}`;
+    const youtubeChannelId = randomYouTubeChannelId();
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
 
     await expect(
@@ -215,7 +216,7 @@ describe('YouTubeSubscription', () => {
   });
 
   it('upserts subscriber settings without changing its guild', async () => {
-    const youtubeChannelId = `youtube-${crypto.randomUUID()}`;
+    const youtubeChannelId = randomYouTubeChannelId();
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
 
     await subscription.addSubscriber({
@@ -260,7 +261,7 @@ describe('YouTubeSubscription', () => {
   });
 
   it('removes a subscriber and both global lookup indexes', async () => {
-    const youtubeChannelId = `youtube-${crypto.randomUUID()}`;
+    const youtubeChannelId = randomYouTubeChannelId();
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
     const guildKey = guildSubscriptionKey(
       GUILD_ID,
@@ -312,7 +313,7 @@ describe('YouTubeSubscription', () => {
           channelTitle: '   ',
         }),
       ),
-    ).rejects.toThrow('YouTube channel title cannot be empty');
+    ).rejects.toThrow();
     await expect(
       runInDurableObject(subscription, (instance: YouTubeSubscription) =>
         instance.addSubscriber({
@@ -322,7 +323,7 @@ describe('YouTubeSubscription', () => {
           message: '   ',
         }),
       ),
-    ).rejects.toThrow('Subscriber message cannot be empty');
+    ).rejects.toThrow();
     await expect(
       runInDurableObject(subscription, (instance: YouTubeSubscription) =>
         instance.addSubscriber({
@@ -342,7 +343,7 @@ describe('YouTubeSubscription', () => {
   });
 
   it('records a new video and queues subscriber messages', async () => {
-    const youtubeChannelId = `youtube-${crypto.randomUUID()}`;
+    const youtubeChannelId = randomYouTubeChannelId();
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
 
     await runInDurableObject(subscription, async (_instance, state) => {
@@ -384,7 +385,7 @@ describe('YouTubeSubscription', () => {
   });
 
   it('records a video without calling Queue when there are no subscribers', async () => {
-    const youtubeChannelId = `youtube-${crypto.randomUUID()}`;
+    const youtubeChannelId = randomYouTubeChannelId();
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
 
     await expect(
@@ -404,7 +405,7 @@ describe('YouTubeSubscription', () => {
   });
 
   it('does not queue a video that has already been recorded', async () => {
-    const youtubeChannelId = `youtube-${crypto.randomUUID()}`;
+    const youtubeChannelId = randomYouTubeChannelId();
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
     const notification = {
       videoId: 'duplicate-video',
@@ -427,7 +428,7 @@ describe('YouTubeSubscription', () => {
   });
 
   it('queues concurrent notifications for the same video only once', async () => {
-    const youtubeChannelId = `youtube-${crypto.randomUUID()}`;
+    const youtubeChannelId = randomYouTubeChannelId();
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
     const notification = {
       videoId: 'concurrent-video',
@@ -461,7 +462,7 @@ describe('YouTubeSubscription', () => {
   });
 
   it('releases a video claim when queueing fails', async () => {
-    const youtubeChannelId = `youtube-${crypto.randomUUID()}`;
+    const youtubeChannelId = randomYouTubeChannelId();
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
     const notification = {
       videoId: 'retryable-video',
@@ -498,22 +499,20 @@ describe('YouTubeSubscription', () => {
   });
 
   it('rejects mismatched channel IDs and invalid timestamps', async () => {
-    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
-      `youtube-${crypto.randomUUID()}`,
-    );
+    const youtubeChannelId = randomYouTubeChannelId();
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
 
     await expect(
       runInDurableObject(subscription, (instance: YouTubeSubscription) =>
         instance.recordVideo({
           videoId: 'mismatched-channel',
-          channelId: 'another-channel',
+          channelId: YouTubeChannelId.parse('UCaaaaaaaaaaaaaaaaaaaaaa'),
           title: 'A YouTube video',
           publishedAt: '2026-08-07T12:34:56.789Z',
         }),
       ),
     ).rejects.toThrow('does not match Durable Object');
 
-    const youtubeChannelId = `youtube-${crypto.randomUUID()}`;
     const namedSubscription =
       env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
     await expect(
@@ -525,9 +524,15 @@ describe('YouTubeSubscription', () => {
           publishedAt: 'not-a-date',
         }),
       ),
-    ).rejects.toThrow('must be a valid date');
+    ).rejects.toThrow();
   });
 });
+
+function randomYouTubeChannelId(): YouTubeChannelId {
+  return YouTubeChannelId.parse(
+    `UC${crypto.randomUUID().replaceAll('-', '').slice(0, 22)}`,
+  );
+}
 
 function readSubscribers(
   subscription: DurableObjectStub<YouTubeSubscription>,

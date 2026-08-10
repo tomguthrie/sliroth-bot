@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { parseYouTubeVideoNotifications } from '../../src/youtube/notification';
 
+const CHANNEL_ID = 'UC_x5XG1OV2P6uZZ5FSM9Ttw';
+
 describe('parseYouTubeVideoNotifications', () => {
   it('parses a YouTube Atom feed entry', () => {
     const xml = `
@@ -12,7 +14,7 @@ describe('parseYouTubeVideoNotifications', () => {
       >
         <entry>
           <yt:videoId>video-123</yt:videoId>
-          <yt:channelId>channel-456</yt:channelId>
+          <yt:channelId>${CHANNEL_ID}</yt:channelId>
           <title>Sliroth &amp; Friends</title>
           <published>2026-08-06T12:34:56+00:00</published>
         </entry>
@@ -22,7 +24,7 @@ describe('parseYouTubeVideoNotifications', () => {
     expect(parseYouTubeVideoNotifications(xml)).toEqual([
       {
         videoId: 'video-123',
-        channelId: 'channel-456',
+        channelId: CHANNEL_ID,
         title: 'Sliroth & Friends',
         publishedAt: '2026-08-06T12:34:56+00:00',
       },
@@ -34,13 +36,13 @@ describe('parseYouTubeVideoNotifications', () => {
       <feed xmlns:yt="http://www.youtube.com/xml/schemas/2015">
         <entry>
           <yt:videoId>video-1</yt:videoId>
-          <yt:channelId>channel-1</yt:channelId>
+          <yt:channelId>${CHANNEL_ID}</yt:channelId>
           <title>First video</title>
           <published>2026-08-06T10:00:00+00:00</published>
         </entry>
         <entry>
           <yt:videoId>video-2</yt:videoId>
-          <yt:channelId>channel-1</yt:channelId>
+          <yt:channelId>${CHANNEL_ID}</yt:channelId>
           <title>Second video</title>
           <published>2026-08-06T11:00:00+00:00</published>
         </entry>
@@ -50,13 +52,13 @@ describe('parseYouTubeVideoNotifications', () => {
     expect(parseYouTubeVideoNotifications(xml)).toEqual([
       {
         videoId: 'video-1',
-        channelId: 'channel-1',
+        channelId: CHANNEL_ID,
         title: 'First video',
         publishedAt: '2026-08-06T10:00:00+00:00',
       },
       {
         videoId: 'video-2',
-        channelId: 'channel-1',
+        channelId: CHANNEL_ID,
         title: 'Second video',
         publishedAt: '2026-08-06T11:00:00+00:00',
       },
@@ -78,16 +80,14 @@ describe('parseYouTubeVideoNotifications', () => {
     const xml = `
       <feed xmlns:yt="http://www.youtube.com/xml/schemas/2015">
         <entry>
-          <yt:channelId>channel-456</yt:channelId>
+          <yt:channelId>${CHANNEL_ID}</yt:channelId>
           <title>Missing video ID</title>
           <published>2026-08-06T12:34:56+00:00</published>
         </entry>
       </feed>
     `;
 
-    expect(() => parseYouTubeVideoNotifications(xml)).toThrow(
-      'YouTube notification entry requires a non-empty videoId',
-    );
+    expect(() => parseYouTubeVideoNotifications(xml)).toThrow();
   });
 
   it('rejects XML without an Atom feed', () => {

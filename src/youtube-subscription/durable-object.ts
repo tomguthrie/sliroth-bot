@@ -10,14 +10,16 @@ import { subscribers, videos } from '../db/youtube-subscription/schema';
 import { DiscordSnowflake } from '../discord/snowflake';
 import { toLoggableError } from '../log';
 import { enqueueDiscordMessages } from '../queue/discord-message';
+import { YouTubeChannelId, YouTubeWebSubSecret } from '../youtube/data';
 import {
   parseYouTubeVideoNotifications,
-  type YouTubeVideoNotification,
+  YouTubeVideoNotification,
 } from '../youtube/notification';
 import {
   createYouTubeTopicUrl,
   createYouTubeWebSubRequest,
-  type WebSubMode,
+  WebSubLeaseSeconds,
+  WebSubMode,
   verifyYouTubeWebSubSignature,
 } from '../youtube/websub';
 import { YouTubeDiscordMessage } from './discord-message';
@@ -33,25 +35,28 @@ const WEBSUB_STATUS_KEY = 'websub:status';
 const WEBSUB_RETRY_DELAY_MS = 5 * 60 * 1000;
 const WEBSUB_RENEWAL_FRACTION = 0.8;
 
-type WebSubStatus = 'subscribing' | 'subscribed' | 'unsubscribing';
+const WebSubStatus = z.enum(['subscribing', 'subscribed', 'unsubscribing']);
+type WebSubStatus = z.infer<typeof WebSubStatus>;
 
-interface WebSubState {
-  secret?: string;
-  status?: WebSubStatus;
-}
+const WebSubState = z
+  .object({
+    secret: YouTubeWebSubSecret.optional(),
+    status: WebSubStatus.optional(),
+  })
+  .refine(
+    ({ secret, status }) => (secret === undefined) === (status === undefined),
+  );
+type WebSubState = z.infer<typeof WebSubState>;
 
-export const YouTubeSubscriberRegistration = z.object(
-  {
-    guildId: DiscordSnowflake,
-    channelId: DiscordSnowflake,
-    channelTitle: nonBlankStringSchema('YouTube channel title'),
-    message: nonBlankStringSchema('Subscriber message').optional(),
-    ping: z
-      .union([z.literal('everyone'), z.literal('here'), DiscordSnowflake])
-      .optional(),
-  },
-  { error: 'YouTube subscriber registration must be an object' },
-);
+export const YouTubeSubscriberRegistration = z.object({
+  guildId: DiscordSnowflake,
+  channelId: DiscordSnowflake,
+  channelTitle: z.string().trim().min(1),
+  message: z.string().trim().min(1).optional(),
+  ping: z
+    .union([z.literal('everyone'), z.literal('here'), DiscordSnowflake])
+    .optional(),
+});
 
 export type YouTubeSubscriberRegistration = z.infer<
   typeof YouTubeSubscriberRegistration
@@ -78,7 +83,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
   async addSubscriber(
     registration: YouTubeSubscriberRegistrationInput,
   ): Promise<void> {
-    const validated = validateSubscriberRegistration(registration);
+    const validated = YouTubeSubscriberRegistration.parse(registration);
     const youtubeChannelId = this.requireYouTubeChannelId();
     const [subscriber] = await this.db
       .insert(subscribers)
@@ -129,12 +134,12 @@ export class YouTubeSubscription extends DurableObject<Env> {
 
   /** Removes a Discord subscriber and its global lookup indexes. */
   async removeSubscriber(channelId: string): Promise<void> {
-    DiscordSnowflake.parse(channelId);
+    const validatedChannelId = DiscordSnowflake.parse(channelId);
     const youtubeChannelId = this.requireYouTubeChannelId();
     const [subscriber] = await this.db
       .select({ guildId: subscribers.guildId })
       .from(subscribers)
-      .where(eq(subscribers.channelId, channelId))
+      .where(eq(subscribers.channelId, validatedChannelId))
       .limit(1);
 
     if (subscriber === undefined) {
@@ -143,13 +148,17 @@ export class YouTubeSubscription extends DurableObject<Env> {
 
     await this.db
       .delete(subscribers)
-      .where(eq(subscribers.channelId, channelId));
+      .where(eq(subscribers.channelId, validatedChannelId));
     await Promise.all([
       this.env.YOUTUBE_SUBSCRIPTIONS_INDEX.delete(
-        guildSubscriptionKey(subscriber.guildId, channelId, youtubeChannelId),
+        guildSubscriptionKey(
+          subscriber.guildId,
+          validatedChannelId,
+          youtubeChannelId,
+        ),
       ),
       this.env.YOUTUBE_SUBSCRIPTIONS_INDEX.delete(
-        channelSubscriptionKey(channelId, youtubeChannelId),
+        channelSubscriptionKey(validatedChannelId, youtubeChannelId),
       ),
     ]);
 
@@ -158,10 +167,11 @@ export class YouTubeSubscription extends DurableObject<Env> {
 
   /** Confirms a pending WebSub subscription or unsubscription. */
   async confirmWebSubIntent(
-    mode: WebSubMode,
+    mode: z.input<typeof WebSubMode>,
     topic: string,
     leaseSeconds?: number,
   ): Promise<boolean> {
+    const validatedMode = WebSubMode.parse(mode);
     const youtubeChannelId = this.requireYouTubeChannelId();
     if (topic !== createYouTubeTopicUrl(youtubeChannelId)) {
       return false;
@@ -169,26 +179,23 @@ export class YouTubeSubscription extends DurableObject<Env> {
 
     const state = await this.readWebSubState();
     const expectedStatus =
-      mode === 'subscribe' ? 'subscribing' : 'unsubscribing';
+      validatedMode === 'subscribe' ? 'subscribing' : 'unsubscribing';
     if (state.status !== expectedStatus || state.secret === undefined) {
       return false;
     }
 
-    if (mode === 'unsubscribe') {
+    if (validatedMode === 'unsubscribe') {
       await this.clearWebSubState();
       return true;
     }
 
-    if (
-      leaseSeconds === undefined ||
-      !Number.isSafeInteger(leaseSeconds) ||
-      leaseSeconds <= 0
-    ) {
+    const validatedLeaseSeconds = WebSubLeaseSeconds.safeParse(leaseSeconds);
+    if (!validatedLeaseSeconds.success) {
       return false;
     }
 
     const renewalDelayMs = Math.floor(
-      leaseSeconds * 1000 * WEBSUB_RENEWAL_FRACTION,
+      validatedLeaseSeconds.data * 1000 * WEBSUB_RENEWAL_FRACTION,
     );
     if (!Number.isSafeInteger(renewalDelayMs)) {
       return false;
@@ -274,13 +281,22 @@ export class YouTubeSubscription extends DurableObject<Env> {
   }
 
   /** Claims a new video and queues notifications for all subscribers. */
-  async recordVideo(notification: YouTubeVideoNotification): Promise<void> {
-    const publishedAt = this.validateAndParseNotification(notification);
+  async recordVideo(
+    notification: z.input<typeof YouTubeVideoNotification>,
+  ): Promise<void> {
+    const validated = YouTubeVideoNotification.parse(notification);
+    const youtubeChannelId = this.requireYouTubeChannelId();
+    if (validated.channelId !== youtubeChannelId) {
+      throw new Error(
+        `YouTube channel ID ${validated.channelId} does not match Durable Object ${youtubeChannelId}`,
+      );
+    }
+    const publishedAt = new Date(validated.publishedAt);
     const [claim] = await this.db
       .insert(videos)
       .values({
-        id: notification.videoId,
-        title: notification.title,
+        id: validated.videoId,
+        title: validated.title,
         publishedAt,
       })
       .onConflictDoNothing({ target: videos.id })
@@ -294,39 +310,15 @@ export class YouTubeSubscription extends DurableObject<Env> {
       const subscriberRows = await this.db.select().from(subscribers);
       const deliveries = await Promise.all(
         subscriberRows.map((subscriber) =>
-          YouTubeDiscordMessage.build(notification, subscriber),
+          YouTubeDiscordMessage.build(validated, subscriber),
         ),
       );
 
       await enqueueDiscordMessages(this.env.DISCORD_MESSAGES, deliveries);
     } catch (error) {
-      await this.db.delete(videos).where(eq(videos.id, notification.videoId));
+      await this.db.delete(videos).where(eq(videos.id, validated.videoId));
       throw error;
     }
-  }
-
-  private validateAndParseNotification(
-    notification: YouTubeVideoNotification,
-  ): Date {
-    requireNonEmpty(notification.videoId, 'YouTube video ID');
-    requireNonEmpty(notification.channelId, 'YouTube channel ID');
-    requireNonEmpty(notification.title, 'YouTube video title');
-    requireNonEmpty(notification.publishedAt, 'YouTube published timestamp');
-
-    const objectName = this.requireYouTubeChannelId();
-
-    if (notification.channelId !== objectName) {
-      throw new Error(
-        `YouTube channel ID ${notification.channelId} does not match Durable Object ${objectName}`,
-      );
-    }
-
-    const publishedAt = new Date(notification.publishedAt);
-    if (Number.isNaN(publishedAt.getTime())) {
-      throw new Error('YouTube published timestamp must be a valid date');
-    }
-
-    return publishedAt;
   }
 
   private async ensureWebSubSubscribed(): Promise<void> {
@@ -355,7 +347,10 @@ export class YouTubeSubscription extends DurableObject<Env> {
     await this.requestWebSub('unsubscribe', state.secret);
   }
 
-  private async requestWebSub(mode: WebSubMode, secret: string): Promise<void> {
+  private async requestWebSub(
+    mode: WebSubMode,
+    secret: YouTubeWebSubSecret,
+  ): Promise<void> {
     const status = mode === 'subscribe' ? 'subscribing' : 'unsubscribing';
     await Promise.all([
       this.ctx.storage.put({
@@ -384,21 +379,14 @@ export class YouTubeSubscription extends DurableObject<Env> {
   }
 
   private async readWebSubState(): Promise<WebSubState> {
-    const values = await this.ctx.storage.get<string>([
+    const values = await this.ctx.storage.get<unknown>([
       WEBSUB_SECRET_KEY,
       WEBSUB_STATUS_KEY,
     ]);
-    const secret = values.get(WEBSUB_SECRET_KEY);
-    const status = values.get(WEBSUB_STATUS_KEY);
-
-    if (status !== undefined && !isWebSubStatus(status)) {
-      throw new Error('YouTube WebSub status is invalid');
-    }
-    if ((secret === undefined) !== (status === undefined)) {
-      throw new Error('YouTube WebSub state is incomplete');
-    }
-
-    return { secret, status };
+    return WebSubState.parse({
+      secret: values.get(WEBSUB_SECRET_KEY),
+      status: values.get(WEBSUB_STATUS_KEY),
+    });
   }
 
   private async clearWebSubState(): Promise<void> {
@@ -415,56 +403,20 @@ export class YouTubeSubscription extends DurableObject<Env> {
     return result?.subscriberCount ?? 0;
   }
 
-  private requireYouTubeChannelId(): string {
+  private requireYouTubeChannelId(): YouTubeChannelId {
     const objectName = this.ctx.id.name;
     if (objectName === undefined) {
       throw new Error('YouTubeSubscription requires a named Durable Object');
     }
 
-    return objectName;
+    return YouTubeChannelId.parse(objectName);
   }
 }
 
-function isWebSubStatus(value: string): value is WebSubStatus {
-  return (
-    value === 'subscribing' ||
-    value === 'subscribed' ||
-    value === 'unsubscribing'
-  );
-}
-
-function createSecret(): string {
+function createSecret(): YouTubeWebSubSecret {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join(
-    '',
+  return YouTubeWebSubSecret.parse(
+    Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join(''),
   );
-}
-
-function validateSubscriberRegistration(
-  registration: YouTubeSubscriberRegistrationInput,
-): YouTubeSubscriberRegistration {
-  const result = YouTubeSubscriberRegistration.safeParse(registration);
-  if (!result.success) {
-    throw new Error(
-      result.error.issues[0]?.message ??
-        'YouTube subscriber registration is invalid',
-      { cause: result.error },
-    );
-  }
-  return result.data;
-}
-
-function nonBlankStringSchema(name: string) {
-  const error = `${name} cannot be empty`;
-  return z.string({ error }).refine((value) => value.trim() !== '', { error });
-}
-
-function requireNonEmpty(
-  value: unknown,
-  name: string,
-): asserts value is string {
-  if (typeof value !== 'string' || value.trim() === '') {
-    throw new Error(`${name} cannot be empty`);
-  }
 }
