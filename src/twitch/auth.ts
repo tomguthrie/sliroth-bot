@@ -22,7 +22,6 @@ const TwitchTokenResponse = z
 export async function getValidToken(env: Env): Promise<string> {
   const cached = await readCachedToken(env);
   if (cached !== undefined) {
-    console.info({ event: 'twitch_token_cache_hit' });
     return cached;
   }
 
