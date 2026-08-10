@@ -1,7 +1,42 @@
+import * as z from 'zod';
+
 import type { TwitchApiClient, TwitchUser } from './client';
 import { TwitchBroadcasterId, TwitchLogin } from './data';
 
-const TWITCH_HOSTS = new Set(['twitch.tv', 'www.twitch.tv', 'm.twitch.tv']);
+const TwitchChannelUrl = z
+  .url({
+    protocol: /^https$/,
+    hostname: /^(?:www\.|m\.)?twitch\.tv$/i,
+  })
+  .transform((value) => new URL(value).pathname)
+  .pipe(z.string().regex(/^\/[^/]+(?:\/|$)/))
+  .transform((pathname) => pathname.replace(/^\/([^/]+).*$/, '$1'))
+  .pipe(TwitchLogin);
+
+const TwitchChannelReference = z
+  .string()
+  .trim()
+  .min(1)
+  .pipe(
+    z.union([
+      TwitchBroadcasterId.transform(
+        (value): { type: 'id'; value: TwitchBroadcasterId } => ({
+          type: 'id',
+          value,
+        }),
+      ),
+      TwitchChannelUrl.transform(
+        (value): { type: 'login'; value: TwitchLogin } => ({
+          type: 'login',
+          value,
+        }),
+      ),
+      TwitchLogin.transform((value): { type: 'login'; value: TwitchLogin } => ({
+        type: 'login',
+        value,
+      })),
+    ]),
+  );
 
 export class TwitchChannelResolutionError extends Error {}
 
@@ -10,26 +45,18 @@ export async function resolveTwitchChannel(
   input: string,
   client: Pick<TwitchApiClient, 'getUserById' | 'getUserByLogin'>,
 ): Promise<TwitchUser> {
-  const value = input.trim();
-  if (value === '') {
-    throw new TwitchChannelResolutionError('Twitch channel cannot be empty');
-  }
-
-  let parsed: ReturnType<typeof parseTwitchChannelInput>;
-  try {
-    parsed = parseTwitchChannelInput(value);
-  } catch (error) {
-    if (error instanceof TwitchChannelResolutionError) throw error;
+  const reference = TwitchChannelReference.safeParse(input);
+  if (!reference.success) {
     throw new TwitchChannelResolutionError('Invalid Twitch channel', {
-      cause: error,
+      cause: reference.error,
     });
   }
   let user: TwitchUser | undefined;
   try {
     user =
-      parsed.type === 'id'
-        ? await client.getUserById(parsed.value)
-        : await client.getUserByLogin(parsed.value);
+      reference.data.type === 'id'
+        ? await client.getUserById(reference.data.value)
+        : await client.getUserByLogin(reference.data.value);
   } catch (error) {
     throw new TwitchChannelResolutionError(
       'Twitch channel could not be loaded',
@@ -42,46 +69,4 @@ export async function resolveTwitchChannel(
     throw new TwitchChannelResolutionError('Twitch channel was not found');
   }
   return user;
-}
-
-function parseTwitchChannelInput(input: string):
-  | {
-      type: 'id';
-      value: TwitchBroadcasterId;
-    }
-  | {
-      type: 'login';
-      value: TwitchLogin;
-    } {
-  const broadcasterId = TwitchBroadcasterId.safeParse(input);
-  if (broadcasterId.success) {
-    return { type: 'id', value: broadcasterId.data };
-  }
-
-  if (!input.includes('://')) {
-    return { type: 'login', value: TwitchLogin.parse(input) };
-  }
-
-  let url: URL;
-  try {
-    url = new URL(input);
-  } catch (error) {
-    throw new TwitchChannelResolutionError('Invalid Twitch URL', {
-      cause: error,
-    });
-  }
-  if (
-    url.protocol !== 'https:' ||
-    !TWITCH_HOSTS.has(url.hostname.toLowerCase())
-  ) {
-    throw new TwitchChannelResolutionError('URL must be a Twitch URL');
-  }
-
-  const login = url.pathname.split('/').find((segment) => segment !== '');
-  if (login === undefined) {
-    throw new TwitchChannelResolutionError(
-      'URL must identify a Twitch channel',
-    );
-  }
-  return { type: 'login', value: TwitchLogin.parse(login) };
 }
