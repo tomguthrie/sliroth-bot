@@ -8,13 +8,14 @@ import {
   streams,
   twitchSubscribers,
 } from '../../src/db/twitch-subscription/schema';
+import { DiscordSnowflake } from '../../src/discord/snowflake';
 import type { DiscordMessageDelivery } from '../../src/queue/discord-message';
 import { DISCORD_RECEIPT_TWITCH_STREAM } from '../../src/queue/discord-message';
 
 const BROADCASTER_ID = '123456789012345678';
 const GUILD_ID = '234567890123456789';
-const CHANNEL_ID = '345678901234567890';
-const MESSAGE_ID = '456789012345678901';
+const CHANNEL_ID = DiscordSnowflake.parse('345678901234567890');
+const MESSAGE_ID = DiscordSnowflake.parse('456789012345678901');
 
 beforeEach(async () => {
   await env.TOKEN_STORE.delete('twitch');

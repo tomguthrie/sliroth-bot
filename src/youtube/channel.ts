@@ -1,4 +1,5 @@
 import { XMLParser } from 'fast-xml-parser';
+import * as z from 'zod';
 
 const YOUTUBE_CHANNEL_FEED_URL = 'https://www.youtube.com/feeds/videos.xml';
 const YOUTUBE_CHANNEL_ID = /^UC[A-Za-z0-9_-]{22}$/;
@@ -12,6 +13,11 @@ const parser = new XMLParser({
   removeNSPrefix: true,
   parseTagValue: false,
   trimValues: true,
+});
+
+const UnknownRecord = z.record(z.string(), z.unknown());
+const YouTubeChannelFeed = z.object({
+  title: z.string().refine((value) => value.trim() !== ''),
 });
 
 /** Builds the readable channel feed URL, not the WebSub topic URL. */
@@ -37,16 +43,21 @@ export async function fetchYouTubeChannelTitle(
     throw new Error(`YouTube channel feed returned HTTP ${response.status}`);
   }
 
-  const parsed: unknown = parser.parse(await response.text());
-  if (!isRecord(parsed) || !isRecord(parsed.feed)) {
+  const documentResult = UnknownRecord.safeParse(
+    parser.parse(await response.text()),
+  );
+  const feedResult = UnknownRecord.safeParse(
+    documentResult.success ? documentResult.data.feed : undefined,
+  );
+  if (!feedResult.success) {
     throw new Error('YouTube channel feed must contain an Atom feed');
   }
 
-  const title = parsed.feed.title;
-  if (typeof title !== 'string' || title.trim() === '') {
+  const channelResult = YouTubeChannelFeed.safeParse(feedResult.data);
+  if (!channelResult.success) {
     throw new Error('YouTube channel feed must contain a title');
   }
-  return title;
+  return channelResult.data.title;
 }
 
 export interface ResolvedYouTubeChannel {
@@ -158,8 +169,4 @@ async function resolveYouTubeHandle(handle: string): Promise<string> {
     );
   }
   return match[1];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

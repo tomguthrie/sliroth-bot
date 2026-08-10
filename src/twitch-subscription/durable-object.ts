@@ -3,6 +3,7 @@ import { and, asc, count, eq, lt } from 'drizzle-orm';
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
+import * as z from 'zod';
 
 import migrations from '../db/twitch-subscription/migrations/migrations.js';
 import {
@@ -13,8 +14,7 @@ import {
   twitchSubscribers,
 } from '../db/twitch-subscription/schema';
 import type { DiscordMessageReceipt } from '../discord/client';
-import type { DiscordMentionTarget } from '../discord/message';
-import { requireDiscordSnowflake } from '../discord/snowflake';
+import { DiscordSnowflake } from '../discord/snowflake';
 import { enqueueDiscordMessages } from '../queue/discord-message';
 import {
   createTwitchApiClient,
@@ -31,8 +31,8 @@ import {
   TWITCH_EVENT_STREAM_ONLINE,
 } from '../twitch/eventsub-handler';
 import {
-  createTwitchLiveDiscordMessage,
-  createTwitchOfflineDiscordMessage,
+  TwitchLiveDiscordMessage,
+  TwitchOfflineDiscordMessage,
 } from './discord-message';
 import {
   channelTwitchSubscriptionKey,
@@ -48,13 +48,30 @@ const ACTIVE_EVENTSUB_STATUSES = new Set([
   'webhook_callback_verification_pending',
 ]);
 
-export interface TwitchSubscriberRegistration {
-  guildId: string;
-  channelId: string;
-  message?: string;
-  offline?: string;
-  ping?: DiscordMentionTarget;
-}
+const TwitchBroadcaster: z.ZodType<TwitchUser> = z.object({
+  id: z.string().regex(/^\d+$/, { error: 'Twitch broadcaster ID is invalid' }),
+  login: nonBlankStringSchema('Twitch login'),
+  displayName: nonBlankStringSchema('Twitch display name'),
+  profileImageUrl: z.string(),
+  offlineImageUrl: z.string(),
+});
+
+export const TwitchSubscriberRegistration = z.object({
+  guildId: DiscordSnowflake,
+  channelId: DiscordSnowflake,
+  message: nonBlankStringSchema('Subscriber message').optional(),
+  offline: nonBlankStringSchema('Subscriber offline message').optional(),
+  ping: z
+    .union([z.literal('everyone'), z.literal('here'), DiscordSnowflake])
+    .optional(),
+});
+
+export type TwitchSubscriberRegistration = z.infer<
+  typeof TwitchSubscriberRegistration
+>;
+type TwitchSubscriberRegistrationInput = z.input<
+  typeof TwitchSubscriberRegistration
+>;
 
 export interface TwitchSubscriber {
   broadcasterId: string;
@@ -86,16 +103,16 @@ export class TwitchSubscription extends DurableObject<Env> {
   /** Adds or updates a subscriber, then reconciles Twitch EventSub state. */
   async addSubscriber(
     broadcaster: TwitchUser,
-    registration: TwitchSubscriberRegistration,
+    registration: TwitchSubscriberRegistrationInput,
   ): Promise<void> {
     validateBroadcaster(broadcaster);
-    validateRegistration(registration);
+    const validated = validateRegistration(registration);
     const [existingSubscriber] = await this.db
       .select({ guildId: twitchSubscribers.guildId })
       .from(twitchSubscribers)
-      .where(eq(twitchSubscribers.channelId, registration.channelId))
+      .where(eq(twitchSubscribers.channelId, validated.channelId))
       .limit(1);
-    const guildId = existingSubscriber?.guildId ?? registration.guildId;
+    const guildId = existingSubscriber?.guildId ?? validated.guildId;
     await this.db
       .insert(broadcasters)
       .values({
@@ -117,31 +134,31 @@ export class TwitchSubscription extends DurableObject<Env> {
     await this.db
       .insert(twitchSubscribers)
       .values({
-        channelId: registration.channelId,
+        channelId: validated.channelId,
         guildId,
-        message: registration.message ?? null,
-        offline: registration.offline ?? null,
-        ping: registration.ping ?? null,
+        message: validated.message ?? null,
+        offline: validated.offline ?? null,
+        ping: validated.ping ?? null,
       })
       .onConflictDoUpdate({
         target: twitchSubscribers.channelId,
         set: {
-          message: registration.message ?? null,
-          offline: registration.offline ?? null,
-          ping: registration.ping ?? null,
+          message: validated.message ?? null,
+          offline: validated.offline ?? null,
+          ping: validated.ping ?? null,
         },
       });
     await Promise.all([
       this.env.TWITCH_SUBSCRIPTIONS_INDEX.put(
         guildTwitchSubscriptionKey(
           guildId,
-          registration.channelId,
+          validated.channelId,
           broadcaster.id,
         ),
         '1',
       ),
       this.env.TWITCH_SUBSCRIPTIONS_INDEX.put(
-        channelTwitchSubscriptionKey(registration.channelId, broadcaster.id),
+        channelTwitchSubscriptionKey(validated.channelId, broadcaster.id),
         '1',
       ),
     ]);
@@ -150,7 +167,7 @@ export class TwitchSubscription extends DurableObject<Env> {
 
   /** Removes the subscriber for a Discord channel and reconciles EventSub. */
   async removeSubscriber(channelId: string): Promise<boolean> {
-    requireDiscordSnowflake(channelId, 'Discord channel ID');
+    DiscordSnowflake.parse(channelId);
     const broadcaster = await this.getBroadcaster();
     const [removed] = await this.db
       .delete(twitchSubscribers)
@@ -179,7 +196,7 @@ export class TwitchSubscription extends DurableObject<Env> {
 
   /** Lists this broadcaster's subscribers in a guild and reconciles EventSub. */
   async listSubscribers(guildId: string): Promise<TwitchSubscriber[]> {
-    requireDiscordSnowflake(guildId, 'Discord guild ID');
+    DiscordSnowflake.parse(guildId);
     const broadcaster = await this.getBroadcaster();
     const rows = await this.db
       .select()
@@ -257,7 +274,7 @@ export class TwitchSubscription extends DurableObject<Env> {
       }
       const deliveries = await Promise.all(
         subscriberRows.map((subscriber) =>
-          createTwitchLiveDiscordMessage(broadcaster, stream, subscriber),
+          TwitchLiveDiscordMessage.build(broadcaster, stream, subscriber),
         ),
       );
       await enqueueDiscordMessages(this.env.DISCORD_MESSAGES, deliveries);
@@ -316,8 +333,8 @@ export class TwitchSubscription extends DurableObject<Env> {
     receipt: DiscordMessageReceipt,
   ): Promise<void> {
     requireNonEmpty(streamId, 'Twitch stream ID');
-    requireDiscordSnowflake(receipt.channelId, 'Discord channel ID');
-    requireDiscordSnowflake(receipt.messageId, 'Discord message ID');
+    DiscordSnowflake.parse(receipt.channelId);
+    DiscordSnowflake.parse(receipt.messageId);
     const [message] = await this.db
       .update(streamMessages)
       .set({ messageId: receipt.messageId })
@@ -465,7 +482,7 @@ export class TwitchSubscription extends DurableObject<Env> {
       return [
         {
           channelId: message.channelId,
-          delivery: createTwitchOfflineDiscordMessage(
+          delivery: TwitchOfflineDiscordMessage.build(
             broadcaster,
             stream,
             subscriber,
@@ -549,28 +566,32 @@ function isDesiredSubscription(
 }
 
 function validateBroadcaster(broadcaster: TwitchUser): void {
-  if (!/^\d+$/.test(broadcaster.id))
-    throw new Error('Twitch broadcaster ID is invalid');
-  if (broadcaster.login.trim() === '')
-    throw new Error('Twitch login cannot be empty');
+  const result = TwitchBroadcaster.safeParse(broadcaster);
+  if (!result.success) {
+    throw new Error(
+      result.error.issues[0]?.message ?? 'Twitch broadcaster is invalid',
+      { cause: result.error },
+    );
+  }
 }
 
 function validateRegistration(
-  registration: TwitchSubscriberRegistration,
-): void {
-  requireDiscordSnowflake(registration.guildId, 'Discord guild ID');
-  requireDiscordSnowflake(registration.channelId, 'Discord channel ID');
-  if (registration.message?.trim() === '')
-    throw new Error('Subscriber message cannot be empty');
-  if (registration.offline?.trim() === '')
-    throw new Error('Subscriber offline message cannot be empty');
-  if (
-    registration.ping !== undefined &&
-    registration.ping !== 'everyone' &&
-    registration.ping !== 'here'
-  ) {
-    requireDiscordSnowflake(registration.ping, 'Discord role ID');
+  registration: TwitchSubscriberRegistrationInput,
+): TwitchSubscriberRegistration {
+  const result = TwitchSubscriberRegistration.safeParse(registration);
+  if (!result.success) {
+    throw new Error(
+      result.error.issues[0]?.message ??
+        'Twitch subscriber registration is invalid',
+      { cause: result.error },
+    );
   }
+  return result.data;
+}
+
+function nonBlankStringSchema(name: string) {
+  const error = `${name} cannot be empty`;
+  return z.string({ error }).refine((value) => value.trim() !== '', { error });
 }
 
 function requireNonEmpty(value: string, description: string): void {

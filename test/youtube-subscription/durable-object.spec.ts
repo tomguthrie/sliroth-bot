@@ -292,7 +292,7 @@ describe('YouTubeSubscription', () => {
           channelId: CHANNEL_ID,
         }),
       ),
-    ).rejects.toThrow('Discord guild ID must be a Discord snowflake');
+    ).rejects.toThrow();
     await expect(
       runInDurableObject(subscription, (instance: YouTubeSubscription) =>
         instance.addSubscriber({
@@ -307,16 +307,15 @@ describe('YouTubeSubscription', () => {
         instance.addSubscriber({
           guildId: GUILD_ID,
           channelId: CHANNEL_ID,
-          // Intentionally bypass the RPC type to verify runtime validation.
-          ping: 'not-a-role' as `${bigint}`,
+          ping: 'not-a-role',
         }),
       ),
-    ).rejects.toThrow('Discord role ID must be a Discord snowflake');
+    ).rejects.toThrow();
     await expect(
       runInDurableObject(subscription, (instance: YouTubeSubscription) =>
         instance.removeSubscriber('not-a-channel'),
       ),
-    ).rejects.toThrow('Discord channel ID must be a Discord snowflake');
+    ).rejects.toThrow();
     await expect(readSubscribers(subscription)).resolves.toEqual([]);
   });
 

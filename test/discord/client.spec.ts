@@ -1,15 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as z from 'zod';
 
 import {
   DiscordApiError,
   editDiscordMessage,
   sendDiscordMessage,
 } from '../../src/discord/client';
+import { DiscordMessageBuilder } from '../../src/discord/message';
+import { DiscordSnowflake } from '../../src/discord/snowflake';
 
 const BOT_TOKEN = 'test-discord-bot-token';
-const CHANNEL_ID = '123456789012345678';
-const ROLE_ID = '234567890123456789';
-const MESSAGE_ID = '345678901234567890';
+const CHANNEL_ID = DiscordSnowflake.parse('123456789012345678');
+const ROLE_ID = DiscordSnowflake.parse('234567890123456789');
+const MESSAGE_ID = DiscordSnowflake.parse('345678901234567890');
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -62,6 +65,16 @@ describe('sendDiscordMessage', () => {
     );
   });
 
+  it('rejects an invalid successful response body', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json({ id: 123, channel_id: CHANNEL_ID }),
+    );
+
+    await expect(
+      sendDiscordMessage(createMessageOptions()),
+    ).rejects.toBeInstanceOf(z.ZodError);
+  });
+
   it('includes Discord error details when delivery fails', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response('{"message":"Missing Access","code":50001}', {
@@ -109,12 +122,11 @@ function createMessageOptions() {
     botToken: BOT_TOKEN,
     channelId: CHANNEL_ID,
     applicationUrl: 'https://bot.example.com',
-    message: {
-      content: `<@&${ROLE_ID}> A new video is available`,
-      nonce: 'dQw4w9WgXcQ',
-      allowedMentions: {
-        roleIds: [ROLE_ID],
-      },
-    },
+    message: new DiscordMessageBuilder(
+      `<@&${ROLE_ID}> A new video is available`,
+    )
+      .setNonce('dQw4w9WgXcQ')
+      .setAllowedMentions({ roleIds: [ROLE_ID] })
+      .build(),
   };
 }

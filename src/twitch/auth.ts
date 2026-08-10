@@ -1,3 +1,5 @@
+import * as z from 'zod';
+
 import { toLoggableError } from '../log';
 
 export const TWITCH_TOKEN_KEY = 'twitch';
@@ -5,6 +7,16 @@ export const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
 
 /** Identifies an invalid response from Twitch's authorization service. */
 export class TwitchAuthError extends Error {}
+
+const TwitchTokenResponse = z
+  .object({
+    access_token: z.string(),
+    expires_in: z.number(),
+  })
+  .transform(({ access_token: accessToken, expires_in: expiresIn }) => ({
+    accessToken,
+    expiresIn,
+  }));
 
 /** Returns the cached Twitch app token or requests and caches a new one. */
 export async function getValidToken(env: Env): Promise<string> {
@@ -78,8 +90,14 @@ async function requestTwitchToken(env: Env) {
     }
 
     stage = 'token_response';
-    const { access_token: accessToken, expires_in: expiresIn } =
-      await response.json<{ access_token: unknown; expires_in: unknown }>();
+    const result = TwitchTokenResponse.safeParse(await response.json());
+    if (!result.success) {
+      throw new TwitchAuthError(
+        'Twitch app access token response was unusable',
+        { cause: result.error },
+      );
+    }
+    const { accessToken, expiresIn } = result.data;
     const expirationTtl =
       typeof expiresIn === 'number' ? Math.floor(expiresIn * 0.8) : Number.NaN;
     if (

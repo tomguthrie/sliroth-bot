@@ -1,11 +1,5 @@
 import { XMLParser } from 'fast-xml-parser';
-
-export interface YouTubeVideoNotification {
-  videoId: string;
-  channelId: string;
-  title: string;
-  publishedAt: string;
-}
+import * as z from 'zod';
 
 const parser = new XMLParser({
   removeNSPrefix: true,
@@ -13,22 +7,39 @@ const parser = new XMLParser({
   trimValues: true,
 });
 
+const UnknownRecord = z.record(z.string(), z.unknown());
+export const YouTubeVideoNotification = z
+  .object({
+    videoId: nonBlankString('videoId'),
+    channelId: nonBlankString('channelId'),
+    title: nonBlankString('title'),
+    published: nonBlankString('published'),
+  })
+  .transform(({ videoId, channelId, title, published: publishedAt }) => ({
+    videoId,
+    channelId,
+    title,
+    publishedAt,
+  }));
+
+export type YouTubeVideoNotification = z.infer<typeof YouTubeVideoNotification>;
+
 export function parseYouTubeVideoNotifications(
   xml: string,
 ): YouTubeVideoNotification[] {
-  const parsed: unknown = parser.parse(xml);
-
-  if (!isRecord(parsed)) {
+  const documentResult = UnknownRecord.safeParse(parser.parse(xml));
+  if (!documentResult.success) {
     throw new Error('YouTube notification must contain an XML document');
   }
 
-  const feed = parsed.feed;
+  const feed = documentResult.data.feed;
 
-  if (!isRecord(feed)) {
+  const feedResult = UnknownRecord.safeParse(feed);
+  if (!feedResult.success) {
     throw new Error('YouTube notification must contain an Atom feed');
   }
 
-  const entryValue = feed.entry;
+  const entryValue = feedResult.data.entry;
 
   if (entryValue === undefined) {
     return [];
@@ -40,33 +51,18 @@ export function parseYouTubeVideoNotifications(
 }
 
 function parseEntry(entry: unknown): YouTubeVideoNotification {
-  if (!isRecord(entry)) {
-    throw new Error('YouTube notification contains an invalid entry');
-  }
-
-  return {
-    videoId: requireString(entry, 'videoId'),
-    channelId: requireString(entry, 'channelId'),
-    title: requireString(entry, 'title'),
-    publishedAt: requireString(entry, 'published'),
-  };
-}
-
-function requireString(
-  record: Record<string, unknown>,
-  property: string,
-): string {
-  const value = record[property];
-
-  if (typeof value !== 'string' || value.trim() === '') {
+  const result = YouTubeVideoNotification.safeParse(entry);
+  if (!result.success) {
+    const message = result.error.issues[0]?.message;
     throw new Error(
-      `YouTube notification entry requires a non-empty ${property}`,
+      message ?? 'YouTube notification contains an invalid entry',
+      { cause: result.error },
     );
   }
-
-  return value;
+  return result.data;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+function nonBlankString(property: string) {
+  const error = `YouTube notification entry requires a non-empty ${property}`;
+  return z.string({ error }).refine((value) => value.trim() !== '', { error });
 }

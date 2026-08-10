@@ -3,11 +3,11 @@ import { count, eq } from 'drizzle-orm';
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
+import * as z from 'zod';
 
 import migrations from '../db/youtube-subscription/migrations/migrations.js';
 import { subscribers, videos } from '../db/youtube-subscription/schema';
-import type { DiscordMentionTarget } from '../discord/message';
-import { requireDiscordSnowflake } from '../discord/snowflake';
+import { DiscordSnowflake } from '../discord/snowflake';
 import { toLoggableError } from '../log';
 import { enqueueDiscordMessages } from '../queue/discord-message';
 import {
@@ -20,7 +20,7 @@ import {
   type WebSubMode,
   verifyYouTubeWebSubSignature,
 } from '../youtube/websub';
-import { createYouTubeDiscordMessage } from './discord-message';
+import { YouTubeDiscordMessage } from './discord-message';
 import { channelSubscriptionKey, guildSubscriptionKey } from './index';
 
 const SUBSCRIPTION_INDEX_VALUE = '1';
@@ -36,12 +36,24 @@ interface WebSubState {
   status?: WebSubStatus;
 }
 
-export interface YouTubeSubscriberRegistration {
-  guildId: string;
-  channelId: string;
-  message?: string;
-  ping?: DiscordMentionTarget;
-}
+export const YouTubeSubscriberRegistration = z.object(
+  {
+    guildId: DiscordSnowflake,
+    channelId: DiscordSnowflake,
+    message: nonBlankStringSchema('Subscriber message').optional(),
+    ping: z
+      .union([z.literal('everyone'), z.literal('here'), DiscordSnowflake])
+      .optional(),
+  },
+  { error: 'YouTube subscriber registration must be an object' },
+);
+
+export type YouTubeSubscriberRegistration = z.infer<
+  typeof YouTubeSubscriberRegistration
+>;
+type YouTubeSubscriberRegistrationInput = z.input<
+  typeof YouTubeSubscriberRegistration
+>;
 
 export class YouTubeSubscription extends DurableObject<Env> {
   private readonly db: DrizzleSqliteDODatabase;
@@ -59,23 +71,23 @@ export class YouTubeSubscription extends DurableObject<Env> {
 
   /** Adds or updates a Discord subscriber and its global lookup indexes. */
   async addSubscriber(
-    registration: YouTubeSubscriberRegistration,
+    registration: YouTubeSubscriberRegistrationInput,
   ): Promise<void> {
-    validateSubscriberRegistration(registration);
+    const validated = validateSubscriberRegistration(registration);
     const youtubeChannelId = this.requireYouTubeChannelId();
     const [subscriber] = await this.db
       .insert(subscribers)
       .values({
-        guildId: registration.guildId,
-        channelId: registration.channelId,
-        message: registration.message ?? null,
-        ping: registration.ping ?? null,
+        guildId: validated.guildId,
+        channelId: validated.channelId,
+        message: validated.message ?? null,
+        ping: validated.ping ?? null,
       })
       .onConflictDoUpdate({
         target: subscribers.channelId,
         set: {
-          message: registration.message ?? null,
-          ping: registration.ping ?? null,
+          message: validated.message ?? null,
+          ping: validated.ping ?? null,
           updatedAt: new Date(),
         },
       })
@@ -108,7 +120,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
 
   /** Removes a Discord subscriber and its global lookup indexes. */
   async removeSubscriber(channelId: string): Promise<void> {
-    requireDiscordSnowflake(channelId, 'Discord channel ID');
+    DiscordSnowflake.parse(channelId);
     const youtubeChannelId = this.requireYouTubeChannelId();
     const [subscriber] = await this.db
       .select({ guildId: subscribers.guildId })
@@ -273,7 +285,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
       const subscriberRows = await this.db.select().from(subscribers);
       const deliveries = await Promise.all(
         subscriberRows.map((subscriber) =>
-          createYouTubeDiscordMessage(notification, subscriber),
+          YouTubeDiscordMessage.build(notification, subscriber),
         ),
       );
 
@@ -421,26 +433,22 @@ function createSecret(): string {
 }
 
 function validateSubscriberRegistration(
-  registration: YouTubeSubscriberRegistration,
-): void {
-  if (typeof registration !== 'object' || registration === null) {
-    throw new Error('YouTube subscriber registration must be an object');
+  registration: YouTubeSubscriberRegistrationInput,
+): YouTubeSubscriberRegistration {
+  const result = YouTubeSubscriberRegistration.safeParse(registration);
+  if (!result.success) {
+    throw new Error(
+      result.error.issues[0]?.message ??
+        'YouTube subscriber registration is invalid',
+      { cause: result.error },
+    );
   }
+  return result.data;
+}
 
-  requireDiscordSnowflake(registration.guildId, 'Discord guild ID');
-  requireDiscordSnowflake(registration.channelId, 'Discord channel ID');
-
-  if (registration.message !== undefined) {
-    requireNonEmpty(registration.message, 'Subscriber message');
-  }
-
-  if (
-    registration.ping !== undefined &&
-    registration.ping !== 'everyone' &&
-    registration.ping !== 'here'
-  ) {
-    requireDiscordSnowflake(registration.ping, 'Discord role ID');
-  }
+function nonBlankStringSchema(name: string) {
+  const error = `${name} cannot be empty`;
+  return z.string({ error }).refine((value) => value.trim() !== '', { error });
 }
 
 function requireNonEmpty(

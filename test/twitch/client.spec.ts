@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as z from 'zod';
 
 import {
   TwitchApiClient,
@@ -53,6 +54,15 @@ describe('TwitchApiClient', () => {
     const headers = new Headers(init?.headers);
     expect(headers.get('authorization')).toBe('Bearer access-token');
     expect(headers.get('client-id')).toBe(env.TWITCH_CLIENT_ID);
+  });
+
+  it('rejects an invalid Helix response body', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json({ data: [{ ...USER, display_name: 123 }] }),
+    );
+    const client = new TwitchApiClient(env, tokenGetter('access-token'));
+
+    await expect(client.getUserById('123')).rejects.toBeInstanceOf(z.ZodError);
   });
 
   it('parses streams, games, and archive videos', async () => {
@@ -184,14 +194,24 @@ describe('TwitchApiClient', () => {
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const client = new TwitchApiClient(env, tokenGetter());
 
-    await client.createEventSubSubscription({
-      type: 'stream.online',
-      version: '1',
-      condition: { broadcaster_user_id: '123' },
-      callback: 'https://bot.example.com/twitch',
-      secret: 'webhook-secret',
+    await expect(
+      client.createEventSubSubscription({
+        type: 'stream.online',
+        version: '1',
+        condition: { broadcaster_user_id: '123' },
+        callback: 'https://bot.example.com/twitch',
+        secret: 'webhook-secret',
+      }),
+    ).resolves.toMatchObject({
+      id: 'eventsub-1',
+      createdAt: '2026-08-08T12:00:00Z',
     });
-    await client.getEventSubSubscriptionById('eventsub-1');
+    await expect(
+      client.getEventSubSubscriptionById('eventsub-1'),
+    ).resolves.toMatchObject({
+      id: 'eventsub-1',
+      createdAt: '2026-08-08T12:00:00Z',
+    });
     await client.deleteEventSubSubscription('eventsub-1');
 
     const createBody = fetcher.mock.calls[0]?.[1]?.body;

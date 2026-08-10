@@ -4,11 +4,12 @@ import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { describe, expect, it } from 'vitest';
 
 import { streamMessages } from '../../src/db/twitch-subscription/schema';
+import { DiscordSnowflake } from '../../src/discord/snowflake';
 import { recordTwitchStreamMessageReceipt } from '../../src/twitch-subscription/message-receipt';
 
 const BROADCASTER_ID = '123456789012345678';
-const CHANNEL_ID = '234567890123456789';
-const MESSAGE_ID = '345678901234567890';
+const CHANNEL_ID = DiscordSnowflake.parse('234567890123456789');
+const MESSAGE_ID = DiscordSnowflake.parse('345678901234567890');
 
 describe('Twitch stream message receipts', () => {
   it('records a receipt in its broadcaster object', async () => {

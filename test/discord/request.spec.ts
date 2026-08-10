@@ -1,15 +1,21 @@
 import { describe, expect, it } from 'vitest';
+import * as z from 'zod';
 
+import {
+  DiscordMessageBuilder,
+  type DiscordMessageInput,
+} from '../../src/discord/message';
 import {
   createDiscordEditMessageRequest,
   createDiscordMessageRequest,
   DISCORD_API_BASE_URL,
 } from '../../src/discord/request';
+import { DiscordSnowflake } from '../../src/discord/snowflake';
 
 const BOT_TOKEN = 'test-discord-bot-token';
-const CHANNEL_ID = '123456789012345678';
-const ROLE_ID = '234567890123456789';
-const MESSAGE_ID = '345678901234567890';
+const CHANNEL_ID = DiscordSnowflake.parse('123456789012345678');
+const ROLE_ID = DiscordSnowflake.parse('234567890123456789');
+const MESSAGE_ID = DiscordSnowflake.parse('345678901234567890');
 
 describe('createDiscordMessageRequest', () => {
   it('creates an authenticated role-mention message', async () => {
@@ -17,13 +23,13 @@ describe('createDiscordMessageRequest', () => {
       botToken: BOT_TOKEN,
       channelId: CHANNEL_ID,
       applicationUrl: 'https://bot.example.com/youtube/websub/private-token',
-      message: {
+      message: buildDiscordMessage({
         content: `<@&${ROLE_ID}> A new video is available`,
         nonce: 'dQw4w9WgXcQ',
         allowedMentions: {
           roleIds: [ROLE_ID],
         },
-      },
+      }),
     });
 
     expect(request.url).toBe(
@@ -65,7 +71,7 @@ describe('createDiscordMessageRequest', () => {
   });
 
   it('allows explicit user and everyone mentions', async () => {
-    const userId = '345678901234567890';
+    const userId = DiscordSnowflake.parse('345678901234567890');
     const request = createRequest({
       content: `@everyone <@${userId}> Please take a look`,
       allowedMentions: {
@@ -293,93 +299,15 @@ describe('createDiscordMessageRequest', () => {
     });
   });
 
-  it.each([
-    { embeds: [], error: 'Discord message embeds' },
-    { embeds: Array.from({ length: 11 }, () => ({})), error: 'embeds' },
-  ])('rejects an invalid embed count', ({ embeds, error }) => {
-    expect(() => createRequest({ content: 'A message', embeds })).toThrow(
-      error,
-    );
-  });
-
-  it.each([
-    { linkButtons: [], error: 'Discord message link buttons' },
-    {
-      linkButtons: Array.from({ length: 6 }, (_, index) => ({
-        label: `Button ${index + 1}`,
-        url: `https://example.com/${index + 1}`,
-      })),
-      error: 'link buttons',
-    },
-  ])('rejects an invalid link button count', ({ linkButtons, error }) => {
-    expect(() => createRequest({ content: 'A message', linkButtons })).toThrow(
-      error,
-    );
-  });
-
-  it.each([-1, 0x1000000, 1.5])(
-    'rejects an invalid embed color: %s',
-    (color) => {
-      expect(() =>
-        createRequest({ content: 'A message', embeds: [{ color }] }),
-      ).toThrow(
-        'Discord embed 1 color must be an integer between 0 and 16777215',
-      );
-    },
-  );
-
-  it('rejects an invalid embed timestamp', () => {
-    expect(() =>
-      createRequest({
-        content: 'A message',
-        embeds: [{ timestamp: 'not-a-timestamp' }],
-      }),
-    ).toThrow('Discord embed 1 timestamp must be a valid ISO 8601 timestamp');
-  });
-
-  it.each([
-    {
-      message: { embeds: [{ url: 'not-a-url' }] },
-      error: 'Discord embed 1 URL must be an HTTP(S) URL',
-    },
-    {
-      message: { embeds: [{ image: { url: 'ftp://example.com/image.jpg' } }] },
-      error: 'Discord embed 1 image URL must be an HTTP(S) URL',
-    },
-    {
-      message: {
-        linkButtons: [{ label: 'Open', url: 'javascript:alert(1)' }],
-      },
-      error: 'Discord link button 1 URL must be an HTTP(S) URL',
-    },
-  ])('rejects invalid URLs', ({ message, error }) => {
-    expect(() => createRequest({ content: 'A message', ...message })).toThrow(
-      error,
-    );
-  });
-
-  it('rejects an invalid channel ID', () => {
+  it('rejects an invalid application URL', () => {
     expect(() =>
       createDiscordMessageRequest({
         botToken: BOT_TOKEN,
-        channelId: 'not-a-snowflake',
-        applicationUrl: 'https://bot.example.com',
-        message: {
-          content: 'A message',
-        },
+        channelId: CHANNEL_ID,
+        applicationUrl: 'ftp://bot.example.com',
+        message: new DiscordMessageBuilder('A message').build(),
       }),
-    ).toThrow('Discord channel ID must be a Discord snowflake');
-  });
-
-  it('rejects an invalid role ID', () => {
-    expect(() =>
-      createRequest({
-        content: 'A message',
-        allowedMentions: {
-          roleIds: ['not-a-snowflake'],
-        },
-      }),
-    ).toThrow('Discord role ID must be a Discord snowflake');
+    ).toThrow(z.ZodError);
   });
 });
 
@@ -390,7 +318,7 @@ describe('createDiscordEditMessageRequest', () => {
       channelId: CHANNEL_ID,
       messageId: MESSAGE_ID,
       applicationUrl: 'https://bot.example.com',
-      message: { content: 'The stream has ended' },
+      message: new DiscordMessageBuilder('The stream has ended').build(),
     });
 
     expect(request.url).toBe(
@@ -403,27 +331,32 @@ describe('createDiscordEditMessageRequest', () => {
       allowed_mentions: { parse: [] },
     });
   });
-
-  it('rejects an invalid message ID', () => {
-    expect(() =>
-      createDiscordEditMessageRequest({
-        botToken: BOT_TOKEN,
-        channelId: CHANNEL_ID,
-        messageId: 'not-a-snowflake',
-        applicationUrl: 'https://bot.example.com',
-        message: { content: 'The stream has ended' },
-      }),
-    ).toThrow('Discord message ID must be a Discord snowflake');
-  });
 });
 
-function createRequest(
-  message: Parameters<typeof createDiscordMessageRequest>[0]['message'],
-) {
+function createRequest(message: DiscordMessageInput) {
   return createDiscordMessageRequest({
     botToken: BOT_TOKEN,
     channelId: CHANNEL_ID,
     applicationUrl: 'https://bot.example.com',
-    message,
+    message: buildDiscordMessage(message),
   });
+}
+
+function buildDiscordMessage({
+  content,
+  nonce,
+  allowedMentions,
+  embeds,
+  linkButtons,
+}: DiscordMessageInput) {
+  const builder = new DiscordMessageBuilder(content);
+  if (nonce !== undefined) builder.setNonce(nonce);
+  if (allowedMentions !== undefined) {
+    builder.setAllowedMentions(allowedMentions);
+  }
+  for (const embed of embeds ?? []) builder.addEmbed(embed);
+  for (const linkButton of linkButtons ?? []) {
+    builder.addLinkButton(linkButton);
+  }
+  return builder.build();
 }

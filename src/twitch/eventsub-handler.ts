@@ -1,3 +1,5 @@
+import * as z from 'zod';
+
 const MESSAGE_ID_HEADER = 'twitch-eventsub-message-id';
 const MESSAGE_TYPE_HEADER = 'twitch-eventsub-message-type';
 const MESSAGE_TIMESTAMP_HEADER = 'twitch-eventsub-message-timestamp';
@@ -11,15 +13,19 @@ export const TWITCH_EVENT_STREAM_OFFLINE = 'stream.offline';
 
 const inFlightMessageIds = new Set<string>();
 
-interface EventSubEnvelope {
-  challenge?: string;
-  subscription: {
-    id: string;
-    type: string;
-    condition: { broadcaster_user_id?: string };
-  };
-  event?: TwitchStreamOnlineEvent | TwitchStreamOfflineEvent;
-}
+const EventSubEnvelope = z.object({
+  challenge: z.string().optional(),
+  subscription: z.object({
+    id: z.string(),
+    type: z.string(),
+    condition: z.object({
+      broadcaster_user_id: z.string().optional(),
+    }),
+  }),
+  event: z.unknown().optional(),
+});
+
+type EventSubEnvelope = z.infer<typeof EventSubEnvelope>;
 
 interface AuthenticatedEventSubMessage {
   broadcasterId: string;
@@ -29,21 +35,25 @@ interface AuthenticatedEventSubMessage {
   timestamp: string;
 }
 
-export interface TwitchStreamOnlineEvent {
-  id: string;
-  broadcaster_user_id: string;
-  broadcaster_user_login: string;
-  broadcaster_user_name: string;
-  type: string;
-  started_at: string;
-}
+export const TwitchStreamOnlineEvent = z.object({
+  id: z.string(),
+  broadcaster_user_id: z.string(),
+  broadcaster_user_login: z.string(),
+  broadcaster_user_name: z.string(),
+  type: z.string(),
+  started_at: z.string(),
+});
 
-export interface TwitchStreamOfflineEvent {
-  id: string;
-  broadcaster_user_id: string;
-  broadcaster_user_login: string;
-  broadcaster_user_name: string;
-}
+export type TwitchStreamOnlineEvent = z.infer<typeof TwitchStreamOnlineEvent>;
+
+export const TwitchStreamOfflineEvent = z.object({
+  id: z.string(),
+  broadcaster_user_id: z.string(),
+  broadcaster_user_login: z.string(),
+  broadcaster_user_name: z.string(),
+});
+
+export type TwitchStreamOfflineEvent = z.infer<typeof TwitchStreamOfflineEvent>;
 
 /** Verifies, deduplicates, and routes a Twitch EventSub webhook. */
 export async function handleTwitchEventSub(
@@ -101,7 +111,10 @@ async function authenticateEventSubMessage(
     return new Response('Invalid EventSub signature', { status: 403 });
   }
 
-  const envelope = await new Response(body).json<EventSubEnvelope>();
+  const envelope = parseEventSubEnvelope(body);
+  if (envelope === undefined) {
+    return new Response('Invalid EventSub payload', { status: 400 });
+  }
   const broadcasterId = envelope.subscription.condition.broadcaster_user_id;
   const routeBroadcasterId = request.url.split('/').filter(Boolean).at(-1);
   if (broadcasterId === undefined || broadcasterId !== routeBroadcasterId) {
@@ -109,6 +122,15 @@ async function authenticateEventSubMessage(
   }
 
   return { broadcasterId, envelope, messageId, messageType, timestamp };
+}
+
+function parseEventSubEnvelope(body: string): EventSubEnvelope | undefined {
+  try {
+    const result = EventSubEnvelope.safeParse(JSON.parse(body));
+    return result.success ? result.data : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function processEventSubDelivery(
@@ -164,15 +186,17 @@ async function processEventSubNotification(
   }
   const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId);
   if (envelope.subscription.type === TWITCH_EVENT_STREAM_ONLINE) {
-    if (!('started_at' in envelope.event)) {
+    const result = TwitchStreamOnlineEvent.safeParse(envelope.event);
+    if (!result.success) {
       return new Response('Invalid stream.online event', { status: 400 });
     }
-    await subscription.streamOnline(envelope.event);
+    await subscription.streamOnline(result.data);
   } else if (envelope.subscription.type === TWITCH_EVENT_STREAM_OFFLINE) {
-    if (!('id' in envelope.event)) {
+    const result = TwitchStreamOfflineEvent.safeParse(envelope.event);
+    if (!result.success) {
       return new Response('Invalid stream.offline event', { status: 400 });
     }
-    await subscription.streamOffline(envelope.event, timestamp);
+    await subscription.streamOffline(result.data, timestamp);
   } else {
     return new Response('Unsupported EventSub subscription type', {
       status: 400,

@@ -3,7 +3,11 @@ import type {
   streams,
   twitchSubscribers,
 } from '../db/twitch-subscription/schema';
-import { createDiscordMention, createDiscordNonce } from '../discord/message';
+import {
+  DiscordMention,
+  DiscordNonce,
+  DiscordMessageBuilder,
+} from '../discord/message';
 import type {
   DiscordCreateMessageDelivery,
   DiscordEditMessageDelivery,
@@ -18,119 +22,119 @@ type Broadcaster = typeof broadcasters.$inferSelect;
 type Stream = typeof streams.$inferSelect;
 type Subscriber = typeof twitchSubscribers.$inferSelect;
 
-/** Builds the initial Discord notification for a Twitch stream. */
-export async function createTwitchLiveDiscordMessage(
-  broadcaster: Broadcaster,
-  stream: Stream,
-  subscriber: Subscriber,
-): Promise<DiscordCreateMessageDelivery> {
-  const channelUrl = twitchChannelUrl(broadcaster.login);
-  const mention = createDiscordMention(subscriber.ping);
-  const content = [
-    mention.content,
-    subscriber.message ?? `${broadcaster.displayName} ${DEFAULT_LIVE_MESSAGE}`,
-    channelUrl,
-  ]
-    .filter((part) => part !== undefined)
-    .join(' ');
-
-  return {
-    operation: 'create',
-    guildId: subscriber.guildId,
-    channelId: subscriber.channelId,
-    receiptTarget: {
-      type: DISCORD_RECEIPT_TWITCH_STREAM,
-      broadcasterId: broadcaster.id,
-      streamId: stream.id,
-    },
-    message: {
-      content,
-      nonce: await createDiscordNonce(stream.id, subscriber.channelId),
-      allowedMentions: mention.allowedMentions,
-      embeds: [
-        {
-          author: broadcasterAuthor(broadcaster),
-          title: stream.title,
-          url: channelUrl,
-          color: TWITCH_COLOR,
-          fields: [
-            { name: 'Game', value: stream.gameName, inline: true },
-            {
-              name: 'Viewers',
-              value: String(stream.viewerCount),
-              inline: true,
-            },
-          ],
-          ...(stream.gameBoxArtUrl === null
-            ? {}
-            : {
-                thumbnail: {
-                  url: resizeTwitchImage(stream.gameBoxArtUrl, 144, 192),
-                },
-              }),
-          image: {
-            url: cacheBustPreview(stream.previewImageUrl, stream.startedAt),
+/** Builds initial Discord notifications for Twitch streams. */
+export class TwitchLiveDiscordMessage {
+  static async build(
+    broadcaster: Broadcaster,
+    stream: Stream,
+    subscriber: Subscriber,
+  ): Promise<DiscordCreateMessageDelivery> {
+    const channelUrl = twitchChannelUrl(broadcaster.login);
+    const mention = DiscordMention.from(subscriber.ping);
+    const content = [
+      mention.content,
+      subscriber.message ??
+        `${broadcaster.displayName} ${DEFAULT_LIVE_MESSAGE}`,
+      channelUrl,
+    ]
+      .filter((part) => part !== undefined)
+      .join(' ');
+    const message = new DiscordMessageBuilder(content)
+      .setNonce(await DiscordNonce.from(stream.id, subscriber.channelId))
+      .addEmbed({
+        author: broadcasterAuthor(broadcaster),
+        title: stream.title,
+        url: channelUrl,
+        color: TWITCH_COLOR,
+        fields: [
+          { name: 'Game', value: stream.gameName, inline: true },
+          {
+            name: 'Viewers',
+            value: String(stream.viewerCount),
+            inline: true,
           },
-          footer: { text: 'Started streaming' },
-          timestamp: stream.startedAt.toISOString(),
+        ],
+        ...(stream.gameBoxArtUrl === null
+          ? {}
+          : {
+              thumbnail: {
+                url: resizeTwitchImage(stream.gameBoxArtUrl, 144, 192),
+              },
+            }),
+        image: {
+          url: cacheBustPreview(stream.previewImageUrl, stream.startedAt),
         },
-      ],
-      linkButtons: [{ label: 'Watch Stream', url: channelUrl }],
-    },
-  };
+        footer: { text: 'Started streaming' },
+        timestamp: stream.startedAt.toISOString(),
+      })
+      .addLinkButton({ label: 'Watch Stream', url: channelUrl });
+    if (mention.allowedMentions !== undefined) {
+      message.setAllowedMentions(mention.allowedMentions);
+    }
+
+    return {
+      operation: 'create',
+      guildId: subscriber.guildId,
+      channelId: subscriber.channelId,
+      receiptTarget: {
+        type: DISCORD_RECEIPT_TWITCH_STREAM,
+        broadcasterId: broadcaster.id,
+        streamId: stream.id,
+      },
+      message: message.build(),
+    };
+  }
 }
 
-/** Builds the replacement sent when a Twitch stream ends. */
-export function createTwitchOfflineDiscordMessage(
-  broadcaster: Broadcaster,
-  stream: Stream,
-  subscriber: Subscriber,
-  messageId: string,
-): DiscordEditMessageDelivery {
-  if (stream.endedAt === null) {
-    throw new Error('Cannot create an offline message for a live stream');
-  }
-  const channelUrl = twitchChannelUrl(broadcaster.login);
-  const watchUrl = stream.vodUrl ?? channelUrl;
-
-  return {
-    operation: 'edit',
-    guildId: subscriber.guildId,
-    channelId: subscriber.channelId,
-    messageId,
-    message: {
-      content:
-        subscriber.offline ??
+/** Builds replacement Discord messages for ended Twitch streams. */
+export class TwitchOfflineDiscordMessage {
+  static build(
+    broadcaster: Broadcaster,
+    stream: Stream,
+    subscriber: Subscriber,
+    messageId: string,
+  ): DiscordEditMessageDelivery {
+    if (stream.endedAt === null) {
+      throw new Error('Cannot create an offline message for a live stream');
+    }
+    const channelUrl = twitchChannelUrl(broadcaster.login);
+    const watchUrl = stream.vodUrl ?? channelUrl;
+    const message = new DiscordMessageBuilder(
+      subscriber.offline ??
         `${broadcaster.displayName} ${DEFAULT_OFFLINE_MESSAGE}`,
-      embeds: [
-        {
-          author: broadcasterAuthor(broadcaster),
-          title: stream.title,
-          url: watchUrl,
-          color: TWITCH_COLOR,
-          fields: [
-            { name: 'Game', value: stream.gameName, inline: true },
-            {
-              name: 'Duration',
-              value: formatDuration(stream.endedAt, stream.startedAt),
-              inline: true,
-            },
-          ],
-          ...(broadcaster.offlineImageUrl === ''
-            ? {}
-            : { image: { url: broadcaster.offlineImageUrl } }),
-          footer: { text: 'Last online' },
-          timestamp: stream.endedAt.toISOString(),
-        },
-      ],
-      linkButtons: [
-        {
-          label: stream.vodUrl === null ? 'Watch Channel' : 'Watch VOD',
-          url: watchUrl,
-        },
-      ],
-    },
-  };
+    )
+      .addEmbed({
+        author: broadcasterAuthor(broadcaster),
+        title: stream.title,
+        url: watchUrl,
+        color: TWITCH_COLOR,
+        fields: [
+          { name: 'Game', value: stream.gameName, inline: true },
+          {
+            name: 'Duration',
+            value: formatDuration(stream.endedAt, stream.startedAt),
+            inline: true,
+          },
+        ],
+        ...(broadcaster.offlineImageUrl === ''
+          ? {}
+          : { image: { url: broadcaster.offlineImageUrl } }),
+        footer: { text: 'Last online' },
+        timestamp: stream.endedAt.toISOString(),
+      })
+      .addLinkButton({
+        label: stream.vodUrl === null ? 'Watch Channel' : 'Watch VOD',
+        url: watchUrl,
+      });
+
+    return {
+      operation: 'edit',
+      guildId: subscriber.guildId,
+      channelId: subscriber.channelId,
+      messageId,
+      message: message.build(),
+    };
+  }
 }
 
 function broadcasterAuthor(broadcaster: Broadcaster) {

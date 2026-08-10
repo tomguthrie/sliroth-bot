@@ -1,62 +1,8 @@
+import * as z from 'zod';
+
 import { getValidToken, TWITCH_TOKEN_KEY } from './auth';
 
 export const TWITCH_API_BASE_URL = 'https://api.twitch.tv/helix/';
-
-export interface TwitchUser {
-  id: string;
-  login: string;
-  displayName: string;
-  profileImageUrl: string;
-  offlineImageUrl: string;
-}
-
-export interface TwitchStream {
-  id: string;
-  userId: string;
-  userLogin: string;
-  userName: string;
-  gameId: string;
-  gameName: string;
-  title: string;
-  viewerCount: number;
-  startedAt: string;
-  thumbnailUrl: string;
-}
-
-export interface TwitchGame {
-  id: string;
-  name: string;
-  boxArtUrl: string;
-}
-
-export interface TwitchVod {
-  id: string;
-  streamId?: string;
-  userId: string;
-  userLogin: string;
-  userName: string;
-  title: string;
-  createdAt: string;
-  publishedAt: string;
-  url: string;
-  thumbnailUrl: string;
-  type: 'archive' | 'highlight' | 'upload';
-  duration: string;
-}
-
-export interface TwitchEventSubSubscription {
-  id: string;
-  status: string;
-  type: string;
-  version: string;
-  condition: Record<string, string>;
-  createdAt: string;
-  transport: {
-    method: string;
-    callback?: string;
-  };
-  cost: number;
-}
 
 export interface CreateTwitchEventSubSubscription {
   type: string;
@@ -80,65 +26,132 @@ export class TwitchApiError extends Error {
 
 export type TwitchTokenGetter = (env: Env) => Promise<string>;
 
-interface TwitchApiResponse<T> {
-  data: T[];
-}
+export const TwitchUser = z
+  .object({
+    id: z.string(),
+    login: z.string(),
+    display_name: z.string(),
+    profile_image_url: z.string(),
+    offline_image_url: z.string(),
+  })
+  .transform(
+    ({ id, login, display_name, profile_image_url, offline_image_url }) => ({
+      id,
+      login,
+      displayName: display_name,
+      profileImageUrl: profile_image_url,
+      offlineImageUrl: offline_image_url,
+    }),
+  );
 
-interface TwitchUserData {
-  id: string;
-  login: string;
-  display_name: string;
-  profile_image_url: string;
-  offline_image_url: string;
-}
+export type TwitchUser = z.infer<typeof TwitchUser>;
 
-interface TwitchStreamData {
-  id: string;
-  user_id: string;
-  user_login: string;
-  user_name: string;
-  game_id: string;
-  game_name: string;
-  title: string;
-  viewer_count: number;
-  started_at: string;
-  thumbnail_url: string;
-}
+export const TwitchStream = z
+  .object({
+    id: z.string(),
+    user_id: z.string(),
+    user_login: z.string(),
+    user_name: z.string(),
+    game_id: z.string(),
+    game_name: z.string(),
+    title: z.string(),
+    viewer_count: z.number(),
+    started_at: z.string(),
+    thumbnail_url: z.string(),
+  })
+  .transform((data) => ({
+    id: data.id,
+    userId: data.user_id,
+    userLogin: data.user_login,
+    userName: data.user_name,
+    gameId: data.game_id,
+    gameName: data.game_name,
+    title: data.title,
+    viewerCount: data.viewer_count,
+    startedAt: data.started_at,
+    thumbnailUrl: data.thumbnail_url,
+  }));
 
-interface TwitchGameData {
-  id: string;
-  name: string;
-  box_art_url: string;
-}
+export type TwitchStream = z.infer<typeof TwitchStream>;
 
-interface TwitchVodData {
-  id: string;
-  stream_id: string | null;
-  user_id: string;
-  user_login: string;
-  user_name: string;
-  title: string;
-  created_at: string;
-  published_at: string;
-  url: string;
-  thumbnail_url: string;
-  type: 'archive' | 'highlight' | 'upload';
-  duration: string;
-}
+export const TwitchGame = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    box_art_url: z.string(),
+  })
+  .transform(({ id, name, box_art_url: boxArtUrl }) => ({
+    id,
+    name,
+    boxArtUrl,
+  }));
 
-interface TwitchEventSubSubscriptionData {
-  id: string;
-  status: string;
-  type: string;
-  version: string;
-  condition: Record<string, string>;
-  created_at: string;
-  transport: {
-    method: string;
-    callback?: string;
-  };
-  cost: number;
-}
+export type TwitchGame = z.infer<typeof TwitchGame>;
+
+export const TwitchVod = z
+  .object({
+    id: z.string(),
+    stream_id: z.string().nullable(),
+    user_id: z.string(),
+    user_login: z.string(),
+    user_name: z.string(),
+    title: z.string(),
+    created_at: z.string(),
+    published_at: z.string(),
+    url: z.string(),
+    thumbnail_url: z.string(),
+    type: z.enum(['archive', 'highlight', 'upload']),
+    duration: z.string(),
+  })
+  .transform((data) => ({
+    id: data.id,
+    ...(data.stream_id === null || data.stream_id === ''
+      ? {}
+      : { streamId: data.stream_id }),
+    userId: data.user_id,
+    userLogin: data.user_login,
+    userName: data.user_name,
+    title: data.title,
+    createdAt: data.created_at,
+    publishedAt: data.published_at,
+    url: data.url,
+    thumbnailUrl: data.thumbnail_url,
+    type: data.type,
+    duration: data.duration,
+  }));
+
+export type TwitchVod = z.infer<typeof TwitchVod>;
+
+export const TwitchEventSubSubscription = z
+  .object({
+    id: z.string(),
+    status: z.string(),
+    type: z.string(),
+    version: z.string(),
+    condition: z.record(z.string(), z.string()),
+    created_at: z.string(),
+    transport: z.object({
+      method: z.string(),
+      callback: z.string().optional(),
+    }),
+    cost: z.number(),
+  })
+  .transform((data) => ({
+    id: data.id,
+    status: data.status,
+    type: data.type,
+    version: data.version,
+    condition: data.condition,
+    createdAt: data.created_at,
+    transport: data.transport,
+    cost: data.cost,
+  }));
+
+export type TwitchEventSubSubscription = z.infer<
+  typeof TwitchEventSubSubscription
+>;
+
+const TwitchApiErrorResponse = z.object({ message: z.string().optional() });
 
 /** A typed client for the Twitch Helix endpoints used by the integration. */
 export class TwitchApiClient {
@@ -150,29 +163,29 @@ export class TwitchApiClient {
   async getUserById(id: string): Promise<TwitchUser | undefined> {
     requireNonEmpty(id, 'Twitch user ID');
     const response = await this.request('users', { id });
-    const { data } = await response.json<TwitchApiResponse<TwitchUserData>>();
-    return data[0] === undefined ? undefined : mapUser(data[0]);
+    const data = await parseTwitchApiResponse(response, TwitchUser);
+    return data[0];
   }
 
   async getUserByLogin(login: string): Promise<TwitchUser | undefined> {
     requireNonEmpty(login, 'Twitch user login');
     const response = await this.request('users', { login });
-    const { data } = await response.json<TwitchApiResponse<TwitchUserData>>();
-    return data[0] === undefined ? undefined : mapUser(data[0]);
+    const data = await parseTwitchApiResponse(response, TwitchUser);
+    return data[0];
   }
 
   async getStreamByUserId(userId: string): Promise<TwitchStream | undefined> {
     requireNonEmpty(userId, 'Twitch user ID');
     const response = await this.request('streams', { user_id: userId });
-    const { data } = await response.json<TwitchApiResponse<TwitchStreamData>>();
-    return data[0] === undefined ? undefined : mapStream(data[0]);
+    const data = await parseTwitchApiResponse(response, TwitchStream);
+    return data[0];
   }
 
   async getGameById(id: string): Promise<TwitchGame | undefined> {
     requireNonEmpty(id, 'Twitch game ID');
     const response = await this.request('games', { id });
-    const { data } = await response.json<TwitchApiResponse<TwitchGameData>>();
-    return data[0] === undefined ? undefined : mapGame(data[0]);
+    const data = await parseTwitchApiResponse(response, TwitchGame);
+    return data[0];
   }
 
   async getArchiveVideosByUserId(
@@ -188,8 +201,7 @@ export class TwitchApiClient {
       type: 'archive',
       first: String(first),
     });
-    const { data } = await response.json<TwitchApiResponse<TwitchVodData>>();
-    return data.map(mapVod);
+    return parseTwitchApiResponse(response, TwitchVod);
   }
 
   async createEventSubSubscription(
@@ -209,15 +221,17 @@ export class TwitchApiClient {
         },
       }),
     });
-    const { data } =
-      await response.json<TwitchApiResponse<TwitchEventSubSubscriptionData>>();
+    const data = await parseTwitchApiResponse(
+      response,
+      TwitchEventSubSubscription,
+    );
     const created = data[0];
     if (created === undefined) {
       throw new TwitchApiError(
         'Twitch EventSub create response did not contain a subscription',
       );
     }
-    return mapEventSubSubscription(created);
+    return created;
   }
 
   async getEventSubSubscriptionById(
@@ -227,9 +241,11 @@ export class TwitchApiClient {
     const response = await this.request('eventsub/subscriptions', {
       subscription_id: id,
     });
-    const { data } =
-      await response.json<TwitchApiResponse<TwitchEventSubSubscriptionData>>();
-    return data[0] === undefined ? undefined : mapEventSubSubscription(data[0]);
+    const data = await parseTwitchApiResponse(
+      response,
+      TwitchEventSubSubscription,
+    );
+    return data[0];
   }
 
   async deleteEventSubSubscription(id: string): Promise<void> {
@@ -277,69 +293,6 @@ export function createTwitchApiClient(env: Env): TwitchApiClient {
   return new TwitchApiClient(env);
 }
 
-function mapUser(data: TwitchUserData): TwitchUser {
-  return {
-    id: data.id,
-    login: data.login,
-    displayName: data.display_name,
-    profileImageUrl: data.profile_image_url,
-    offlineImageUrl: data.offline_image_url,
-  };
-}
-
-function mapStream(data: TwitchStreamData): TwitchStream {
-  return {
-    id: data.id,
-    userId: data.user_id,
-    userLogin: data.user_login,
-    userName: data.user_name,
-    gameId: data.game_id,
-    gameName: data.game_name,
-    title: data.title,
-    viewerCount: data.viewer_count,
-    startedAt: data.started_at,
-    thumbnailUrl: data.thumbnail_url,
-  };
-}
-
-function mapGame(data: TwitchGameData): TwitchGame {
-  return { id: data.id, name: data.name, boxArtUrl: data.box_art_url };
-}
-
-function mapVod(data: TwitchVodData): TwitchVod {
-  return {
-    id: data.id,
-    ...(data.stream_id === null || data.stream_id === ''
-      ? {}
-      : { streamId: data.stream_id }),
-    userId: data.user_id,
-    userLogin: data.user_login,
-    userName: data.user_name,
-    title: data.title,
-    createdAt: data.created_at,
-    publishedAt: data.published_at,
-    url: data.url,
-    thumbnailUrl: data.thumbnail_url,
-    type: data.type,
-    duration: data.duration,
-  };
-}
-
-function mapEventSubSubscription(
-  data: TwitchEventSubSubscriptionData,
-): TwitchEventSubSubscription {
-  return {
-    id: data.id,
-    status: data.status,
-    type: data.type,
-    version: data.version,
-    condition: data.condition,
-    createdAt: data.created_at,
-    transport: data.transport,
-    cost: data.cost,
-  };
-}
-
 function validateSubscription(value: CreateTwitchEventSubSubscription): void {
   requireNonEmpty(value.type, 'Twitch EventSub type');
   requireNonEmpty(value.version, 'Twitch EventSub version');
@@ -355,8 +308,11 @@ function requireNonEmpty(value: string, description: string): void {
 async function createApiError(response: Response): Promise<TwitchApiError> {
   let detail: string;
   try {
-    const { message } = await response.json<{ message?: string }>();
-    detail = message === undefined ? '' : `: ${message}`;
+    const result = TwitchApiErrorResponse.safeParse(await response.json());
+    detail =
+      result.success && result.data.message !== undefined
+        ? `: ${result.data.message}`
+        : '';
   } catch {
     detail = '';
   }
@@ -371,6 +327,14 @@ async function createApiError(response: Response): Promise<TwitchApiError> {
     response.status,
     retryAtMs,
   );
+}
+
+async function parseTwitchApiResponse<T extends z.ZodType>(
+  response: Response,
+  dataSchema: T,
+): Promise<z.output<T>[]> {
+  const schema = z.object({ data: z.array(dataSchema) });
+  return schema.parse(await response.json()).data;
 }
 
 async function cancelBody(response: Response): Promise<void> {

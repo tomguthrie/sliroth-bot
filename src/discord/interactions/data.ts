@@ -1,4 +1,6 @@
-import type { DiscordSnowflake } from '../snowflake';
+import * as z from 'zod';
+
+import { DiscordSnowflake } from '../snowflake';
 
 export const APPLICATION_COMMAND_OPTION_TYPE = {
   subcommand: 1,
@@ -13,25 +15,49 @@ export interface DiscordApplicationCommandOption {
   options?: DiscordApplicationCommandOption[];
 }
 
-export interface DiscordApplicationCommandData {
-  name: string;
-  options?: DiscordApplicationCommandOption[];
-  resolved?: {
-    roles?: Record<string, { mentionable?: boolean }>;
-  };
-}
+export const DiscordApplicationCommandOption: z.ZodType<DiscordApplicationCommandOption> =
+  z.lazy(() =>
+    z.object({
+      type: z.number(),
+      name: z.string(),
+      value: z.string().optional(),
+      options: z.array(DiscordApplicationCommandOption).optional(),
+    }),
+  );
 
-export interface DiscordInteraction {
-  type: number;
-  application_id?: string;
-  token?: string;
-  guild_id?: string;
-  channel_id?: string;
-  channel?: { type: number };
-  app_permissions?: string;
-  member?: { permissions?: string };
-  data?: DiscordApplicationCommandData;
-}
+export const DiscordApplicationCommandData = z.object({
+  name: z.string(),
+  options: z.array(DiscordApplicationCommandOption).optional(),
+  resolved: z
+    .object({
+      roles: z
+        .record(
+          DiscordSnowflake,
+          z.object({ mentionable: z.boolean().optional() }),
+        )
+        .optional(),
+    })
+    .optional(),
+});
+
+export type DiscordApplicationCommandData = z.infer<
+  typeof DiscordApplicationCommandData
+>;
+
+/** Validates a Discord interaction received from the webhook boundary. */
+export const DiscordInteraction = z.object({
+  type: z.number(),
+  application_id: DiscordSnowflake.optional(),
+  token: z.string().optional(),
+  guild_id: DiscordSnowflake.optional(),
+  channel_id: DiscordSnowflake.optional(),
+  channel: z.object({ type: z.number() }).optional(),
+  app_permissions: z.string().optional(),
+  member: z.object({ permissions: z.string().optional() }).optional(),
+  data: DiscordApplicationCommandData.optional(),
+});
+
+export type DiscordInteraction = z.infer<typeof DiscordInteraction>;
 
 /** Reads a non-empty string from an interaction payload. */
 export function getInteractionString(value?: string): string | undefined {

@@ -1,7 +1,4 @@
-import {
-  isDiscordSnowflake,
-  requireDiscordSnowflake,
-} from '../discord/snowflake';
+import { DiscordSnowflake } from '../discord/snowflake';
 
 const YOUTUBE_TITLE_CACHE_PREFIX = 'youtube:';
 const YOUTUBE_TITLE_CACHE_SUFFIX = ':title';
@@ -33,7 +30,7 @@ export async function listGuildYouTubeSubscriptions(
   index: KVNamespace,
   guildId: string,
 ): Promise<GuildYouTubeSubscription[]> {
-  requireDiscordSnowflake(guildId, 'Discord guild ID');
+  DiscordSnowflake.parse(guildId);
   const prefix = `guild:${guildId}:channel:`;
   const subscriptions: GuildYouTubeSubscription[] = [];
   let cursor: string | undefined;
@@ -62,7 +59,7 @@ export async function listChannelYouTubeSubscriptions(
   index: KVNamespace,
   channelId: string,
 ): Promise<string[]> {
-  requireDiscordSnowflake(channelId, 'Discord channel ID');
+  DiscordSnowflake.parse(channelId);
   const prefix = `channel:${channelId}:youtube:`;
   const page = await index.list({ prefix });
 
@@ -135,7 +132,7 @@ function parseGuildSubscriptionKey(
   const discordChannelId = suffix.slice(0, separatorOffset);
   const youtubeChannelId = suffix.slice(separatorOffset + separator.length);
   if (
-    !isDiscordSnowflake(discordChannelId) ||
+    !DiscordSnowflake.safeParse(discordChannelId).success ||
     youtubeChannelId === '' ||
     youtubeChannelId.includes(':')
   ) {
