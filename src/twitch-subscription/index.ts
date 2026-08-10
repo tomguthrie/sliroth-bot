@@ -1,15 +1,9 @@
 import * as z from 'zod';
 
 import { DiscordSnowflake } from '../discord/snowflake';
+import { TwitchBroadcasterId } from '../twitch/data';
 
 const NonBlankString = z.string().refine((value) => value.trim() !== '');
-
-export const TwitchBroadcasterId = z
-  .string()
-  .regex(/^\d+$/)
-  .brand<'TwitchBroadcasterId'>();
-
-export type TwitchBroadcasterId = z.infer<typeof TwitchBroadcasterId>;
 
 export const TwitchSubscriptionMetadata = z.object({
   login: NonBlankString,

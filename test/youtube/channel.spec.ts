@@ -5,8 +5,9 @@ import {
   fetchYouTubeChannelTitle,
   resolveYouTubeChannel,
 } from '../../src/youtube/channel';
+import { YouTubeChannelId } from '../../src/youtube/data';
 
-const CHANNEL_ID = 'UC_x5XG1OV2P6uZZ5FSM9Ttw';
+const CHANNEL_ID = YouTubeChannelId.parse('UC_x5XG1OV2P6uZZ5FSM9Ttw');
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -14,8 +15,8 @@ afterEach(() => {
 
 describe('YouTube channel metadata', () => {
   it('uses the readable channel feed rather than the WebSub topic', () => {
-    expect(createYouTubeChannelFeedUrl('UC_CHANNEL')).toBe(
-      'https://www.youtube.com/feeds/videos.xml?channel_id=UC_CHANNEL',
+    expect(createYouTubeChannelFeedUrl(CHANNEL_ID)).toBe(
+      `https://www.youtube.com/feeds/videos.xml?channel_id=${CHANNEL_ID}`,
     );
   });
 
@@ -26,7 +27,7 @@ describe('YouTube channel metadata', () => {
       ),
     );
 
-    await expect(fetchYouTubeChannelTitle('UC_CHANNEL')).resolves.toBe(
+    await expect(fetchYouTubeChannelTitle(CHANNEL_ID)).resolves.toBe(
       'A channel',
     );
   });
@@ -38,7 +39,7 @@ describe('YouTube channel metadata', () => {
       ),
     );
 
-    await expect(fetchYouTubeChannelTitle('UC_CHANNEL')).rejects.toThrow(
+    await expect(fetchYouTubeChannelTitle(CHANNEL_ID)).rejects.toThrow(
       'must contain a title',
     );
   });
