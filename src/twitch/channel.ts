@@ -1,19 +1,7 @@
 import type { TwitchApiClient, TwitchUser } from './client';
+import { TwitchBroadcasterId, TwitchLogin } from './data';
 
 const TWITCH_HOSTS = new Set(['twitch.tv', 'www.twitch.tv', 'm.twitch.tv']);
-const TWITCH_LOGIN = /^[A-Za-z0-9_]{1,25}$/;
-const RESERVED_PATHS = new Set([
-  'directory',
-  'downloads',
-  'jobs',
-  'p',
-  'search',
-  'settings',
-  'subscriptions',
-  'turbo',
-  'videos',
-  'wallet',
-]);
 
 export class TwitchChannelResolutionError extends Error {}
 
@@ -27,7 +15,15 @@ export async function resolveTwitchChannel(
     throw new TwitchChannelResolutionError('Twitch channel cannot be empty');
   }
 
-  const parsed = parseTwitchChannelInput(value);
+  let parsed: ReturnType<typeof parseTwitchChannelInput>;
+  try {
+    parsed = parseTwitchChannelInput(value);
+  } catch (error) {
+    if (error instanceof TwitchChannelResolutionError) throw error;
+    throw new TwitchChannelResolutionError('Invalid Twitch channel', {
+      cause: error,
+    });
+  }
   let user: TwitchUser | undefined;
   try {
     user =
@@ -48,14 +44,22 @@ export async function resolveTwitchChannel(
   return user;
 }
 
-function parseTwitchChannelInput(input: string): {
-  type: 'id' | 'login';
-  value: string;
-} {
-  if (/^[0-9]+$/.test(input)) return { type: 'id', value: input };
+function parseTwitchChannelInput(input: string):
+  | {
+      type: 'id';
+      value: TwitchBroadcasterId;
+    }
+  | {
+      type: 'login';
+      value: TwitchLogin;
+    } {
+  const broadcasterId = TwitchBroadcasterId.safeParse(input);
+  if (broadcasterId.success) {
+    return { type: 'id', value: broadcasterId.data };
+  }
 
   if (!input.includes('://')) {
-    return { type: 'login', value: requireTwitchLogin(input) };
+    return { type: 'login', value: TwitchLogin.parse(input) };
   }
 
   let url: URL;
@@ -74,18 +78,10 @@ function parseTwitchChannelInput(input: string): {
   }
 
   const login = url.pathname.split('/').find((segment) => segment !== '');
-  if (login === undefined || RESERVED_PATHS.has(login.toLowerCase())) {
+  if (login === undefined) {
     throw new TwitchChannelResolutionError(
       'URL must identify a Twitch channel',
     );
   }
-  return { type: 'login', value: requireTwitchLogin(login) };
-}
-
-function requireTwitchLogin(input: string): string {
-  const login = input.startsWith('@') ? input.slice(1) : input;
-  if (!TWITCH_LOGIN.test(login) || RESERVED_PATHS.has(login.toLowerCase())) {
-    throw new TwitchChannelResolutionError('Invalid Twitch login');
-  }
-  return login;
+  return { type: 'login', value: TwitchLogin.parse(login) };
 }
