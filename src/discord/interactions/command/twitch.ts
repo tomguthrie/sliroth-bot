@@ -10,7 +10,7 @@ import {
   resolveTwitchChannel,
   TwitchChannelResolutionError,
 } from '../../../twitch/channel';
-import { createTwitchApiClient } from '../../../twitch/client';
+import { TwitchApiClient } from '../../../twitch/client';
 import { escapeDiscordMarkdown } from '../../markdown';
 import { DiscordMention, type DiscordMentionTarget } from '../../message';
 import {
@@ -240,7 +240,7 @@ async function completeTwitchAdd(
   try {
     const broadcaster = await resolveTwitchChannel(
       options.twitch,
-      createTwitchApiClient(env),
+      new TwitchApiClient(env),
     );
     await env.TWITCH_SUBSCRIPTIONS.getByName(broadcaster.id).addSubscriber(
       broadcaster,

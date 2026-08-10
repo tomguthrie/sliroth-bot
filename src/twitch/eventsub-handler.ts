@@ -23,6 +23,18 @@ const inFlightMessageIds = new Set<string>();
 
 const EventSubMessageId = z.string().min(1).brand<'EventSubMessageId'>();
 type EventSubMessageId = z.infer<typeof EventSubMessageId>;
+const EventSubSignature = z
+  .string()
+  .regex(/^sha256=[0-9a-f]{64}$/i)
+  .transform((value) => {
+    const hex = value.slice('sha256='.length);
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let index = 0; index < bytes.length; index += 1) {
+      const offset = index * 2;
+      bytes[index] = Number.parseInt(hex.slice(offset, offset + 2), 16);
+    }
+    return bytes;
+  });
 
 const EventSubHeaders = z.object({
   messageId: EventSubMessageId,
@@ -245,20 +257,8 @@ async function verifySignature(
       encoder.encode(messageId + timestamp + body),
     ),
   );
-  const received = parseSignature(signature);
+  const received = EventSubSignature.safeParse(signature);
   return (
-    received !== undefined && crypto.subtle.timingSafeEqual(expected, received)
+    received.success && crypto.subtle.timingSafeEqual(expected, received.data)
   );
-}
-
-function parseSignature(value: string): Uint8Array | undefined {
-  if (!/^sha256=[0-9a-f]{64}$/i.test(value)) return undefined;
-  const bytes = new Uint8Array(32);
-  for (let index = 0; index < bytes.length; index += 1) {
-    bytes[index] = Number.parseInt(
-      value.slice(7 + index * 2, 9 + index * 2),
-      16,
-    );
-  }
-  return bytes;
 }

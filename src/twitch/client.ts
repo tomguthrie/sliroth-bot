@@ -306,11 +306,6 @@ export class TwitchApiClient {
   }
 }
 
-/** Creates a Twitch client from the Worker's generated secret bindings. */
-export function createTwitchApiClient(env: Env): TwitchApiClient {
-  return new TwitchApiClient(env);
-}
-
 async function createApiError(response: Response): Promise<TwitchApiError> {
   let detail: string;
   try {
