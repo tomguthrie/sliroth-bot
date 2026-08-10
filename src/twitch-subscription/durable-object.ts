@@ -17,7 +17,7 @@ import type { DiscordMessageReceipt } from '../discord/client';
 import { DiscordSnowflake } from '../discord/snowflake';
 import { enqueueDiscordMessages } from '../queue/discord-message';
 import {
-  createTwitchApiClient,
+  TwitchApiClient,
   TwitchApiError,
   TwitchUser,
   type TwitchEventSubSubscription,
@@ -199,7 +199,7 @@ export class TwitchSubscription extends DurableObject<Env> {
       validatedEvent.broadcaster_user_id,
     );
     const startedAt = new Date(validatedEvent.started_at);
-    const client = createTwitchApiClient(this.env);
+    const client = new TwitchApiClient(this.env);
     const liveStream = await client.getStreamByUserId(broadcaster.id);
     if (liveStream?.id !== validatedEvent.id) {
       throw new Error(`Twitch stream ${validatedEvent.id} is not live`);
@@ -276,7 +276,7 @@ export class TwitchSubscription extends DurableObject<Env> {
       .limit(1);
     if (stream === undefined) return;
 
-    const vods = await createTwitchApiClient(this.env).getArchiveVideosByUserId(
+    const vods = await new TwitchApiClient(this.env).getArchiveVideosByUserId(
       broadcaster.id,
     );
     const vod = vods.find((candidate) => candidate.streamId === stream.id);
@@ -350,7 +350,7 @@ export class TwitchSubscription extends DurableObject<Env> {
     }
     const desiredTypes: readonly string[] =
       subscriberCount.value === 0 ? [] : DESIRED_EVENT_TYPES;
-    const client = createTwitchApiClient(this.env);
+    const client = new TwitchApiClient(this.env);
     const callback = new URL(
       `/twitch/eventsub/${broadcaster.id}`,
       this.env.PUBLIC_BASE_URL,
@@ -495,7 +495,7 @@ export class TwitchSubscription extends DurableObject<Env> {
 }
 
 async function getRemoteSubscription(
-  client: ReturnType<typeof createTwitchApiClient>,
+  client: TwitchApiClient,
   id: string,
 ): Promise<TwitchEventSubSubscription | undefined> {
   try {
@@ -510,7 +510,7 @@ async function getRemoteSubscription(
 }
 
 async function deleteRemoteSubscription(
-  client: ReturnType<typeof createTwitchApiClient>,
+  client: TwitchApiClient,
   id: string,
 ): Promise<void> {
   try {
