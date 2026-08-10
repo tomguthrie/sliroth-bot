@@ -1,5 +1,6 @@
 import * as z from 'zod';
 
+import { DiscordPermissions } from '../permission';
 import { DiscordSnowflake } from '../snowflake';
 
 export const APPLICATION_COMMAND_OPTION_TYPE = {
@@ -44,25 +45,28 @@ export type DiscordApplicationCommandData = z.infer<
   typeof DiscordApplicationCommandData
 >;
 
+/** A non-empty token authorizing interaction follow-up requests. */
+export const DiscordInteractionToken = z
+  .string()
+  .min(1)
+  .brand<'DiscordInteractionToken'>();
+
+export type DiscordInteractionToken = z.infer<typeof DiscordInteractionToken>;
+
 /** Validates a Discord interaction received from the webhook boundary. */
 export const DiscordInteraction = z.object({
   type: z.number(),
   application_id: DiscordSnowflake.optional(),
-  token: z.string().optional(),
+  token: DiscordInteractionToken.optional(),
   guild_id: DiscordSnowflake.optional(),
   channel_id: DiscordSnowflake.optional(),
   channel: z.object({ type: z.number() }).optional(),
-  app_permissions: z.string().optional(),
-  member: z.object({ permissions: z.string().optional() }).optional(),
+  app_permissions: DiscordPermissions.optional(),
+  member: z.object({ permissions: DiscordPermissions.optional() }).optional(),
   data: DiscordApplicationCommandData.optional(),
 });
 
 export type DiscordInteraction = z.infer<typeof DiscordInteraction>;
-
-/** Reads a non-empty string from an interaction payload. */
-export function getInteractionString(value?: string): string | undefined {
-  return value === '' ? undefined : value;
-}
 
 /** Reads a resolved role from application-command interaction data. */
 export function getResolvedInteractionRole(

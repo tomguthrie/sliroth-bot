@@ -5,6 +5,7 @@ import {
 
 import { DISCORD_API_BASE_URL } from '../request';
 import type { DiscordSnowflake } from '../snowflake';
+import type { DiscordInteractionToken } from './data';
 
 /** Creates an immediate ephemeral interaction response. */
 export function ephemeralInteractionResponse(content: string): Response {
@@ -29,7 +30,7 @@ export function deferredEphemeralInteractionResponse(): Response {
 /** Replaces the original response to a deferred interaction. */
 export async function editInteractionResponse(
   applicationId: DiscordSnowflake,
-  token: string,
+  token: DiscordInteractionToken,
   content: string,
 ): Promise<void> {
   const response = await fetch(

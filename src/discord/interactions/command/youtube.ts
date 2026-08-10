@@ -1,3 +1,5 @@
+import * as z from 'zod';
+
 import {
   type GuildYouTubeSubscription,
   listChannelYouTubeSubscriptions,
@@ -17,10 +19,10 @@ import {
   APPLICATION_COMMAND_OPTION_TYPE,
   type DiscordApplicationCommandOption,
   type DiscordInteraction,
-  getInteractionString,
+  type DiscordInteractionToken,
 } from '../data';
 import { escapeDiscordMarkdown } from '../../markdown';
-import type { DiscordMentionTarget } from '../../message';
+import { DiscordMention, type DiscordMentionTarget } from '../../message';
 import {
   hasDiscordPermission,
   MANAGE_GUILD_PERMISSION,
@@ -28,9 +30,8 @@ import {
 import { DiscordSnowflake } from '../../snowflake';
 import {
   canPostInChannel,
-  createPingDescription,
-  isSupportedNotificationChannel,
-  parseNotificationCommand,
+  DiscordNotificationCommand,
+  DiscordNotificationChannel,
   resolveNotificationPing,
 } from './notification';
 import youtubeCommand from './youtube.json';
@@ -44,19 +45,49 @@ interface YouTubeAddOptions {
   roleId?: DiscordSnowflake;
 }
 
+const TrimmedString = z.string().transform((value) => value.trim());
+
+const YouTubeAddCommandOption = z.discriminatedUnion('name', [
+  z.object({
+    type: z.literal(APPLICATION_COMMAND_OPTION_TYPE.string),
+    name: z.literal('youtube'),
+    value: TrimmedString,
+  }),
+  z.object({
+    type: z.literal(APPLICATION_COMMAND_OPTION_TYPE.string),
+    name: z.literal('message'),
+    value: TrimmedString,
+  }),
+  z.object({
+    type: z.literal(APPLICATION_COMMAND_OPTION_TYPE.string),
+    name: z.literal('ping'),
+    value: z.enum(['everyone', 'here']),
+  }),
+  z.object({
+    type: z.literal(APPLICATION_COMMAND_OPTION_TYPE.role),
+    name: z.literal('role'),
+    value: DiscordSnowflake,
+  }),
+]);
+
+const YouTubeAddCommandOptions = z
+  .array(YouTubeAddCommandOption)
+  .refine(
+    (options) =>
+      new Set(options.map((option) => option.name)).size === options.length,
+  );
+
 /** Handles the authenticated `/youtube` application command. */
 export async function handleYouTubeCommand(
   interaction: DiscordInteraction,
   env: Env,
   ctx: ExecutionContext,
 ): Promise<Response> {
-  const command = parseNotificationCommand(
-    interaction.data,
-    YOUTUBE_COMMAND_NAME,
-  );
-  if (command === undefined) {
+  const result = DiscordNotificationCommand.safeParse(interaction.data);
+  if (!result.success || result.data.commandName !== YOUTUBE_COMMAND_NAME) {
     return ephemeralInteractionResponse('This interaction is not supported.');
   }
+  const command = result.data;
 
   const guildId = interaction.guild_id;
   const channelId = interaction.channel_id;
@@ -78,7 +109,7 @@ export async function handleYouTubeCommand(
   }
 
   if (command.name === 'add' || command.name === 'remove') {
-    if (!isSupportedNotificationChannel(interaction.channel)) {
+    if (!DiscordNotificationChannel.safeParse(interaction.channel).success) {
       return ephemeralInteractionResponse(
         'YouTube notifications can only be configured in a text or announcement channel.',
       );
@@ -90,7 +121,7 @@ export async function handleYouTubeCommand(
     }
 
     const applicationId = interaction.application_id;
-    const token = getInteractionString(interaction.token);
+    const token = interaction.token;
     if (applicationId === undefined || token === undefined) {
       return ephemeralInteractionResponse('This interaction is not supported.');
     }
@@ -165,7 +196,7 @@ export async function handleYouTubeCommand(
 async function completeYouTubeAdd(
   env: Env,
   applicationId: DiscordSnowflake,
-  token: string,
+  token: DiscordInteractionToken,
   guildId: DiscordSnowflake,
   channelId: DiscordSnowflake,
   options: YouTubeAddOptions,
@@ -181,7 +212,7 @@ async function completeYouTubeAdd(
       ping,
     });
 
-    const mention = createPingDescription(ping);
+    const mention = DiscordMention.describe(ping);
     await editInteractionResponse(
       applicationId,
       token,
@@ -202,7 +233,7 @@ async function completeYouTubeAdd(
 async function completeYouTubeRemove(
   env: Env,
   applicationId: DiscordSnowflake,
-  token: string,
+  token: DiscordInteractionToken,
   channelId: DiscordSnowflake,
 ): Promise<void> {
   try {
@@ -279,47 +310,30 @@ function createSubscriptionLine(
 function parseYouTubeAddOptions(
   values: readonly DiscordApplicationCommandOption[],
 ): YouTubeAddOptions | string {
+  const result = YouTubeAddCommandOptions.safeParse(values);
+  if (!result.success) {
+    return 'This interaction is not supported.';
+  }
+
   let youtube: string | undefined;
   let message: string | undefined;
   let ping: DiscordMentionTarget | undefined;
   let roleId: DiscordSnowflake | undefined;
-  const names = new Set<string>();
 
-  for (const value of values) {
-    if (value.name === '' || names.has(value.name)) {
-      return 'This interaction is not supported.';
-    }
-    names.add(value.name);
-
-    if (
-      value.name === 'youtube' &&
-      value.type === APPLICATION_COMMAND_OPTION_TYPE.string
-    ) {
-      const input = getInteractionString(value.value)?.trim();
-      youtube = input === '' ? undefined : input;
-    } else if (
-      value.name === 'message' &&
-      value.type === APPLICATION_COMMAND_OPTION_TYPE.string
-    ) {
-      const input = getInteractionString(value.value)?.trim();
-      message = input === '' ? undefined : input;
-    } else if (
-      value.name === 'ping' &&
-      value.type === APPLICATION_COMMAND_OPTION_TYPE.string &&
-      (value.value === 'everyone' || value.value === 'here')
-    ) {
-      ping = value.value;
-    } else if (
-      value.name === 'role' &&
-      value.type === APPLICATION_COMMAND_OPTION_TYPE.role
-    ) {
-      const input = DiscordSnowflake.safeParse(value.value);
-      if (!input.success) {
-        return 'This interaction is not supported.';
-      }
-      roleId = input.data;
-    } else {
-      return 'This interaction is not supported.';
+  for (const option of result.data) {
+    switch (option.name) {
+      case 'youtube':
+        youtube = option.value === '' ? undefined : option.value;
+        break;
+      case 'message':
+        message = option.value === '' ? undefined : option.value;
+        break;
+      case 'ping':
+        ping = option.value;
+        break;
+      case 'role':
+        roleId = option.value;
+        break;
     }
   }
 

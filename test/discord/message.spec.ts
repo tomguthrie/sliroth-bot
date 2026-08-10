@@ -94,6 +94,15 @@ describe('Discord notification messages', () => {
     });
   });
 
+  it.each([
+    [undefined, ''],
+    ['everyone' as const, ' and mention @everyone'],
+    ['here' as const, ' and mention @here'],
+    [ROLE_ID, ` and mention <@&${ROLE_ID}>`],
+  ])('describes %s for configuration summaries', (target, expected) => {
+    expect(DiscordMention.describe(target)).toBe(expected);
+  });
+
   it('creates a deterministic bounded nonce', async () => {
     const nonce = await DiscordNonce.from('source-id', '123456789012345678');
 

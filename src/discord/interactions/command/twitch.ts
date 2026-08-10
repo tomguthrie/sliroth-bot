@@ -1,3 +1,5 @@
+import * as z from 'zod';
+
 import {
   type GuildTwitchSubscription,
   listChannelTwitchSubscriptions,
@@ -10,7 +12,7 @@ import {
 } from '../../../twitch/channel';
 import { createTwitchApiClient } from '../../../twitch/client';
 import { escapeDiscordMarkdown } from '../../markdown';
-import type { DiscordMentionTarget } from '../../message';
+import { DiscordMention, type DiscordMentionTarget } from '../../message';
 import {
   EMBED_LINKS_PERMISSION,
   hasDiscordPermission,
@@ -21,7 +23,7 @@ import {
   APPLICATION_COMMAND_OPTION_TYPE,
   type DiscordApplicationCommandOption,
   type DiscordInteraction,
-  getInteractionString,
+  type DiscordInteractionToken,
 } from '../data';
 import {
   deferredEphemeralInteractionResponse,
@@ -31,9 +33,8 @@ import {
 import twitchCommand from './twitch.json';
 import {
   canPostInChannel,
-  createPingDescription,
-  isSupportedNotificationChannel,
-  parseNotificationCommand,
+  DiscordNotificationCommand,
+  DiscordNotificationChannel,
   resolveNotificationPing,
 } from './notification';
 
@@ -47,19 +48,54 @@ interface TwitchAddOptions {
   roleId?: DiscordSnowflake;
 }
 
+const TrimmedString = z.string().transform((value) => value.trim());
+
+const TwitchAddCommandOption = z.discriminatedUnion('name', [
+  z.object({
+    type: z.literal(APPLICATION_COMMAND_OPTION_TYPE.string),
+    name: z.literal('twitch'),
+    value: TrimmedString,
+  }),
+  z.object({
+    type: z.literal(APPLICATION_COMMAND_OPTION_TYPE.string),
+    name: z.literal('message'),
+    value: TrimmedString,
+  }),
+  z.object({
+    type: z.literal(APPLICATION_COMMAND_OPTION_TYPE.string),
+    name: z.literal('offline'),
+    value: TrimmedString,
+  }),
+  z.object({
+    type: z.literal(APPLICATION_COMMAND_OPTION_TYPE.string),
+    name: z.literal('ping'),
+    value: z.enum(['everyone', 'here']),
+  }),
+  z.object({
+    type: z.literal(APPLICATION_COMMAND_OPTION_TYPE.role),
+    name: z.literal('role'),
+    value: DiscordSnowflake,
+  }),
+]);
+
+const TwitchAddCommandOptions = z
+  .array(TwitchAddCommandOption)
+  .refine(
+    (options) =>
+      new Set(options.map((option) => option.name)).size === options.length,
+  );
+
 /** Handles the authenticated `/twitch` application command. */
 export async function handleTwitchCommand(
   interaction: DiscordInteraction,
   env: Env,
   ctx: ExecutionContext,
 ): Promise<Response> {
-  const command = parseNotificationCommand(
-    interaction.data,
-    TWITCH_COMMAND_NAME,
-  );
-  if (command === undefined) {
+  const result = DiscordNotificationCommand.safeParse(interaction.data);
+  if (!result.success || result.data.commandName !== TWITCH_COMMAND_NAME) {
     return ephemeralInteractionResponse('This interaction is not supported.');
   }
+  const command = result.data;
 
   const guildId = interaction.guild_id;
   const channelId = interaction.channel_id;
@@ -81,7 +117,7 @@ export async function handleTwitchCommand(
   }
 
   if (command.name === 'add' || command.name === 'remove') {
-    if (!isSupportedNotificationChannel(interaction.channel)) {
+    if (!DiscordNotificationChannel.safeParse(interaction.channel).success) {
       return ephemeralInteractionResponse(
         'Twitch notifications can only be configured in a text or announcement channel.',
       );
@@ -101,7 +137,7 @@ export async function handleTwitchCommand(
     }
 
     const applicationId = interaction.application_id;
-    const token = getInteractionString(interaction.token);
+    const token = interaction.token;
     if (applicationId === undefined || token === undefined) {
       return ephemeralInteractionResponse('This interaction is not supported.');
     }
@@ -171,7 +207,7 @@ export async function handleTwitchCommand(
 async function completeTwitchAdd(
   env: Env,
   applicationId: DiscordSnowflake,
-  token: string,
+  token: DiscordInteractionToken,
   guildId: DiscordSnowflake,
   channelId: DiscordSnowflake,
   options: TwitchAddOptions,
@@ -193,7 +229,7 @@ async function completeTwitchAdd(
       },
     );
 
-    const mention = createPingDescription(ping);
+    const mention = DiscordMention.describe(ping);
     await editInteractionResponse(
       applicationId,
       token,
@@ -214,7 +250,7 @@ async function completeTwitchAdd(
 async function completeTwitchRemove(
   env: Env,
   applicationId: DiscordSnowflake,
-  token: string,
+  token: DiscordInteractionToken,
   channelId: DiscordSnowflake,
 ): Promise<void> {
   try {
@@ -282,47 +318,34 @@ function createTwitchListContent(
 function parseTwitchAddOptions(
   values: readonly DiscordApplicationCommandOption[],
 ): TwitchAddOptions | string {
+  const result = TwitchAddCommandOptions.safeParse(values);
+  if (!result.success) {
+    return 'This interaction is not supported.';
+  }
+
   let twitch: string | undefined;
   let message: string | undefined;
   let offline: string | undefined;
   let ping: DiscordMentionTarget | undefined;
   let roleId: DiscordSnowflake | undefined;
-  const names = new Set<string>();
 
-  for (const value of values) {
-    if (value.name === '' || names.has(value.name)) {
-      return 'This interaction is not supported.';
-    }
-    names.add(value.name);
-
-    if (
-      value.name === 'twitch' &&
-      value.type === APPLICATION_COMMAND_OPTION_TYPE.string
-    ) {
-      const input = getInteractionString(value.value)?.trim();
-      twitch = input === '' ? undefined : input;
-    } else if (
-      (value.name === 'message' || value.name === 'offline') &&
-      value.type === APPLICATION_COMMAND_OPTION_TYPE.string
-    ) {
-      const input = getInteractionString(value.value)?.trim();
-      if (value.name === 'message') message = input === '' ? undefined : input;
-      else offline = input === '' ? undefined : input;
-    } else if (
-      value.name === 'ping' &&
-      value.type === APPLICATION_COMMAND_OPTION_TYPE.string &&
-      (value.value === 'everyone' || value.value === 'here')
-    ) {
-      ping = value.value;
-    } else if (
-      value.name === 'role' &&
-      value.type === APPLICATION_COMMAND_OPTION_TYPE.role
-    ) {
-      const input = DiscordSnowflake.safeParse(value.value);
-      if (!input.success) return 'This interaction is not supported.';
-      roleId = input.data;
-    } else {
-      return 'This interaction is not supported.';
+  for (const option of result.data) {
+    switch (option.name) {
+      case 'twitch':
+        twitch = option.value === '' ? undefined : option.value;
+        break;
+      case 'message':
+        message = option.value === '' ? undefined : option.value;
+        break;
+      case 'offline':
+        offline = option.value === '' ? undefined : option.value;
+        break;
+      case 'ping':
+        ping = option.value;
+        break;
+      case 'role':
+        roleId = option.value;
+        break;
     }
   }
 
