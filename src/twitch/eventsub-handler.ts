@@ -1,5 +1,13 @@
 import * as z from 'zod';
 
+import {
+  TwitchBroadcasterId,
+  TwitchEventSubSubscriptionId,
+  TwitchLogin,
+  TwitchStreamId,
+  TwitchTimestamp,
+} from './data';
+
 const MESSAGE_ID_HEADER = 'twitch-eventsub-message-id';
 const MESSAGE_TYPE_HEADER = 'twitch-eventsub-message-type';
 const MESSAGE_TIMESTAMP_HEADER = 'twitch-eventsub-message-timestamp';
@@ -13,13 +21,23 @@ export const TWITCH_EVENT_STREAM_OFFLINE = 'stream.offline';
 
 const inFlightMessageIds = new Set<string>();
 
+const EventSubMessageId = z.string().min(1).brand<'EventSubMessageId'>();
+type EventSubMessageId = z.infer<typeof EventSubMessageId>;
+
+const EventSubHeaders = z.object({
+  messageId: EventSubMessageId,
+  messageType: z.string().min(1),
+  timestamp: TwitchTimestamp,
+  signature: z.string().min(1),
+});
+
 const EventSubEnvelope = z.object({
   challenge: z.string().optional(),
   subscription: z.object({
-    id: z.string(),
-    type: z.string(),
+    id: TwitchEventSubSubscriptionId,
+    type: z.string().min(1),
     condition: z.object({
-      broadcaster_user_id: z.string().optional(),
+      broadcaster_user_id: TwitchBroadcasterId.optional(),
     }),
   }),
   event: z.unknown().optional(),
@@ -28,29 +46,29 @@ const EventSubEnvelope = z.object({
 type EventSubEnvelope = z.infer<typeof EventSubEnvelope>;
 
 interface AuthenticatedEventSubMessage {
-  broadcasterId: string;
+  broadcasterId: TwitchBroadcasterId;
   envelope: EventSubEnvelope;
-  messageId: string;
+  messageId: EventSubMessageId;
   messageType: string;
-  timestamp: string;
+  timestamp: TwitchTimestamp;
 }
 
 export const TwitchStreamOnlineEvent = z.object({
-  id: z.string(),
-  broadcaster_user_id: z.string(),
-  broadcaster_user_login: z.string(),
-  broadcaster_user_name: z.string(),
-  type: z.string(),
-  started_at: z.string(),
+  id: TwitchStreamId,
+  broadcaster_user_id: TwitchBroadcasterId,
+  broadcaster_user_login: TwitchLogin,
+  broadcaster_user_name: z.string().trim().min(1),
+  type: z.string().min(1),
+  started_at: TwitchTimestamp,
 });
 
 export type TwitchStreamOnlineEvent = z.infer<typeof TwitchStreamOnlineEvent>;
 
 export const TwitchStreamOfflineEvent = z.object({
-  id: z.string(),
-  broadcaster_user_id: z.string(),
-  broadcaster_user_login: z.string(),
-  broadcaster_user_name: z.string(),
+  id: TwitchStreamId,
+  broadcaster_user_id: TwitchBroadcasterId,
+  broadcaster_user_login: TwitchLogin,
+  broadcaster_user_name: z.string().trim().min(1),
 });
 
 export type TwitchStreamOfflineEvent = z.infer<typeof TwitchStreamOfflineEvent>;
@@ -83,18 +101,16 @@ async function authenticateEventSubMessage(
   request: Request,
   secret: string,
 ): Promise<AuthenticatedEventSubMessage | Response> {
-  const messageId = request.headers.get(MESSAGE_ID_HEADER);
-  const messageType = request.headers.get(MESSAGE_TYPE_HEADER);
-  const timestamp = request.headers.get(MESSAGE_TIMESTAMP_HEADER);
-  const signature = request.headers.get(MESSAGE_SIGNATURE_HEADER);
-  if (
-    messageId === null ||
-    messageType === null ||
-    timestamp === null ||
-    signature === null
-  ) {
+  const headers = EventSubHeaders.safeParse({
+    messageId: request.headers.get(MESSAGE_ID_HEADER),
+    messageType: request.headers.get(MESSAGE_TYPE_HEADER),
+    timestamp: request.headers.get(MESSAGE_TIMESTAMP_HEADER),
+    signature: request.headers.get(MESSAGE_SIGNATURE_HEADER),
+  });
+  if (!headers.success) {
     return new Response('Missing EventSub headers', { status: 400 });
   }
+  const { messageId, messageType, timestamp, signature } = headers.data;
 
   const sentAt = Date.parse(timestamp);
   const age = Date.now() - sentAt;
@@ -177,9 +193,9 @@ async function processEventSubDelivery(
 
 async function processEventSubNotification(
   env: Env,
-  broadcasterId: string,
+  broadcasterId: TwitchBroadcasterId,
   envelope: EventSubEnvelope,
-  timestamp: string,
+  timestamp: TwitchTimestamp,
 ): Promise<Response | undefined> {
   if (envelope.event === undefined) {
     return new Response('Missing EventSub event', { status: 400 });

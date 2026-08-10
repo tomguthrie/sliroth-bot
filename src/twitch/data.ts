@@ -34,3 +34,35 @@ export const TwitchLogin = z
   .brand<'TwitchLogin'>();
 
 export type TwitchLogin = z.infer<typeof TwitchLogin>;
+
+/** Identifies a Twitch stream. */
+export const TwitchStreamId = z.string().min(1).brand<'TwitchStreamId'>();
+
+export type TwitchStreamId = z.infer<typeof TwitchStreamId>;
+
+/** Identifies a Twitch category or game. */
+export const TwitchGameId = z.string().min(1).brand<'TwitchGameId'>();
+
+export type TwitchGameId = z.infer<typeof TwitchGameId>;
+
+/** Identifies a Twitch video. */
+export const TwitchVideoId = z.string().min(1).brand<'TwitchVideoId'>();
+
+export type TwitchVideoId = z.infer<typeof TwitchVideoId>;
+
+/** Identifies a Twitch EventSub subscription. */
+export const TwitchEventSubSubscriptionId = z
+  .string()
+  .min(1)
+  .brand<'TwitchEventSubSubscriptionId'>();
+
+export type TwitchEventSubSubscriptionId = z.infer<
+  typeof TwitchEventSubSubscriptionId
+>;
+
+/** A Twitch RFC 3339 timestamp represented as an ISO datetime string. */
+export const TwitchTimestamp = z.iso
+  .datetime({ offset: true })
+  .brand<'TwitchTimestamp'>();
+
+export type TwitchTimestamp = z.infer<typeof TwitchTimestamp>;

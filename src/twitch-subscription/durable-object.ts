@@ -19,10 +19,16 @@ import { enqueueDiscordMessages } from '../queue/discord-message';
 import {
   createTwitchApiClient,
   TwitchApiError,
+  TwitchUser,
   type TwitchEventSubSubscription,
-  type TwitchUser,
 } from '../twitch/client';
-import type {
+import {
+  TwitchBroadcasterId,
+  TwitchEventSubSubscriptionId,
+  TwitchStreamId,
+  TwitchTimestamp,
+} from '../twitch/data';
+import {
   TwitchStreamOfflineEvent,
   TwitchStreamOnlineEvent,
 } from '../twitch/eventsub-handler';
@@ -49,19 +55,19 @@ const ACTIVE_EVENTSUB_STATUSES = new Set([
   'webhook_callback_verification_pending',
 ]);
 
-const TwitchBroadcaster: z.ZodType<TwitchUser> = z.object({
-  id: z.string().regex(/^\d+$/, { error: 'Twitch broadcaster ID is invalid' }),
-  login: nonBlankStringSchema('Twitch login'),
-  displayName: nonBlankStringSchema('Twitch display name'),
-  profileImageUrl: z.string(),
-  offlineImageUrl: z.string(),
-});
-
 export const TwitchSubscriberRegistration = z.object({
   guildId: DiscordSnowflake,
   channelId: DiscordSnowflake,
-  message: nonBlankStringSchema('Subscriber message').optional(),
-  offline: nonBlankStringSchema('Subscriber offline message').optional(),
+  message: z
+    .string()
+    .trim()
+    .min(1, { error: 'Subscriber message cannot be empty' })
+    .optional(),
+  offline: z
+    .string()
+    .trim()
+    .min(1, { error: 'Subscriber offline message cannot be empty' })
+    .optional(),
   ping: z
     .union([z.literal('everyone'), z.literal('here'), DiscordSnowflake])
     .optional(),
@@ -92,11 +98,11 @@ export class TwitchSubscription extends DurableObject<Env> {
 
   /** Adds or updates a subscriber, then reconciles Twitch EventSub state. */
   async addSubscriber(
-    broadcaster: TwitchUser,
+    broadcaster: z.input<typeof TwitchUser>,
     registration: TwitchSubscriberRegistrationInput,
   ): Promise<void> {
-    validateBroadcaster(broadcaster);
-    const validated = validateRegistration(registration);
+    const validatedBroadcaster = TwitchUser.parse(broadcaster);
+    const validated = TwitchSubscriberRegistration.parse(registration);
     const [existingSubscriber] = await this.db
       .select({ guildId: twitchSubscribers.guildId })
       .from(twitchSubscribers)
@@ -106,19 +112,19 @@ export class TwitchSubscription extends DurableObject<Env> {
     await this.db
       .insert(broadcasters)
       .values({
-        id: broadcaster.id,
-        login: broadcaster.login,
-        displayName: broadcaster.displayName,
-        profileImageUrl: broadcaster.profileImageUrl,
-        offlineImageUrl: broadcaster.offlineImageUrl,
+        id: validatedBroadcaster.id,
+        login: validatedBroadcaster.login,
+        displayName: validatedBroadcaster.displayName,
+        profileImageUrl: validatedBroadcaster.profileImageUrl,
+        offlineImageUrl: validatedBroadcaster.offlineImageUrl,
       })
       .onConflictDoUpdate({
         target: broadcasters.id,
         set: {
-          login: broadcaster.login,
-          displayName: broadcaster.displayName,
-          profileImageUrl: broadcaster.profileImageUrl,
-          offlineImageUrl: broadcaster.offlineImageUrl,
+          login: validatedBroadcaster.login,
+          displayName: validatedBroadcaster.displayName,
+          profileImageUrl: validatedBroadcaster.profileImageUrl,
+          offlineImageUrl: validatedBroadcaster.offlineImageUrl,
         },
       });
     await this.db
@@ -139,21 +145,24 @@ export class TwitchSubscription extends DurableObject<Env> {
         },
       });
     const metadata: TwitchSubscriptionMetadata = {
-      login: broadcaster.login,
-      displayName: broadcaster.displayName,
+      login: validatedBroadcaster.login,
+      displayName: validatedBroadcaster.displayName,
     };
     await Promise.all([
       this.env.TWITCH_SUBSCRIPTIONS_INDEX.put(
         guildTwitchSubscriptionKey(
           guildId,
           validated.channelId,
-          broadcaster.id,
+          validatedBroadcaster.id,
         ),
         '1',
         { metadata },
       ),
       this.env.TWITCH_SUBSCRIPTIONS_INDEX.put(
-        channelTwitchSubscriptionKey(validated.channelId, broadcaster.id),
+        channelTwitchSubscriptionKey(
+          validated.channelId,
+          validatedBroadcaster.id,
+        ),
         '1',
       ),
     ]);
@@ -162,11 +171,11 @@ export class TwitchSubscription extends DurableObject<Env> {
 
   /** Removes the subscriber for a Discord channel and reconciles EventSub. */
   async removeSubscriber(channelId: string): Promise<boolean> {
-    DiscordSnowflake.parse(channelId);
+    const validatedChannelId = DiscordSnowflake.parse(channelId);
     const broadcaster = await this.getBroadcaster();
     const [removed] = await this.db
       .delete(twitchSubscribers)
-      .where(eq(twitchSubscribers.channelId, channelId))
+      .where(eq(twitchSubscribers.channelId, validatedChannelId))
       .returning({
         channelId: twitchSubscribers.channelId,
         guildId: twitchSubscribers.guildId,
@@ -190,19 +199,18 @@ export class TwitchSubscription extends DurableObject<Env> {
   }
 
   /** Claims a live stream and queues one notification per subscriber. */
-  async streamOnline(event: TwitchStreamOnlineEvent): Promise<void> {
+  async streamOnline(
+    event: z.input<typeof TwitchStreamOnlineEvent>,
+  ): Promise<void> {
+    const validatedEvent = TwitchStreamOnlineEvent.parse(event);
     const broadcaster = await this.requireBroadcaster(
-      event.broadcaster_user_id,
+      validatedEvent.broadcaster_user_id,
     );
-    requireNonEmpty(event.id, 'Twitch stream ID');
-    const startedAt = requireTimestamp(
-      event.started_at,
-      'Twitch stream start timestamp',
-    );
+    const startedAt = new Date(validatedEvent.started_at);
     const client = createTwitchApiClient(this.env);
     const liveStream = await client.getStreamByUserId(broadcaster.id);
-    if (liveStream?.id !== event.id) {
-      throw new Error(`Twitch stream ${event.id} is not live`);
+    if (liveStream?.id !== validatedEvent.id) {
+      throw new Error(`Twitch stream ${validatedEvent.id} is not live`);
     }
     const game =
       liveStream.gameId === ''
@@ -212,7 +220,7 @@ export class TwitchSubscription extends DurableObject<Env> {
     const [stream] = await this.db
       .insert(streams)
       .values({
-        id: event.id,
+        id: validatedEvent.id,
         title:
           liveStream.title.trim() === ''
             ? `${broadcaster.displayName} is live`
@@ -261,21 +269,18 @@ export class TwitchSubscription extends DurableObject<Env> {
 
   /** Marks the current stream offline and edits delivered notifications. */
   async streamOffline(
-    event: TwitchStreamOfflineEvent,
+    event: z.input<typeof TwitchStreamOfflineEvent>,
     endedAtValue: string,
   ): Promise<void> {
+    const validatedEvent = TwitchStreamOfflineEvent.parse(event);
     const broadcaster = await this.requireBroadcaster(
-      event.broadcaster_user_id,
+      validatedEvent.broadcaster_user_id,
     );
-    requireNonEmpty(event.id, 'Twitch stream ID');
-    const endedAt = requireTimestamp(
-      endedAtValue,
-      'Twitch stream end timestamp',
-    );
+    const endedAt = new Date(TwitchTimestamp.parse(endedAtValue));
     const [stream] = await this.db
       .select()
       .from(streams)
-      .where(eq(streams.id, event.id))
+      .where(eq(streams.id, validatedEvent.id))
       .limit(1);
     if (stream === undefined) return;
 
@@ -304,29 +309,29 @@ export class TwitchSubscription extends DurableObject<Env> {
     streamId: string,
     receipt: DiscordMessageReceipt,
   ): Promise<void> {
-    requireNonEmpty(streamId, 'Twitch stream ID');
-    DiscordSnowflake.parse(receipt.channelId);
-    DiscordSnowflake.parse(receipt.messageId);
+    const validatedStreamId = TwitchStreamId.parse(streamId);
     const [message] = await this.db
       .update(streamMessages)
       .set({ messageId: receipt.messageId })
       .where(
         and(
-          eq(streamMessages.streamId, streamId),
+          eq(streamMessages.streamId, validatedStreamId),
           eq(streamMessages.channelId, receipt.channelId),
         ),
       )
       .returning({ channelId: streamMessages.channelId });
     if (message !== undefined) {
-      await this.queueStreamUpdates(streamId, message.channelId);
+      await this.queueStreamUpdates(validatedStreamId, message.channelId);
     }
   }
 
   /** Removes a revoked local subscription so reconciliation recreates it. */
   async revokeEventSub(subscriptionId: string): Promise<void> {
+    const validatedSubscriptionId =
+      TwitchEventSubSubscriptionId.parse(subscriptionId);
     await this.db
       .delete(eventSubSubscriptions)
-      .where(eq(eventSubSubscriptions.subscriptionId, subscriptionId));
+      .where(eq(eventSubSubscriptions.subscriptionId, validatedSubscriptionId));
     await this.reconcile();
   }
 
@@ -398,8 +403,8 @@ export class TwitchSubscription extends DurableObject<Env> {
   }
 
   private async requireBroadcaster(
-    broadcasterId: string,
-  ): Promise<typeof broadcasters.$inferSelect> {
+    broadcasterId: TwitchBroadcasterId,
+  ): Promise<TwitchUser> {
     const broadcaster = await this.getBroadcaster();
     if (broadcaster === undefined) {
       throw new Error('Twitch broadcaster has not been registered');
@@ -409,7 +414,7 @@ export class TwitchSubscription extends DurableObject<Env> {
         `Twitch broadcaster ${broadcasterId} does not match ${broadcaster.id}`,
       );
     }
-    return broadcaster;
+    return TwitchUser.parse(broadcaster);
   }
 
   private async queueStreamUpdates(
@@ -502,7 +507,9 @@ async function getRemoteSubscription(
   id: string,
 ): Promise<TwitchEventSubSubscription | undefined> {
   try {
-    return await client.getEventSubSubscriptionById(id);
+    return await client.getEventSubSubscriptionById(
+      TwitchEventSubSubscriptionId.parse(id),
+    );
   } catch (error) {
     if (error instanceof TwitchApiError && error.status === 404)
       return undefined;
@@ -515,7 +522,9 @@ async function deleteRemoteSubscription(
   id: string,
 ): Promise<void> {
   try {
-    await client.deleteEventSubSubscription(id);
+    await client.deleteEventSubSubscription(
+      TwitchEventSubSubscriptionId.parse(id),
+    );
   } catch (error) {
     if (!(error instanceof TwitchApiError) || error.status !== 404) throw error;
   }
@@ -535,45 +544,4 @@ function isDesiredSubscription(
     subscription.transport.callback === callback &&
     ACTIVE_EVENTSUB_STATUSES.has(subscription.status)
   );
-}
-
-function validateBroadcaster(broadcaster: TwitchUser): void {
-  const result = TwitchBroadcaster.safeParse(broadcaster);
-  if (!result.success) {
-    throw new Error(
-      result.error.issues[0]?.message ?? 'Twitch broadcaster is invalid',
-      { cause: result.error },
-    );
-  }
-}
-
-function validateRegistration(
-  registration: TwitchSubscriberRegistrationInput,
-): TwitchSubscriberRegistration {
-  const result = TwitchSubscriberRegistration.safeParse(registration);
-  if (!result.success) {
-    throw new Error(
-      result.error.issues[0]?.message ??
-        'Twitch subscriber registration is invalid',
-      { cause: result.error },
-    );
-  }
-  return result.data;
-}
-
-function nonBlankStringSchema(name: string) {
-  const error = `${name} cannot be empty`;
-  return z.string({ error }).refine((value) => value.trim() !== '', { error });
-}
-
-function requireNonEmpty(value: string, description: string): void {
-  if (value.trim() === '') throw new Error(`${description} cannot be empty`);
-}
-
-function requireTimestamp(value: string, description: string): Date {
-  const timestamp = new Date(value);
-  if (Number.isNaN(timestamp.getTime())) {
-    throw new Error(`${description} is invalid`);
-  }
-  return timestamp;
 }

@@ -8,18 +8,28 @@ export const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
 /** Identifies an invalid response from Twitch's authorization service. */
 export class TwitchAuthError extends Error {}
 
+/** A non-empty Twitch access token that can be represented in HTTP headers. */
+export const TwitchAccessToken = z
+  .string()
+  .regex(/^[A-Za-z0-9._~+/-]+=*$/)
+  .brand<'TwitchAccessToken'>();
+
+export type TwitchAccessToken = z.infer<typeof TwitchAccessToken>;
+
 const TwitchTokenResponse = z
   .object({
-    access_token: z.string(),
-    expires_in: z.number(),
+    access_token: TwitchAccessToken,
+    expires_in: z.int().min(75),
   })
   .transform(({ access_token: accessToken, expires_in: expiresIn }) => ({
     accessToken,
-    expiresIn,
+    expirationTtl: Math.floor(expiresIn * 0.8),
   }));
 
+type TwitchTokenResponse = z.infer<typeof TwitchTokenResponse>;
+
 /** Returns the cached Twitch app token or requests and caches a new one. */
-export async function getValidToken(env: Env): Promise<string> {
+export async function getValidToken(env: Env): Promise<TwitchAccessToken> {
   const cached = await readCachedToken(env);
   if (cached !== undefined) {
     return cached;
@@ -44,7 +54,9 @@ export async function getValidToken(env: Env): Promise<string> {
   return accessToken;
 }
 
-async function readCachedToken(env: Env): Promise<string | undefined> {
+async function readCachedToken(
+  env: Env,
+): Promise<TwitchAccessToken | undefined> {
   let cached: string | null;
   try {
     cached = await env.TOKEN_STORE.get(TWITCH_TOKEN_KEY);
@@ -55,8 +67,9 @@ async function readCachedToken(env: Env): Promise<string | undefined> {
   if (cached === null) {
     return undefined;
   }
-  if (isUsableAccessToken(cached)) {
-    return cached;
+  const result = TwitchAccessToken.safeParse(cached);
+  if (result.success) {
+    return result.data;
   }
 
   console.warn({ event: 'twitch_token_cache_invalid' });
@@ -68,7 +81,7 @@ async function readCachedToken(env: Env): Promise<string | undefined> {
   return undefined;
 }
 
-async function requestTwitchToken(env: Env) {
+async function requestTwitchToken(env: Env): Promise<TwitchTokenResponse> {
   let stage = 'token_request';
   try {
     const body = new URLSearchParams({
@@ -96,20 +109,7 @@ async function requestTwitchToken(env: Env) {
         { cause: result.error },
       );
     }
-    const { accessToken, expiresIn } = result.data;
-    const expirationTtl =
-      typeof expiresIn === 'number' ? Math.floor(expiresIn * 0.8) : Number.NaN;
-    if (
-      !isUsableAccessToken(accessToken) ||
-      !Number.isSafeInteger(expirationTtl) ||
-      expirationTtl < 60
-    ) {
-      throw new TwitchAuthError(
-        'Twitch app access token response was unusable',
-      );
-    }
-
-    return { accessToken, expirationTtl };
+    return result.data;
   } catch (error) {
     console.error({
       event: 'twitch_token_acquisition_failed',
@@ -122,16 +122,4 @@ async function requestTwitchToken(env: Env) {
 
 function logCacheFailure(event: string, error: unknown): void {
   console.warn({ event, error: toLoggableError(error) });
-}
-
-function isUsableAccessToken(value: unknown): value is string {
-  if (typeof value !== 'string' || value.trim() === '') {
-    return false;
-  }
-  try {
-    new Headers({ authorization: `Bearer ${value}` });
-    return true;
-  } catch {
-    return false;
-  }
 }
