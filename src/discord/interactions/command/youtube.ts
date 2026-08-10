@@ -17,7 +17,6 @@ import {
 } from '../response';
 import {
   APPLICATION_COMMAND_OPTION_TYPE,
-  type DiscordApplicationCommandOption,
   type DiscordInteraction,
   type DiscordInteractionToken,
 } from '../data';
@@ -37,13 +36,6 @@ import {
 import youtubeCommand from './youtube.json';
 
 export const YOUTUBE_COMMAND_NAME = youtubeCommand.name;
-
-interface YouTubeAddOptions {
-  youtube: string;
-  message?: string;
-  ping?: DiscordMentionTarget;
-  roleId?: DiscordSnowflake;
-}
 
 const TrimmedString = z.string().transform((value) => value.trim());
 
@@ -70,12 +62,33 @@ const YouTubeAddCommandOption = z.discriminatedUnion('name', [
   }),
 ]);
 
-const YouTubeAddCommandOptions = z
+const YouTubeAddOptions = z
   .array(YouTubeAddCommandOption)
   .refine(
     (options) =>
       new Set(options.map((option) => option.name)).size === options.length,
+  )
+  .transform((options) =>
+    Object.fromEntries(
+      options.map(({ name, value }) => [
+        name === 'role' ? 'roleId' : name,
+        value,
+      ]),
+    ),
+  )
+  .pipe(
+    z.object({
+      youtube: z.string().min(1),
+      message: z
+        .string()
+        .transform((value) => (value === '' ? undefined : value))
+        .optional(),
+      ping: z.enum(['everyone', 'here']).optional(),
+      roleId: DiscordSnowflake.optional(),
+    }),
   );
+
+type YouTubeAddOptions = z.infer<typeof YouTubeAddOptions>;
 
 /** Handles the authenticated `/youtube` application command. */
 export async function handleYouTubeCommand(
@@ -127,9 +140,17 @@ export async function handleYouTubeCommand(
     }
 
     if (command.name === 'add') {
-      const options = parseYouTubeAddOptions(command.options);
-      if (typeof options === 'string') {
-        return ephemeralInteractionResponse(options);
+      const optionsResult = YouTubeAddOptions.safeParse(command.options);
+      if (!optionsResult.success) {
+        return ephemeralInteractionResponse(
+          'This interaction is not supported.',
+        );
+      }
+      const options = optionsResult.data;
+      if (options.roleId !== undefined && options.ping !== undefined) {
+        return ephemeralInteractionResponse(
+          'Choose either a role or an @everyone/@here ping, not both.',
+        );
       }
 
       const pingResult = resolveNotificationPing(
@@ -305,45 +326,6 @@ function createSubscriptionLine(
     subscription.youtubeChannelId,
   )}`;
   return `${marker} [${title}](${channelUrl}) → <#${subscription.discordChannelId}>${currentLabel}`;
-}
-
-function parseYouTubeAddOptions(
-  values: readonly DiscordApplicationCommandOption[],
-): YouTubeAddOptions | string {
-  const result = YouTubeAddCommandOptions.safeParse(values);
-  if (!result.success) {
-    return 'This interaction is not supported.';
-  }
-
-  let youtube: string | undefined;
-  let message: string | undefined;
-  let ping: DiscordMentionTarget | undefined;
-  let roleId: DiscordSnowflake | undefined;
-
-  for (const option of result.data) {
-    switch (option.name) {
-      case 'youtube':
-        youtube = option.value === '' ? undefined : option.value;
-        break;
-      case 'message':
-        message = option.value === '' ? undefined : option.value;
-        break;
-      case 'ping':
-        ping = option.value;
-        break;
-      case 'role':
-        roleId = option.value;
-        break;
-    }
-  }
-
-  if (youtube === undefined) {
-    return 'A YouTube channel is required.';
-  }
-  if (roleId !== undefined && ping !== undefined) {
-    return 'Choose either a role or an @everyone/@here ping, not both.';
-  }
-  return { youtube, message, ping, roleId };
 }
 
 function logInteractionFailure(error: unknown): void {

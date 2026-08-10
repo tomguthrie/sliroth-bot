@@ -21,7 +21,6 @@ import {
 import { DiscordSnowflake } from '../../snowflake';
 import {
   APPLICATION_COMMAND_OPTION_TYPE,
-  type DiscordApplicationCommandOption,
   type DiscordInteraction,
   type DiscordInteractionToken,
 } from '../data';
@@ -39,14 +38,6 @@ import {
 } from './notification';
 
 export const TWITCH_COMMAND_NAME = twitchCommand.name;
-
-interface TwitchAddOptions {
-  twitch: string;
-  message?: string;
-  offline?: string;
-  ping?: DiscordMentionTarget;
-  roleId?: DiscordSnowflake;
-}
 
 const TrimmedString = z.string().transform((value) => value.trim());
 
@@ -78,12 +69,37 @@ const TwitchAddCommandOption = z.discriminatedUnion('name', [
   }),
 ]);
 
-const TwitchAddCommandOptions = z
+const TwitchAddOptions = z
   .array(TwitchAddCommandOption)
   .refine(
     (options) =>
       new Set(options.map((option) => option.name)).size === options.length,
+  )
+  .transform((options) =>
+    Object.fromEntries(
+      options.map(({ name, value }) => [
+        name === 'role' ? 'roleId' : name,
+        value,
+      ]),
+    ),
+  )
+  .pipe(
+    z.object({
+      twitch: z.string().min(1),
+      message: z
+        .string()
+        .transform((value) => (value === '' ? undefined : value))
+        .optional(),
+      offline: z
+        .string()
+        .transform((value) => (value === '' ? undefined : value))
+        .optional(),
+      ping: z.enum(['everyone', 'here']).optional(),
+      roleId: DiscordSnowflake.optional(),
+    }),
   );
+
+type TwitchAddOptions = z.infer<typeof TwitchAddOptions>;
 
 /** Handles the authenticated `/twitch` application command. */
 export async function handleTwitchCommand(
@@ -143,9 +159,17 @@ export async function handleTwitchCommand(
     }
 
     if (command.name === 'add') {
-      const options = parseTwitchAddOptions(command.options);
-      if (typeof options === 'string') {
-        return ephemeralInteractionResponse(options);
+      const optionsResult = TwitchAddOptions.safeParse(command.options);
+      if (!optionsResult.success) {
+        return ephemeralInteractionResponse(
+          'This interaction is not supported.',
+        );
+      }
+      const options = optionsResult.data;
+      if (options.roleId !== undefined && options.ping !== undefined) {
+        return ephemeralInteractionResponse(
+          'Choose either a role or an @everyone/@here ping, not both.',
+        );
       }
       const pingResult = resolveNotificationPing(
         options,
@@ -313,47 +337,6 @@ function createTwitchListContent(
       return `${marker} [${name}](${url}) → <#${subscription.discordChannelId}>${currentLabel}`;
     }),
   ].join('\n');
-}
-
-function parseTwitchAddOptions(
-  values: readonly DiscordApplicationCommandOption[],
-): TwitchAddOptions | string {
-  const result = TwitchAddCommandOptions.safeParse(values);
-  if (!result.success) {
-    return 'This interaction is not supported.';
-  }
-
-  let twitch: string | undefined;
-  let message: string | undefined;
-  let offline: string | undefined;
-  let ping: DiscordMentionTarget | undefined;
-  let roleId: DiscordSnowflake | undefined;
-
-  for (const option of result.data) {
-    switch (option.name) {
-      case 'twitch':
-        twitch = option.value === '' ? undefined : option.value;
-        break;
-      case 'message':
-        message = option.value === '' ? undefined : option.value;
-        break;
-      case 'offline':
-        offline = option.value === '' ? undefined : option.value;
-        break;
-      case 'ping':
-        ping = option.value;
-        break;
-      case 'role':
-        roleId = option.value;
-        break;
-    }
-  }
-
-  if (twitch === undefined) return 'A Twitch channel is required.';
-  if (roleId !== undefined && ping !== undefined) {
-    return 'Choose either a role or an @everyone/@here ping, not both.';
-  }
-  return { twitch, message, offline, ping, roleId };
 }
 
 function logInteractionFailure(error: unknown): void {
