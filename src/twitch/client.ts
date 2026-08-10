@@ -42,10 +42,7 @@ export class TwitchApiError extends Error {
 export const TwitchUser = z.object({
   id: TwitchBroadcasterId,
   login: TwitchLogin,
-  displayName: z
-    .string()
-    .trim()
-    .min(1, { error: 'Twitch display name cannot be empty' }),
+  displayName: z.string().trim().min(1),
   profileImageUrl: z.string(),
   offlineImageUrl: z.string(),
 });

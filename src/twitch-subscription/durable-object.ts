@@ -58,16 +58,8 @@ const ACTIVE_EVENTSUB_STATUSES = new Set([
 export const TwitchSubscriberRegistration = z.object({
   guildId: DiscordSnowflake,
   channelId: DiscordSnowflake,
-  message: z
-    .string()
-    .trim()
-    .min(1, { error: 'Subscriber message cannot be empty' })
-    .optional(),
-  offline: z
-    .string()
-    .trim()
-    .min(1, { error: 'Subscriber offline message cannot be empty' })
-    .optional(),
+  message: z.string().trim().min(1).optional(),
+  offline: z.string().trim().min(1).optional(),
   ping: z
     .union([z.literal('everyone'), z.literal('here'), DiscordSnowflake])
     .optional(),

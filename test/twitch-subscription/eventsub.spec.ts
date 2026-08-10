@@ -45,7 +45,7 @@ describe('TwitchSubscription EventSub reconciliation', () => {
           { guildId: GUILD_ID, channelId: CHANNEL_ID },
         ),
       ),
-    ).rejects.toThrow('Twitch display name cannot be empty');
+    ).rejects.toThrow();
   });
   it('creates desired subscriptions and deletes them with the last subscriber', async () => {
     const requests: { method: string; url: string; eventType?: string }[] = [];
