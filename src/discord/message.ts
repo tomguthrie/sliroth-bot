@@ -184,6 +184,17 @@ export const DiscordMention = {
       allowedMentions: { roleIds: [ping] },
     };
   },
+
+  /** Describes the mention in a notification configuration summary. */
+  describe(ping: DiscordMentionTarget | undefined): string {
+    if (ping === undefined) {
+      return '';
+    }
+    if (ping === 'everyone' || ping === 'here') {
+      return ` and mention @${ping}`;
+    }
+    return ` and mention <@&${ping}>`;
+  },
 };
 
 /** Derives Discord idempotency nonces for notification deliveries. */

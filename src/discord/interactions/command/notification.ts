@@ -1,7 +1,9 @@
 import { ChannelTypes } from 'discord-interactions';
+import * as z from 'zod';
 
 import type { DiscordMentionTarget } from '../../message';
 import {
+  type DiscordPermissions,
   hasDiscordPermission,
   MENTION_EVERYONE_PERMISSION,
   SEND_MESSAGES_PERMISSION,
@@ -10,40 +12,43 @@ import {
 import type { DiscordSnowflake } from '../../snowflake';
 import {
   APPLICATION_COMMAND_OPTION_TYPE,
+  DiscordApplicationCommandOption,
   type DiscordApplicationCommandData,
-  type DiscordApplicationCommandOption,
-  type DiscordInteraction,
   getResolvedInteractionRole,
 } from '../data';
 
-/** Parses the single subcommand expected by a notification command. */
-export function parseNotificationCommand(
-  value: DiscordApplicationCommandData | undefined,
-  commandName: string,
-):
-  | { name: string; options: readonly DiscordApplicationCommandOption[] }
-  | undefined {
-  if (
-    value?.name !== commandName ||
-    !Array.isArray(value.options) ||
-    value.options.length !== 1
-  ) {
-    return undefined;
-  }
+export const DiscordNotificationCommand = z
+  .object({
+    name: z.string(),
+    options: z.tuple([
+      z.object({
+        type: z.literal(APPLICATION_COMMAND_OPTION_TYPE.subcommand),
+        name: z.string().min(1),
+        options: z.array(DiscordApplicationCommandOption).optional(),
+      }),
+    ]),
+  })
+  .transform(({ name: commandName, options: [subcommand] }) => ({
+    commandName,
+    name: subcommand.name,
+    options: subcommand.options ?? [],
+  }));
 
-  const option = value.options[0];
-  if (
-    option.type !== APPLICATION_COMMAND_OPTION_TYPE.subcommand ||
-    option.name === ''
-  ) {
-    return undefined;
-  }
+export type DiscordNotificationCommand = z.infer<
+  typeof DiscordNotificationCommand
+>;
 
-  return {
-    name: option.name,
-    options: Array.isArray(option.options) ? option.options : [],
-  };
-}
+/** Channel shapes supported for notification delivery. */
+export const DiscordNotificationChannel = z.object({
+  type: z.union([
+    z.literal(Number(ChannelTypes.GUILD_TEXT)),
+    z.literal(Number(ChannelTypes.GUILD_ANNOUNCEMENT)),
+  ]),
+});
+
+export type DiscordNotificationChannel = z.infer<
+  typeof DiscordNotificationChannel
+>;
 
 export function resolveNotificationPing(
   options: {
@@ -52,7 +57,7 @@ export function resolveNotificationPing(
   },
   data: DiscordApplicationCommandData | undefined,
   guildId: DiscordSnowflake,
-  permissions: string | undefined,
+  permissions: DiscordPermissions | undefined,
 ): { ping?: DiscordMentionTarget } | { error: string } {
   if (options.ping !== undefined) {
     return hasDiscordPermission(permissions, MENTION_EVERYONE_PERMISSION)
@@ -86,28 +91,9 @@ export function resolveNotificationPing(
   return { ping: options.roleId };
 }
 
-export function createPingDescription(
-  ping: DiscordMentionTarget | undefined,
-): string {
-  if (ping === undefined) {
-    return '';
-  }
-  if (ping === 'everyone' || ping === 'here') {
-    return ` and mention @${ping}`;
-  }
-  return ` and mention <@&${ping}>`;
-}
-
-export function isSupportedNotificationChannel(
-  value: DiscordInteraction['channel'],
+export function canPostInChannel(
+  permissions: DiscordPermissions | undefined,
 ): boolean {
-  return (
-    value?.type === Number(ChannelTypes.GUILD_TEXT) ||
-    value?.type === Number(ChannelTypes.GUILD_ANNOUNCEMENT)
-  );
-}
-
-export function canPostInChannel(permissions: string | undefined): boolean {
   return (
     hasDiscordPermission(permissions, VIEW_CHANNEL_PERMISSION) &&
     hasDiscordPermission(permissions, SEND_MESSAGES_PERMISSION)

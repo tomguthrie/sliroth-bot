@@ -46,6 +46,25 @@ describe('Discord interactions', () => {
     expect(response.status).toBe(400);
   });
 
+  it('rejects an invalid Discord permission bitfield at the boundary', async () => {
+    const response = await exports.default.fetch(
+      await createSignedRequest({
+        ...createListInteraction(),
+        app_permissions: 'invalid',
+      }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it('rejects an empty interaction token at the boundary', async () => {
+    const response = await exports.default.fetch(
+      await createSignedRequest({ ...createListInteraction(), token: '' }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
   it('rejects an invalid signature', async () => {
     const response = await exports.default.fetch(
       'https://example.com/discord/interactions',
@@ -193,6 +212,20 @@ describe('Discord interactions', () => {
       content: `Uploads from **Google for Developers** will be posted in <#${CURRENT_CHANNEL_ID}>.`,
       allowed_mentions: { parse: [] },
     });
+  });
+
+  it('rejects duplicate YouTube add options', async () => {
+    const response = await exports.default.fetch(
+      await createSignedRequest(
+        createAddInteraction(YOUTUBE_CHANNEL_ID, {
+          options: [{ type: 3, name: 'youtube', value: YOUTUBE_CHANNEL_ID }],
+        }),
+      ),
+    );
+
+    expect(await interactionContent(response)).toBe(
+      'This interaction is not supported.',
+    );
   });
 
   it('removes every YouTube notification from the current channel', async () => {
