@@ -1,6 +1,8 @@
 import { XMLParser } from 'fast-xml-parser';
 import * as z from 'zod';
 
+import { YouTubeChannelId, YouTubeTimestamp, YouTubeVideoId } from './data';
+
 const parser = new XMLParser({
   removeNSPrefix: true,
   parseTagValue: false,
@@ -8,21 +10,31 @@ const parser = new XMLParser({
 });
 
 const UnknownRecord = z.record(z.string(), z.unknown());
-export const YouTubeVideoNotification = z
-  .object({
-    videoId: nonBlankString('videoId'),
-    channelId: nonBlankString('channelId'),
-    title: nonBlankString('title'),
-    published: nonBlankString('published'),
-  })
-  .transform(({ videoId, channelId, title, published: publishedAt }) => ({
-    videoId,
-    channelId,
-    title,
-    publishedAt,
-  }));
+export const YouTubeVideoNotification = z.object({
+  videoId: YouTubeVideoId,
+  channelId: YouTubeChannelId,
+  title: z.string().trim().min(1),
+  publishedAt: YouTubeTimestamp,
+});
 
 export type YouTubeVideoNotification = z.infer<typeof YouTubeVideoNotification>;
+
+const YouTubeAtomEntry = z
+  .object({
+    videoId: z.string().trim().min(1).pipe(YouTubeVideoId),
+    channelId: z.string().trim().min(1).pipe(YouTubeChannelId),
+    title: z.string().trim().min(1),
+    published: z.string().trim().min(1).pipe(YouTubeTimestamp),
+  })
+  .transform(({ videoId, channelId, title, published: publishedAt }) =>
+    YouTubeVideoNotification.parse({
+      videoId,
+      channelId,
+      title,
+      publishedAt,
+    }),
+  );
+const YouTubeAtomEntries = z.array(YouTubeAtomEntry);
 
 export function parseYouTubeVideoNotifications(
   xml: string,
@@ -47,22 +59,5 @@ export function parseYouTubeVideoNotifications(
 
   const entries = Array.isArray(entryValue) ? entryValue : [entryValue];
 
-  return entries.map(parseEntry);
-}
-
-function parseEntry(entry: unknown): YouTubeVideoNotification {
-  const result = YouTubeVideoNotification.safeParse(entry);
-  if (!result.success) {
-    const message = result.error.issues[0]?.message;
-    throw new Error(
-      message ?? 'YouTube notification contains an invalid entry',
-      { cause: result.error },
-    );
-  }
-  return result.data;
-}
-
-function nonBlankString(property: string) {
-  const error = `YouTube notification entry requires a non-empty ${property}`;
-  return z.string({ error }).refine((value) => value.trim() !== '', { error });
+  return YouTubeAtomEntries.parse(entries);
 }

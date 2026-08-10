@@ -12,6 +12,7 @@ import {
 } from 'vitest';
 
 import { subscribers } from '../../src/db/youtube-subscription/schema';
+import { YouTubeChannelId } from '../../src/youtube/data';
 import { createYouTubeTopicUrl } from '../../src/youtube/websub';
 import type { YouTubeSubscription } from '../../src/youtube-subscription/durable-object';
 
@@ -39,7 +40,7 @@ afterEach(() => {
 
 describe('YouTubeSubscription WebSub lifecycle', () => {
   it('subscribes once when the first subscriber is added', async () => {
-    const youtubeChannelId = `UC${crypto.randomUUID()}`;
+    const youtubeChannelId = randomYouTubeChannelId();
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
 
     await subscription.addSubscriber({
@@ -67,7 +68,7 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
   });
 
   it('confirms the lease and renews at eighty percent', async () => {
-    const youtubeChannelId = `UC${crypto.randomUUID()}`;
+    const youtubeChannelId = randomYouTubeChannelId();
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
     await subscription.addSubscriber({
       guildId: GUILD_ID,
@@ -99,7 +100,7 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
   });
 
   it('unsubscribes only after the final subscriber is removed', async () => {
-    const youtubeChannelId = `UC${crypto.randomUUID()}`;
+    const youtubeChannelId = randomYouTubeChannelId();
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
     await subscription.addSubscriber({
       guildId: GUILD_ID,
@@ -139,7 +140,7 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
       return new Response(null, { status: 503 });
     });
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
-      `UC${crypto.randomUUID()}`,
+      randomYouTubeChannelId(),
     );
 
     await expect(
@@ -165,7 +166,7 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
   });
 
   it('rejects stale and mismatched confirmations', async () => {
-    const youtubeChannelId = `UC${crypto.randomUUID()}`;
+    const youtubeChannelId = randomYouTubeChannelId();
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
     await subscription.addSubscriber({
       guildId: GUILD_ID,
@@ -182,7 +183,9 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
     await expect(
       subscription.confirmWebSubIntent(
         'subscribe',
-        createYouTubeTopicUrl('another-channel'),
+        createYouTubeTopicUrl(
+          YouTubeChannelId.parse('UCaaaaaaaaaaaaaaaaaaaaaa'),
+        ),
         1000,
       ),
     ).resolves.toBe(false);
@@ -191,7 +194,7 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
 
   it('clears state when the hub denies the intent', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const youtubeChannelId = `UC${crypto.randomUUID()}`;
+    const youtubeChannelId = randomYouTubeChannelId();
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
     await subscription.addSubscriber({
       guildId: GUILD_ID,
@@ -212,6 +215,12 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
     });
   });
 });
+
+function randomYouTubeChannelId(): YouTubeChannelId {
+  return YouTubeChannelId.parse(
+    `UC${crypto.randomUUID().replaceAll('-', '').slice(0, 22)}`,
+  );
+}
 
 async function readHubRequest(
   input: RequestInfo | URL,

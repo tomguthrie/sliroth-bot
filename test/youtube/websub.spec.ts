@@ -1,18 +1,33 @@
 import { describe, expect, it } from 'vitest';
 
+import { YouTubeChannelId, YouTubeWebSubSecret } from '../../src/youtube/data';
 import {
   createYouTubeWebSubRequest,
   verifyYouTubeWebSubSignature,
+  WebSubLeaseSeconds,
   YOUTUBE_WEBSUB_HUB_URL,
 } from '../../src/youtube/websub';
+import { WebSubChallenge } from '../../src/youtube/websub-handler';
+
+const CHANNEL_ID = YouTubeChannelId.parse('UC_x5XG1OV2P6uZZ5FSM9Ttw');
+const SECRET = YouTubeWebSubSecret.parse('test-websub-secret');
+
+describe('WebSub values', () => {
+  it('validates challenges and lease durations', () => {
+    expect(WebSubChallenge.parse('challenge-123')).toBe('challenge-123');
+    expect(WebSubChallenge.safeParse('contains a space').success).toBe(false);
+    expect(WebSubLeaseSeconds.parse(1_000)).toBe(1_000);
+    expect(WebSubLeaseSeconds.safeParse(0).success).toBe(false);
+  });
+});
 
 describe('createYouTubeWebSubRequest', () => {
   it('creates a form-encoded YouTube subscription request', async () => {
     const request = createYouTubeWebSubRequest({
       mode: 'subscribe',
-      channelId: 'UC_TEST_CHANNEL_ID',
+      channelId: CHANNEL_ID,
       publicBaseUrl: 'https://bot.example.com',
-      secret: 'test-websub-secret',
+      secret: SECRET,
     });
 
     expect(request.url).toBe(YOUTUBE_WEBSUB_HUB_URL);
@@ -25,18 +40,16 @@ describe('createYouTubeWebSubRequest', () => {
 
     expect(Object.fromEntries(body)).toEqual({
       'hub.mode': 'subscribe',
-      'hub.topic':
-        'https://www.youtube.com/xml/feeds/videos.xml?channel_id=UC_TEST_CHANNEL_ID',
-      'hub.callback':
-        'https://bot.example.com/youtube/websub/UC_TEST_CHANNEL_ID',
-      'hub.secret': 'test-websub-secret',
+      'hub.topic': `https://www.youtube.com/xml/feeds/videos.xml?channel_id=${CHANNEL_ID}`,
+      'hub.callback': `https://bot.example.com/youtube/websub/${CHANNEL_ID}`,
+      'hub.secret': SECRET,
     });
   });
 });
 
 describe('verifyYouTubeWebSubSignature', () => {
   it('accepts a valid notification signature', async () => {
-    const secret = 'test-websub-secret';
+    const secret = SECRET;
     const body = Uint8Array.from(
       new TextEncoder().encode('<feed>test</feed>'),
     ).buffer;
@@ -53,23 +66,15 @@ describe('verifyYouTubeWebSubSignature', () => {
     ).buffer;
 
     await expect(
-      verifyYouTubeWebSubSignature(body, null, 'test-websub-secret'),
+      verifyYouTubeWebSubSignature(body, null, SECRET),
     ).resolves.toBe(false);
 
     await expect(
-      verifyYouTubeWebSubSignature(
-        body,
-        'sha1=not-a-valid-signature',
-        'test-websub-secret',
-      ),
+      verifyYouTubeWebSubSignature(body, 'sha1=not-a-valid-signature', SECRET),
     ).resolves.toBe(false);
 
     await expect(
-      verifyYouTubeWebSubSignature(
-        body,
-        `sha1=${'00'.repeat(20)}`,
-        'test-websub-secret',
-      ),
+      verifyYouTubeWebSubSignature(body, `sha1=${'00'.repeat(20)}`, SECRET),
     ).resolves.toBe(false);
   });
 });

@@ -4,6 +4,7 @@ import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { videos } from '../src/db/youtube-subscription/schema';
+import { YouTubeChannelId } from '../src/youtube/data';
 import { createYouTubeTopicUrl } from '../src/youtube/websub';
 
 const GUILD_ID = '123456789012345678';
@@ -33,7 +34,7 @@ describe('worker', () => {
   });
 
   it('confirms a valid WebSub subscription intent', async () => {
-    const youtubeChannelId = `UC${crypto.randomUUID()}`;
+    const youtubeChannelId = randomYouTubeChannelId();
     await env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId).addSubscriber({
       guildId: GUILD_ID,
       channelId: DISCORD_CHANNEL_ID,
@@ -61,7 +62,7 @@ describe('worker', () => {
   });
 
   it('rejects malformed and stale WebSub intents', async () => {
-    const youtubeChannelId = `UC${crypto.randomUUID()}`;
+    const youtubeChannelId = randomYouTubeChannelId();
     const malformed = await exports.default.fetch(
       `https://example.com/youtube/websub/${youtubeChannelId}?hub.mode=subscribe`,
     );
@@ -81,7 +82,7 @@ describe('worker', () => {
   });
 
   it('authenticates and records a WebSub notification', async () => {
-    const youtubeChannelId = `UC${crypto.randomUUID()}`;
+    const youtubeChannelId = randomYouTubeChannelId();
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
     await subscription.addSubscriber({
       guildId: GUILD_ID,
@@ -123,7 +124,7 @@ describe('worker', () => {
   });
 
   it('rejects a notification with an invalid signature', async () => {
-    const youtubeChannelId = `UC${crypto.randomUUID()}`;
+    const youtubeChannelId = randomYouTubeChannelId();
     await env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId).addSubscriber({
       guildId: GUILD_ID,
       channelId: DISCORD_CHANNEL_ID,
@@ -142,6 +143,12 @@ describe('worker', () => {
     expect(response.status).toBe(401);
   });
 });
+
+function randomYouTubeChannelId(): YouTubeChannelId {
+  return YouTubeChannelId.parse(
+    `UC${crypto.randomUUID().replaceAll('-', '').slice(0, 22)}`,
+  );
+}
 
 function createNotification(channelId: string): string {
   return `

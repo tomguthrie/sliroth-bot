@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import { DiscordSnowflake } from '../../src/discord/snowflake';
+import { YouTubeVideoNotification } from '../../src/youtube/notification';
 import { YouTubeDiscordMessage } from '../../src/youtube-subscription/discord-message';
 
-const NOTIFICATION = {
+const NOTIFICATION = YouTubeVideoNotification.parse({
   videoId: 'dQw4w9WgXcQ',
-  channelId: 'youtube-channel-id',
+  channelId: 'UC_x5XG1OV2P6uZZ5FSM9Ttw',
   title: 'A YouTube video',
   publishedAt: '2026-08-07T12:34:56.789Z',
-};
+});
 const GUILD_ID = '123456789012345678';
 const CHANNEL_ID = '234567890123456789';
 const ROLE_ID = DiscordSnowflake.parse('345678901234567890');
