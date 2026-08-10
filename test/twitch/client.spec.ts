@@ -2,16 +2,24 @@ import { env } from 'cloudflare:test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as z from 'zod';
 
+import { TwitchApiClient, TwitchApiError } from '../../src/twitch/client';
+import { TwitchAccessToken } from '../../src/twitch/auth';
 import {
-  TwitchApiClient,
-  TwitchApiError,
-  type TwitchTokenGetter,
-} from '../../src/twitch/client';
+  TwitchBroadcasterId,
+  TwitchEventSubSubscriptionId,
+  TwitchGameId,
+  TwitchLogin,
+} from '../../src/twitch/data';
+
+const BROADCASTER_ID = TwitchBroadcasterId.parse('123');
+const LOGIN = TwitchLogin.parse('sliroth');
+const GAME_ID = TwitchGameId.parse('game-1');
+const EVENTSUB_ID = TwitchEventSubSubscriptionId.parse('eventsub-1');
 
 function tokenGetter(...tokens: string[]) {
   return vi.fn((_env: Env) =>
-    Promise.resolve(tokens.shift() ?? 'token'),
-  ) satisfies TwitchTokenGetter;
+    Promise.resolve(TwitchAccessToken.parse(tokens.shift() ?? 'token')),
+  );
 }
 
 function requestUrl(input: RequestInfo | URL | undefined): string | undefined {
@@ -39,7 +47,7 @@ describe('TwitchApiClient', () => {
       .mockResolvedValue(Response.json({ data: [USER] }));
     const client = new TwitchApiClient(env, tokenGetter('access-token'));
 
-    await expect(client.getUserByLogin('sliroth')).resolves.toEqual({
+    await expect(client.getUserByLogin(LOGIN)).resolves.toEqual({
       id: '123',
       login: 'sliroth',
       displayName: 'Sliroth',
@@ -62,7 +70,9 @@ describe('TwitchApiClient', () => {
     );
     const client = new TwitchApiClient(env, tokenGetter('access-token'));
 
-    await expect(client.getUserById('123')).rejects.toBeInstanceOf(z.ZodError);
+    await expect(client.getUserById(BROADCASTER_ID)).rejects.toBeInstanceOf(
+      z.ZodError,
+    );
   });
 
   it('parses streams, games, and archive videos', async () => {
@@ -118,17 +128,21 @@ describe('TwitchApiClient', () => {
       );
     const client = new TwitchApiClient(env, tokenGetter());
 
-    await expect(client.getStreamByUserId('123')).resolves.toMatchObject({
+    await expect(
+      client.getStreamByUserId(BROADCASTER_ID),
+    ).resolves.toMatchObject({
       id: 'stream-1',
       gameName: 'Gothic 1 Remake',
       viewerCount: 3,
     });
-    await expect(client.getGameById('game-1')).resolves.toEqual({
+    await expect(client.getGameById(GAME_ID)).resolves.toEqual({
       id: 'game-1',
       name: 'Gothic 1 Remake',
       boxArtUrl: 'https://example.com/{width}x{height}.jpg',
     });
-    await expect(client.getArchiveVideosByUserId('123')).resolves.toEqual([
+    await expect(
+      client.getArchiveVideosByUserId(BROADCASTER_ID),
+    ).resolves.toEqual([
       expect.objectContaining({
         id: 'video-1',
         streamId: 'stream-1',
@@ -147,7 +161,7 @@ describe('TwitchApiClient', () => {
       .mockResolvedValueOnce(Response.json({ data: [USER] }));
     const client = new TwitchApiClient(env, getToken);
 
-    await expect(client.getUserById('123')).resolves.toMatchObject({
+    await expect(client.getUserById(BROADCASTER_ID)).resolves.toMatchObject({
       id: '123',
     });
     expect(getToken).toHaveBeenCalledTimes(2);
@@ -167,7 +181,7 @@ describe('TwitchApiClient', () => {
     const client = new TwitchApiClient(env, tokenGetter());
 
     const error = await client
-      .getUserById('123')
+      .getUserById(BROADCASTER_ID)
       .catch((value: unknown) => value);
     expect(error).toBeInstanceOf(TwitchApiError);
     expect(error).toMatchObject({ status: 429, retryAtMs: 1_786_233_600_000 });
@@ -207,12 +221,12 @@ describe('TwitchApiClient', () => {
       createdAt: '2026-08-08T12:00:00Z',
     });
     await expect(
-      client.getEventSubSubscriptionById('eventsub-1'),
+      client.getEventSubSubscriptionById(EVENTSUB_ID),
     ).resolves.toMatchObject({
       id: 'eventsub-1',
       createdAt: '2026-08-08T12:00:00Z',
     });
-    await client.deleteEventSubSubscription('eventsub-1');
+    await client.deleteEventSubSubscription(EVENTSUB_ID);
 
     const createBody = fetcher.mock.calls[0]?.[1]?.body;
     expect(

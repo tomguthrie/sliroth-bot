@@ -2,10 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { resolveTwitchChannel } from '../../src/twitch/channel';
 import type { TwitchApiClient, TwitchUser } from '../../src/twitch/client';
+import { TwitchBroadcasterId, TwitchLogin } from '../../src/twitch/data';
 
 const USER: TwitchUser = {
-  id: '123',
-  login: 'sliroth',
+  id: TwitchBroadcasterId.parse('123'),
+  login: TwitchLogin.parse('sliroth'),
   displayName: 'Sliroth',
   profileImageUrl: 'https://example.com/profile.png',
   offlineImageUrl: 'https://example.com/offline.png',

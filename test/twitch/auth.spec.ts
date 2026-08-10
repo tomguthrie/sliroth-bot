@@ -66,7 +66,7 @@ describe('getValidToken', () => {
     );
   });
 
-  it('replaces a cached token that cannot be used in a header', async () => {
+  it('replaces an invalid cached bearer token', async () => {
     await env.TOKEN_STORE.put(TWITCH_TOKEN_KEY, 'invalid\ntoken');
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(tokenResponse('new-token'));
 
