@@ -27,7 +27,62 @@ export async function createTwitchLiveDelivery(
   broadcaster: Broadcaster,
   stream: Stream,
   subscriber: Subscriber,
+  previewCacheBustMs = Date.now(),
 ): Promise<DiscordCreateMessageDelivery> {
+  const message = createTwitchLiveMessage(
+    broadcaster,
+    stream,
+    subscriber,
+    previewCacheBustMs,
+    await createDiscordMessageNonce(stream.id, subscriber.channelId),
+  );
+
+  return {
+    operation: 'create',
+    guildId: subscriber.guildId,
+    channelId: subscriber.channelId,
+    receiptTarget: {
+      type: DISCORD_RECEIPT_TWITCH_STREAM,
+      broadcasterId: broadcaster.id,
+      streamId: stream.id,
+    },
+    message,
+  };
+}
+
+/** Creates a replacement Discord message for a live Twitch stream. */
+export function createTwitchLiveUpdateDelivery(
+  broadcaster: Broadcaster,
+  stream: Stream,
+  subscriber: Subscriber,
+  messageId: string,
+  previewCacheBustMs = Date.now(),
+): DiscordEditMessageDelivery {
+  if (stream.endedAt !== null) {
+    throw new Error('Cannot create a live message for an ended stream');
+  }
+
+  return {
+    operation: 'edit',
+    guildId: subscriber.guildId,
+    channelId: subscriber.channelId,
+    messageId,
+    message: createTwitchLiveMessage(
+      broadcaster,
+      stream,
+      subscriber,
+      previewCacheBustMs,
+    ),
+  };
+}
+
+function createTwitchLiveMessage(
+  broadcaster: Broadcaster,
+  stream: Stream,
+  subscriber: Subscriber,
+  previewCacheBustMs: number,
+  nonce?: string,
+) {
   const channelUrl = twitchChannelUrl(broadcaster.login);
   const mention = createDiscordMentionPayload(subscriber.ping);
   const content = [
@@ -39,7 +94,7 @@ export async function createTwitchLiveDelivery(
     .join(' ');
   const message = createDiscordMessage({
     content,
-    nonce: await createDiscordMessageNonce(stream.id, subscriber.channelId),
+    nonce,
     allowedMentions: mention.allowedMentions,
     embeds: [
       {
@@ -63,7 +118,7 @@ export async function createTwitchLiveDelivery(
               },
             }),
         image: {
-          url: cacheBustPreview(stream.previewImageUrl, stream.startedAt),
+          url: cacheBustPreview(stream.previewImageUrl, previewCacheBustMs),
         },
         footer: { text: 'Started streaming' },
         timestamp: stream.startedAt.toISOString(),
@@ -71,18 +126,7 @@ export async function createTwitchLiveDelivery(
     ],
     linkButtons: [{ label: 'Watch Stream', url: channelUrl }],
   });
-
-  return {
-    operation: 'create',
-    guildId: subscriber.guildId,
-    channelId: subscriber.channelId,
-    receiptTarget: {
-      type: DISCORD_RECEIPT_TWITCH_STREAM,
-      broadcasterId: broadcaster.id,
-      streamId: stream.id,
-    },
-    message,
-  };
+  return message;
 }
 
 /** Creates a replacement Discord message for an ended Twitch stream. */
@@ -158,10 +202,10 @@ function resizeTwitchImage(url: string, width: number, height: number): string {
     .replaceAll('{height}', String(height));
 }
 
-function cacheBustPreview(url: string, startedAt: Date): string {
+function cacheBustPreview(url: string, cacheBustMs: number): string {
   const resized = resizeTwitchImage(url, 1280, 720);
   const preview = new URL(resized);
-  preview.searchParams.set('t', String(startedAt.getTime()));
+  preview.searchParams.set('t', String(cacheBustMs));
   return preview.toString();
 }
 
