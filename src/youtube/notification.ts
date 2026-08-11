@@ -26,14 +26,12 @@ const YouTubeAtomEntry = z
     title: z.string().trim().min(1),
     published: z.string().trim().min(1).pipe(YouTubeTimestamp),
   })
-  .transform(({ videoId, channelId, title, published: publishedAt }) =>
-    YouTubeVideoNotification.parse({
-      videoId,
-      channelId,
-      title,
-      publishedAt,
-    }),
-  );
+  .transform(({ videoId, channelId, title, published: publishedAt }) => ({
+    videoId,
+    channelId,
+    title,
+    publishedAt,
+  }));
 const YouTubeAtomEntries = z.array(YouTubeAtomEntry);
 
 export function parseYouTubeVideoNotifications(

@@ -15,17 +15,13 @@ export const TWITCH_API_BASE_URL = 'https://api.twitch.tv/helix/';
 
 const NonBlankString = z.string().trim().min(1);
 
-export const CreateTwitchEventSubSubscription = z.object({
-  type: NonBlankString,
-  version: NonBlankString,
-  condition: z.record(z.string(), z.string()),
-  callback: z.url({ protocol: /^https$/ }),
-  secret: NonBlankString,
-});
-
-export type CreateTwitchEventSubSubscription = z.infer<
-  typeof CreateTwitchEventSubSubscription
->;
+export interface CreateTwitchEventSubSubscription {
+  type: string;
+  version: string;
+  condition: Record<string, string>;
+  callback: string;
+  secret: string;
+}
 
 /** Describes a non-success response from Helix. */
 export class TwitchApiError extends Error {
@@ -58,14 +54,13 @@ const TwitchUserResponse = z
     offline_image_url: z.string(),
   })
   .transform(
-    ({ id, login, display_name, profile_image_url, offline_image_url }) =>
-      TwitchUser.parse({
-        id,
-        login,
-        displayName: display_name,
-        profileImageUrl: profile_image_url,
-        offlineImageUrl: offline_image_url,
-      }),
+    ({ id, login, display_name, profile_image_url, offline_image_url }) => ({
+      id,
+      login,
+      displayName: display_name,
+      profileImageUrl: profile_image_url,
+      offlineImageUrl: offline_image_url,
+    }),
   );
 
 export const TwitchStream = z
@@ -174,7 +169,6 @@ export type TwitchEventSubSubscription = z.infer<
 >;
 
 const TwitchApiErrorResponse = z.object({ message: z.string().optional() });
-const TwitchPageSize = z.int().min(1).max(100);
 
 /** A typed client for the Twitch Helix endpoints used by the integration. */
 export class TwitchApiClient {
@@ -213,7 +207,7 @@ export class TwitchApiClient {
     userId: TwitchBroadcasterId,
     first = 20,
   ): Promise<TwitchVod[]> {
-    const pageSize = TwitchPageSize.parse(first);
+    const pageSize = parseTwitchPageSize(first);
     const response = await this.request('videos', {
       user_id: userId,
       type: 'archive',
@@ -225,17 +219,16 @@ export class TwitchApiClient {
   async createEventSubSubscription(
     subscription: CreateTwitchEventSubSubscription,
   ): Promise<TwitchEventSubSubscription> {
-    const validated = CreateTwitchEventSubSubscription.parse(subscription);
     const response = await this.request('eventsub/subscriptions', undefined, {
       method: 'POST',
       body: JSON.stringify({
-        type: validated.type,
-        version: validated.version,
-        condition: validated.condition,
+        type: subscription.type,
+        version: subscription.version,
+        condition: subscription.condition,
         transport: {
           method: 'webhook',
-          callback: validated.callback,
-          secret: validated.secret,
+          callback: subscription.callback,
+          secret: subscription.secret,
         },
       }),
     });
@@ -304,6 +297,13 @@ export class TwitchApiClient {
 
     throw new TwitchApiError('Twitch API authentication failed', 401);
   }
+}
+
+function parseTwitchPageSize(value: number): number {
+  if (!Number.isInteger(value) || value < 1 || value > 100) {
+    throw new RangeError('Twitch page size must be an integer from 1 to 100');
+  }
+  return value;
 }
 
 async function createApiError(response: Response): Promise<TwitchApiError> {

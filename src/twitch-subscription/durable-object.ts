@@ -14,6 +14,7 @@ import {
   twitchSubscribers,
 } from '../db/twitch-subscription/schema';
 import type { DiscordMessageReceipt } from '../discord/client';
+import { DiscordMentionTarget } from '../discord/message';
 import { DiscordSnowflake } from '../discord/snowflake';
 import { enqueueDiscordMessages } from '../queue/discord-message';
 import {
@@ -60,9 +61,7 @@ export const TwitchSubscriberRegistration = z.object({
   channelId: DiscordSnowflake,
   message: z.string().trim().min(1).optional(),
   offline: z.string().trim().min(1).optional(),
-  ping: z
-    .union([z.literal('everyone'), z.literal('here'), DiscordSnowflake])
-    .optional(),
+  ping: DiscordMentionTarget.optional(),
 });
 
 export type TwitchSubscriberRegistration = z.infer<

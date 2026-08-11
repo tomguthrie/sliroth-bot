@@ -7,6 +7,7 @@ import * as z from 'zod';
 
 import migrations from '../db/youtube-subscription/migrations/migrations.js';
 import { subscribers, videos } from '../db/youtube-subscription/schema';
+import { DiscordMentionTarget } from '../discord/message';
 import { DiscordSnowflake } from '../discord/snowflake';
 import { toLoggableError } from '../log';
 import { enqueueDiscordMessages } from '../queue/discord-message';
@@ -53,9 +54,7 @@ export const YouTubeSubscriberRegistration = z.object({
   channelId: DiscordSnowflake,
   channelTitle: z.string().trim().min(1),
   message: z.string().trim().min(1).optional(),
-  ping: z
-    .union([z.literal('everyone'), z.literal('here'), DiscordSnowflake])
-    .optional(),
+  ping: DiscordMentionTarget.optional(),
 });
 
 export type YouTubeSubscriberRegistration = z.infer<
