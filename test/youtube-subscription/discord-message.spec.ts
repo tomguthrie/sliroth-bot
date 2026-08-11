@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { DiscordSnowflake } from '../../src/discord/snowflake';
 import { YouTubeVideoNotification } from '../../src/youtube/notification';
-import { YouTubeDiscordMessage } from '../../src/youtube-subscription/discord-message';
+import { createYouTubeDelivery } from '../../src/youtube-subscription/discord-message';
 
 const NOTIFICATION = YouTubeVideoNotification.parse({
   videoId: 'dQw4w9WgXcQ',
@@ -27,10 +27,7 @@ const SUBSCRIBER = {
 
 describe('YouTube Discord message', () => {
   it('builds the default message without allowing mentions', async () => {
-    const delivery = await YouTubeDiscordMessage.build(
-      NOTIFICATION,
-      SUBSCRIBER,
-    );
+    const delivery = await createYouTubeDelivery(NOTIFICATION, SUBSCRIBER);
 
     expect(delivery).toMatchObject({
       operation: 'create',
@@ -62,7 +59,7 @@ describe('YouTube Discord message', () => {
   ] as const)(
     'maps the %s ping to Discord content and allowed mentions',
     async (ping, content, allowedMentions) => {
-      const delivery = await YouTubeDiscordMessage.build(NOTIFICATION, {
+      const delivery = await createYouTubeDelivery(NOTIFICATION, {
         ...SUBSCRIBER,
         message: 'A custom message',
         ping,
@@ -74,9 +71,9 @@ describe('YouTube Discord message', () => {
 
   it('creates a stable nonce scoped to the Discord channel', async () => {
     const subscriber = SUBSCRIBER;
-    const first = await YouTubeDiscordMessage.build(NOTIFICATION, subscriber);
-    const second = await YouTubeDiscordMessage.build(NOTIFICATION, subscriber);
-    const otherChannel = await YouTubeDiscordMessage.build(NOTIFICATION, {
+    const first = await createYouTubeDelivery(NOTIFICATION, subscriber);
+    const second = await createYouTubeDelivery(NOTIFICATION, subscriber);
+    const otherChannel = await createYouTubeDelivery(NOTIFICATION, {
       ...subscriber,
       channelId: '456789012345678901',
     });

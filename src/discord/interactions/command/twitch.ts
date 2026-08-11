@@ -12,7 +12,10 @@ import {
 } from '../../../twitch/channel';
 import { TwitchApiClient } from '../../../twitch/client';
 import { escapeDiscordMarkdown } from '../../markdown';
-import { DiscordMention, type DiscordMentionTarget } from '../../message';
+import {
+  describeDiscordMention,
+  type DiscordMentionTarget,
+} from '../../message';
 import {
   EMBED_LINKS_PERMISSION,
   hasDiscordPermission,
@@ -253,7 +256,7 @@ async function completeTwitchAdd(
       },
     );
 
-    const mention = DiscordMention.describe(ping);
+    const mention = describeDiscordMention(ping);
     await editInteractionResponse(
       applicationId,
       token,

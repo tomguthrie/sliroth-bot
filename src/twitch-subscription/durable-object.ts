@@ -37,8 +37,8 @@ import {
   TWITCH_EVENT_STREAM_ONLINE,
 } from '../twitch/eventsub-handler';
 import {
-  TwitchLiveDiscordMessage,
-  TwitchOfflineDiscordMessage,
+  createTwitchLiveDelivery,
+  createTwitchOfflineDelivery,
 } from './discord-message';
 import {
   channelTwitchSubscriptionKey,
@@ -246,7 +246,7 @@ export class TwitchSubscription extends DurableObject<Env> {
       }
       const deliveries = await Promise.all(
         subscriberRows.map((subscriber) =>
-          TwitchLiveDiscordMessage.build(broadcaster, stream, subscriber),
+          createTwitchLiveDelivery(broadcaster, stream, subscriber),
         ),
       );
       await enqueueDiscordMessages(this.env.DISCORD_MESSAGES, deliveries);
@@ -451,7 +451,7 @@ export class TwitchSubscription extends DurableObject<Env> {
       return [
         {
           channelId: message.channelId,
-          delivery: TwitchOfflineDiscordMessage.build(
+          delivery: createTwitchOfflineDelivery(
             broadcaster,
             stream,
             subscriber,

@@ -5,9 +5,6 @@ import { toLoggableError } from '../log';
 export const TWITCH_TOKEN_KEY = 'twitch';
 export const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
 
-/** Identifies an invalid response from Twitch's authorization service. */
-export class TwitchAuthError extends Error {}
-
 /** A non-empty Twitch access token that can be represented in HTTP headers. */
 export const TwitchAccessToken = z
   .string()
@@ -96,7 +93,7 @@ async function requestTwitchToken(env: Env): Promise<TwitchTokenResponse> {
     });
     if (!response.ok) {
       if (response.body !== null) await response.body.cancel();
-      throw new TwitchAuthError(
+      throw new Error(
         `Twitch app access token returned HTTP ${response.status}`,
       );
     }
@@ -104,10 +101,9 @@ async function requestTwitchToken(env: Env): Promise<TwitchTokenResponse> {
     stage = 'token_response';
     const result = TwitchTokenResponse.safeParse(await response.json());
     if (!result.success) {
-      throw new TwitchAuthError(
-        'Twitch app access token response was unusable',
-        { cause: result.error },
-      );
+      throw new Error('Twitch app access token response was unusable', {
+        cause: result.error,
+      });
     }
     return result.data;
   } catch (error) {

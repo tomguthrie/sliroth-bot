@@ -22,7 +22,7 @@ import {
   WebSubMode,
   verifyYouTubeWebSubSignature,
 } from '../youtube/websub';
-import { YouTubeDiscordMessage } from './discord-message';
+import { createYouTubeDelivery } from './discord-message';
 import {
   channelSubscriptionKey,
   guildSubscriptionKey,
@@ -310,7 +310,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
       const subscriberRows = await this.db.select().from(subscribers);
       const deliveries = await Promise.all(
         subscriberRows.map((subscriber) =>
-          YouTubeDiscordMessage.build(validated, subscriber),
+          createYouTubeDelivery(validated, subscriber),
         ),
       );
 

@@ -4,9 +4,9 @@ import type {
   twitchSubscribers,
 } from '../db/twitch-subscription/schema';
 import {
-  DiscordMention,
-  DiscordNonce,
-  DiscordMessageBuilder,
+  createDiscordMention,
+  createDiscordMessage,
+  createDiscordNonce,
 } from '../discord/message';
 import type {
   DiscordCreateMessageDelivery,
@@ -22,26 +22,27 @@ type Broadcaster = typeof broadcasters.$inferSelect;
 type Stream = typeof streams.$inferSelect;
 type Subscriber = typeof twitchSubscribers.$inferSelect;
 
-/** Builds initial Discord notifications for Twitch streams. */
-export class TwitchLiveDiscordMessage {
-  static async build(
-    broadcaster: Broadcaster,
-    stream: Stream,
-    subscriber: Subscriber,
-  ): Promise<DiscordCreateMessageDelivery> {
-    const channelUrl = twitchChannelUrl(broadcaster.login);
-    const mention = DiscordMention.from(subscriber.ping);
-    const content = [
-      mention.content,
-      subscriber.message ??
-        `${broadcaster.displayName} ${DEFAULT_LIVE_MESSAGE}`,
-      channelUrl,
-    ]
-      .filter((part) => part !== undefined)
-      .join(' ');
-    const message = new DiscordMessageBuilder(content)
-      .setNonce(await DiscordNonce.from(stream.id, subscriber.channelId))
-      .addEmbed({
+/** Creates an initial Discord notification for a Twitch stream. */
+export async function createTwitchLiveDelivery(
+  broadcaster: Broadcaster,
+  stream: Stream,
+  subscriber: Subscriber,
+): Promise<DiscordCreateMessageDelivery> {
+  const channelUrl = twitchChannelUrl(broadcaster.login);
+  const mention = createDiscordMention(subscriber.ping);
+  const content = [
+    mention.content,
+    subscriber.message ?? `${broadcaster.displayName} ${DEFAULT_LIVE_MESSAGE}`,
+    channelUrl,
+  ]
+    .filter((part) => part !== undefined)
+    .join(' ');
+  const message = createDiscordMessage({
+    content,
+    nonce: await createDiscordNonce(stream.id, subscriber.channelId),
+    allowedMentions: mention.allowedMentions,
+    embeds: [
+      {
         author: broadcasterAuthor(broadcaster),
         title: stream.title,
         url: channelUrl,
@@ -66,44 +67,42 @@ export class TwitchLiveDiscordMessage {
         },
         footer: { text: 'Started streaming' },
         timestamp: stream.startedAt.toISOString(),
-      })
-      .addLinkButton({ label: 'Watch Stream', url: channelUrl });
-    if (mention.allowedMentions !== undefined) {
-      message.setAllowedMentions(mention.allowedMentions);
-    }
-
-    return {
-      operation: 'create',
-      guildId: subscriber.guildId,
-      channelId: subscriber.channelId,
-      receiptTarget: {
-        type: DISCORD_RECEIPT_TWITCH_STREAM,
-        broadcasterId: broadcaster.id,
-        streamId: stream.id,
       },
-      message: message.build(),
-    };
-  }
+    ],
+    linkButtons: [{ label: 'Watch Stream', url: channelUrl }],
+  });
+
+  return {
+    operation: 'create',
+    guildId: subscriber.guildId,
+    channelId: subscriber.channelId,
+    receiptTarget: {
+      type: DISCORD_RECEIPT_TWITCH_STREAM,
+      broadcasterId: broadcaster.id,
+      streamId: stream.id,
+    },
+    message,
+  };
 }
 
-/** Builds replacement Discord messages for ended Twitch streams. */
-export class TwitchOfflineDiscordMessage {
-  static build(
-    broadcaster: Broadcaster,
-    stream: Stream,
-    subscriber: Subscriber,
-    messageId: string,
-  ): DiscordEditMessageDelivery {
-    if (stream.endedAt === null) {
-      throw new Error('Cannot create an offline message for a live stream');
-    }
-    const channelUrl = twitchChannelUrl(broadcaster.login);
-    const watchUrl = stream.vodUrl ?? channelUrl;
-    const message = new DiscordMessageBuilder(
+/** Creates a replacement Discord message for an ended Twitch stream. */
+export function createTwitchOfflineDelivery(
+  broadcaster: Broadcaster,
+  stream: Stream,
+  subscriber: Subscriber,
+  messageId: string,
+): DiscordEditMessageDelivery {
+  if (stream.endedAt === null) {
+    throw new Error('Cannot create an offline message for a live stream');
+  }
+  const channelUrl = twitchChannelUrl(broadcaster.login);
+  const watchUrl = stream.vodUrl ?? channelUrl;
+  const message = createDiscordMessage({
+    content:
       subscriber.offline ??
-        `${broadcaster.displayName} ${DEFAULT_OFFLINE_MESSAGE}`,
-    )
-      .addEmbed({
+      `${broadcaster.displayName} ${DEFAULT_OFFLINE_MESSAGE}`,
+    embeds: [
+      {
         author: broadcasterAuthor(broadcaster),
         title: stream.title,
         url: watchUrl,
@@ -121,20 +120,23 @@ export class TwitchOfflineDiscordMessage {
           : { image: { url: broadcaster.offlineImageUrl } }),
         footer: { text: 'Last online' },
         timestamp: stream.endedAt.toISOString(),
-      })
-      .addLinkButton({
+      },
+    ],
+    linkButtons: [
+      {
         label: stream.vodUrl === null ? 'Watch Channel' : 'Watch VOD',
         url: watchUrl,
-      });
+      },
+    ],
+  });
 
-    return {
-      operation: 'edit',
-      guildId: subscriber.guildId,
-      channelId: subscriber.channelId,
-      messageId,
-      message: message.build(),
-    };
-  }
+  return {
+    operation: 'edit',
+    guildId: subscriber.guildId,
+    channelId: subscriber.channelId,
+    messageId,
+    message,
+  };
 }
 
 function broadcasterAuthor(broadcaster: Broadcaster) {

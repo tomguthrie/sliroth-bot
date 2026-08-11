@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as z from 'zod';
 
 import {
-  DiscordMessageBuilder,
+  createDiscordMessage,
   type DiscordMessageInput,
 } from '../../src/discord/message';
 import {
@@ -305,7 +305,7 @@ describe('createDiscordMessageRequest', () => {
         botToken: BOT_TOKEN,
         channelId: CHANNEL_ID,
         applicationUrl: 'ftp://bot.example.com',
-        message: new DiscordMessageBuilder('A message').build(),
+        message: createDiscordMessage({ content: 'A message' }),
       }),
     ).toThrow(z.ZodError);
   });
@@ -318,7 +318,7 @@ describe('createDiscordEditMessageRequest', () => {
       channelId: CHANNEL_ID,
       messageId: MESSAGE_ID,
       applicationUrl: 'https://bot.example.com',
-      message: new DiscordMessageBuilder('The stream has ended').build(),
+      message: createDiscordMessage({ content: 'The stream has ended' }),
     });
 
     expect(request.url).toBe(
@@ -349,14 +349,11 @@ function buildDiscordMessage({
   embeds,
   linkButtons,
 }: DiscordMessageInput) {
-  const builder = new DiscordMessageBuilder(content);
-  if (nonce !== undefined) builder.setNonce(nonce);
-  if (allowedMentions !== undefined) {
-    builder.setAllowedMentions(allowedMentions);
-  }
-  for (const embed of embeds ?? []) builder.addEmbed(embed);
-  for (const linkButton of linkButtons ?? []) {
-    builder.addLinkButton(linkButton);
-  }
-  return builder.build();
+  return createDiscordMessage({
+    content,
+    nonce,
+    allowedMentions,
+    embeds,
+    linkButtons,
+  });
 }

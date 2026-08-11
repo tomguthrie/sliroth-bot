@@ -21,7 +21,10 @@ import {
   type DiscordInteractionToken,
 } from '../data';
 import { escapeDiscordMarkdown } from '../../markdown';
-import { DiscordMention, type DiscordMentionTarget } from '../../message';
+import {
+  describeDiscordMention,
+  type DiscordMentionTarget,
+} from '../../message';
 import {
   hasDiscordPermission,
   MANAGE_GUILD_PERMISSION,
@@ -233,7 +236,7 @@ async function completeYouTubeAdd(
       ping,
     });
 
-    const mention = DiscordMention.describe(ping);
+    const mention = describeDiscordMention(ping);
     await editInteractionResponse(
       applicationId,
       token,

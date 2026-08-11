@@ -10,7 +10,7 @@ import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { streamMessages } from '../../src/db/twitch-subscription/schema';
-import { DiscordMessageBuilder } from '../../src/discord/message';
+import { createDiscordMessage } from '../../src/discord/message';
 import type {
   DiscordCreateMessageDelivery,
   DiscordMessageDelivery,
@@ -230,9 +230,10 @@ function createDelivery(id: string): DiscordCreateMessageDelivery {
     receiptTarget: { type: DISCORD_RECEIPT_IGNORE },
     guildId: GUILD_ID,
     channelId: CHANNEL_ID,
-    message: new DiscordMessageBuilder(`Message ${id}`)
-      .setNonce(id.padStart(25, '0').slice(-25))
-      .build(),
+    message: createDiscordMessage({
+      content: `Message ${id}`,
+      nonce: id.padStart(25, '0').slice(-25),
+    }),
   };
 }
 
