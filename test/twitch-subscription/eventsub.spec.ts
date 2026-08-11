@@ -12,7 +12,7 @@ import {
   broadcasters,
   eventSubSubscriptions,
 } from '../../src/db/twitch-subscription/schema';
-import { handleTwitchEventSub } from '../../src/twitch/eventsub-handler';
+import { handleTwitchEventSub } from '../../src/twitch/event-sub/handler';
 import type { TwitchSubscription } from '../../src/twitch-subscription/durable-object';
 import {
   createChannelTwitchSubscriptionKey,

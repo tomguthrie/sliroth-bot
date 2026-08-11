@@ -36,7 +36,7 @@ import {
   TwitchChannelUpdateEvent,
   TwitchStreamOfflineEvent,
   TwitchStreamOnlineEvent,
-} from '../twitch/events';
+} from '../twitch/event-sub/events';
 import {
   createTwitchLiveDelivery,
   createTwitchLiveUpdateDelivery,

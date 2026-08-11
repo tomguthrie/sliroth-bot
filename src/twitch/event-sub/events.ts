@@ -6,7 +6,7 @@ import {
   TwitchLogin,
   TwitchStreamId,
   TwitchTimestamp,
-} from './data';
+} from '../data';
 
 export const TWITCH_EVENT_CHANNEL_UPDATE = 'channel.update';
 export const TWITCH_EVENT_STREAM_ONLINE = 'stream.online';

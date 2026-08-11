@@ -4,7 +4,7 @@ import {
   TwitchBroadcasterId,
   TwitchEventSubSubscriptionId,
   TwitchTimestamp,
-} from './data';
+} from '../data';
 import {
   TWITCH_EVENT_CHANNEL_UPDATE,
   TWITCH_EVENT_STREAM_OFFLINE,
