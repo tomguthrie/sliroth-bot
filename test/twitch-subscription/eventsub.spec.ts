@@ -12,8 +12,8 @@ import { eventSubSubscriptions } from '../../src/db/twitch-subscription/schema';
 import { handleTwitchEventSub } from '../../src/twitch/eventsub-handler';
 import type { TwitchSubscription } from '../../src/twitch-subscription/durable-object';
 import {
-  channelTwitchSubscriptionKey,
-  guildTwitchSubscriptionKey,
+  createChannelTwitchSubscriptionKey,
+  createGuildTwitchSubscriptionKey,
 } from '../../src/twitch-subscription/index';
 
 const BROADCASTER_ID = '123456789012345678';
@@ -115,7 +115,7 @@ describe('TwitchSubscription EventSub reconciliation', () => {
     ).toEqual(['stream.offline', 'stream.online']);
     await expect(
       env.TWITCH_SUBSCRIPTIONS_INDEX.getWithMetadata(
-        guildTwitchSubscriptionKey(GUILD_ID, CHANNEL_ID, BROADCASTER_ID),
+        createGuildTwitchSubscriptionKey(GUILD_ID, CHANNEL_ID, BROADCASTER_ID),
       ),
     ).resolves.toMatchObject({
       value: '1',
@@ -123,7 +123,7 @@ describe('TwitchSubscription EventSub reconciliation', () => {
     });
     await expect(
       env.TWITCH_SUBSCRIPTIONS_INDEX.getWithMetadata(
-        channelTwitchSubscriptionKey(CHANNEL_ID, BROADCASTER_ID),
+        createChannelTwitchSubscriptionKey(CHANNEL_ID, BROADCASTER_ID),
       ),
     ).resolves.toMatchObject({ value: '1', metadata: null });
 
@@ -133,12 +133,12 @@ describe('TwitchSubscription EventSub reconciliation', () => {
     ).toHaveLength(2);
     await expect(
       env.TWITCH_SUBSCRIPTIONS_INDEX.get(
-        guildTwitchSubscriptionKey(GUILD_ID, CHANNEL_ID, BROADCASTER_ID),
+        createGuildTwitchSubscriptionKey(GUILD_ID, CHANNEL_ID, BROADCASTER_ID),
       ),
     ).resolves.toBeNull();
     await expect(
       env.TWITCH_SUBSCRIPTIONS_INDEX.get(
-        channelTwitchSubscriptionKey(CHANNEL_ID, BROADCASTER_ID),
+        createChannelTwitchSubscriptionKey(CHANNEL_ID, BROADCASTER_ID),
       ),
     ).resolves.toBeNull();
   });

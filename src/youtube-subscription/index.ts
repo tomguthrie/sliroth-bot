@@ -20,7 +20,7 @@ export interface GuildYouTubeSubscription {
 }
 
 /** Builds the guild-scoped lookup key for a YouTube subscription. */
-export function guildSubscriptionKey(
+export function createGuildYouTubeSubscriptionKey(
   guildId: string,
   channelId: string,
   youtubeChannelId: string,
@@ -29,7 +29,7 @@ export function guildSubscriptionKey(
 }
 
 /** Builds the channel-scoped lookup key for a YouTube subscription. */
-export function channelSubscriptionKey(
+export function createChannelYouTubeSubscriptionKey(
   channelId: string,
   youtubeChannelId: string,
 ): string {

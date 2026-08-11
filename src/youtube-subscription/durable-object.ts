@@ -25,8 +25,8 @@ import {
 } from '../youtube/websub';
 import { createYouTubeDelivery } from './discord-message';
 import {
-  channelSubscriptionKey,
-  guildSubscriptionKey,
+  createChannelYouTubeSubscriptionKey,
+  createGuildYouTubeSubscriptionKey,
   type YouTubeSubscriptionMetadata,
 } from './index';
 
@@ -114,7 +114,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
     };
     await Promise.all([
       this.env.YOUTUBE_SUBSCRIPTIONS_INDEX.put(
-        guildSubscriptionKey(
+        createGuildYouTubeSubscriptionKey(
           subscriber.guildId,
           subscriber.channelId,
           youtubeChannelId,
@@ -123,7 +123,10 @@ export class YouTubeSubscription extends DurableObject<Env> {
         { metadata },
       ),
       this.env.YOUTUBE_SUBSCRIPTIONS_INDEX.put(
-        channelSubscriptionKey(subscriber.channelId, youtubeChannelId),
+        createChannelYouTubeSubscriptionKey(
+          subscriber.channelId,
+          youtubeChannelId,
+        ),
         SUBSCRIPTION_INDEX_VALUE,
       ),
     ]);
@@ -150,14 +153,17 @@ export class YouTubeSubscription extends DurableObject<Env> {
       .where(eq(subscribers.channelId, validatedChannelId));
     await Promise.all([
       this.env.YOUTUBE_SUBSCRIPTIONS_INDEX.delete(
-        guildSubscriptionKey(
+        createGuildYouTubeSubscriptionKey(
           subscriber.guildId,
           validatedChannelId,
           youtubeChannelId,
         ),
       ),
       this.env.YOUTUBE_SUBSCRIPTIONS_INDEX.delete(
-        channelSubscriptionKey(validatedChannelId, youtubeChannelId),
+        createChannelYouTubeSubscriptionKey(
+          validatedChannelId,
+          youtubeChannelId,
+        ),
       ),
     ]);
 

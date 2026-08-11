@@ -4,9 +4,9 @@ import type {
   twitchSubscribers,
 } from '../db/twitch-subscription/schema';
 import {
-  createDiscordMention,
+  createDiscordMentionPayload,
   createDiscordMessage,
-  createDiscordNonce,
+  createDiscordMessageNonce,
 } from '../discord/message';
 import type {
   DiscordCreateMessageDelivery,
@@ -29,7 +29,7 @@ export async function createTwitchLiveDelivery(
   subscriber: Subscriber,
 ): Promise<DiscordCreateMessageDelivery> {
   const channelUrl = twitchChannelUrl(broadcaster.login);
-  const mention = createDiscordMention(subscriber.ping);
+  const mention = createDiscordMentionPayload(subscriber.ping);
   const content = [
     mention.content,
     subscriber.message ?? `${broadcaster.displayName} ${DEFAULT_LIVE_MESSAGE}`,
@@ -39,7 +39,7 @@ export async function createTwitchLiveDelivery(
     .join(' ');
   const message = createDiscordMessage({
     content,
-    nonce: await createDiscordNonce(stream.id, subscriber.channelId),
+    nonce: await createDiscordMessageNonce(stream.id, subscriber.channelId),
     allowedMentions: mention.allowedMentions,
     embeds: [
       {

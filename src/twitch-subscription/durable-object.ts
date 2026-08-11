@@ -42,8 +42,8 @@ import {
   createTwitchOfflineDelivery,
 } from './discord-message';
 import {
-  channelTwitchSubscriptionKey,
-  guildTwitchSubscriptionKey,
+  createChannelTwitchSubscriptionKey,
+  createGuildTwitchSubscriptionKey,
   type TwitchSubscriptionMetadata,
 } from './index';
 
@@ -141,7 +141,7 @@ export class TwitchSubscription extends DurableObject<Env> {
     };
     await Promise.all([
       this.env.TWITCH_SUBSCRIPTIONS_INDEX.put(
-        guildTwitchSubscriptionKey(
+        createGuildTwitchSubscriptionKey(
           guildId,
           validated.channelId,
           validatedBroadcaster.id,
@@ -150,7 +150,7 @@ export class TwitchSubscription extends DurableObject<Env> {
         { metadata },
       ),
       this.env.TWITCH_SUBSCRIPTIONS_INDEX.put(
-        channelTwitchSubscriptionKey(
+        createChannelTwitchSubscriptionKey(
           validated.channelId,
           validatedBroadcaster.id,
         ),
@@ -174,14 +174,14 @@ export class TwitchSubscription extends DurableObject<Env> {
     if (removed !== undefined && broadcaster !== undefined) {
       await Promise.all([
         this.env.TWITCH_SUBSCRIPTIONS_INDEX.delete(
-          guildTwitchSubscriptionKey(
+          createGuildTwitchSubscriptionKey(
             removed.guildId,
             removed.channelId,
             broadcaster.id,
           ),
         ),
         this.env.TWITCH_SUBSCRIPTIONS_INDEX.delete(
-          channelTwitchSubscriptionKey(removed.channelId, broadcaster.id),
+          createChannelTwitchSubscriptionKey(removed.channelId, broadcaster.id),
         ),
       ]);
     }

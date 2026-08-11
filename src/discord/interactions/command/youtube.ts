@@ -11,9 +11,9 @@ import {
   YouTubeChannelResolutionError,
 } from '../../../youtube/channel';
 import {
-  deferredEphemeralInteractionResponse,
+  createDeferredEphemeralInteractionResponse,
   editInteractionResponse,
-  ephemeralInteractionResponse,
+  createEphemeralInteractionResponse,
 } from '../response';
 import {
   APPLICATION_COMMAND_OPTION_TYPE,
@@ -120,14 +120,16 @@ export async function handleYouTubeCommand(
 ): Promise<Response> {
   const result = DiscordNotificationCommand.safeParse(interaction.data);
   if (!result.success || result.data.commandName !== YOUTUBE_COMMAND_NAME) {
-    return ephemeralInteractionResponse('This interaction is not supported.');
+    return createEphemeralInteractionResponse(
+      'This interaction is not supported.',
+    );
   }
   const command = result.data;
 
   const guildId = interaction.guild_id;
   const channelId = interaction.channel_id;
   if (guildId === undefined || channelId === undefined) {
-    return ephemeralInteractionResponse(
+    return createEphemeralInteractionResponse(
       'This command can only be used in a server.',
     );
   }
@@ -138,19 +140,19 @@ export async function handleYouTubeCommand(
       MANAGE_GUILD_PERMISSION,
     )
   ) {
-    return ephemeralInteractionResponse(
+    return createEphemeralInteractionResponse(
       'You need the Manage Server permission to use this command.',
     );
   }
 
   if (command.name === 'add' || command.name === 'remove') {
     if (!DiscordNotificationChannel.safeParse(interaction.channel).success) {
-      return ephemeralInteractionResponse(
+      return createEphemeralInteractionResponse(
         'YouTube notifications can only be configured in a text or announcement channel.',
       );
     }
     if (!canPostInChannel(interaction.app_permissions)) {
-      return ephemeralInteractionResponse(
+      return createEphemeralInteractionResponse(
         'I need View Channel and Send Messages permissions in this channel.',
       );
     }
@@ -158,18 +160,20 @@ export async function handleYouTubeCommand(
     const applicationId = interaction.application_id;
     const token = interaction.token;
     if (applicationId === undefined || token === undefined) {
-      return ephemeralInteractionResponse('This interaction is not supported.');
+      return createEphemeralInteractionResponse(
+        'This interaction is not supported.',
+      );
     }
 
     if (command.name === 'add') {
       const options = parseYouTubeAddOptions(command.options);
       if (options === undefined) {
-        return ephemeralInteractionResponse(
+        return createEphemeralInteractionResponse(
           'This interaction is not supported.',
         );
       }
       if (options.roleId !== undefined && options.ping !== undefined) {
-        return ephemeralInteractionResponse(
+        return createEphemeralInteractionResponse(
           'Choose either a role or an @everyone/@here ping, not both.',
         );
       }
@@ -181,7 +185,7 @@ export async function handleYouTubeCommand(
         interaction.app_permissions,
       );
       if ('error' in pingResult) {
-        return ephemeralInteractionResponse(pingResult.error);
+        return createEphemeralInteractionResponse(pingResult.error);
       }
 
       ctx.waitUntil(
@@ -197,7 +201,7 @@ export async function handleYouTubeCommand(
       );
     } else {
       if (command.options.length !== 0) {
-        return ephemeralInteractionResponse(
+        return createEphemeralInteractionResponse(
           'This interaction is not supported.',
         );
       }
@@ -206,11 +210,13 @@ export async function handleYouTubeCommand(
       );
     }
 
-    return deferredEphemeralInteractionResponse();
+    return createDeferredEphemeralInteractionResponse();
   }
 
   if (command.name !== 'list' || command.options.length !== 0) {
-    return ephemeralInteractionResponse('This interaction is not supported.');
+    return createEphemeralInteractionResponse(
+      'This interaction is not supported.',
+    );
   }
 
   try {
@@ -219,17 +225,17 @@ export async function handleYouTubeCommand(
       guildId,
     );
     if (subscriptions.length === 0) {
-      return ephemeralInteractionResponse(
+      return createEphemeralInteractionResponse(
         'No YouTube notifications are configured for this server.',
       );
     }
 
-    return ephemeralInteractionResponse(
+    return createEphemeralInteractionResponse(
       createYouTubeListContent(subscriptions, channelId),
     );
   } catch (error) {
     logInteractionFailure(error);
-    return ephemeralInteractionResponse(
+    return createEphemeralInteractionResponse(
       'YouTube notifications could not be loaded. Please try again.',
     );
   }
