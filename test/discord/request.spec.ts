@@ -23,7 +23,7 @@ describe('createDiscordMessageRequest', () => {
       botToken: BOT_TOKEN,
       channelId: CHANNEL_ID,
       applicationUrl: 'https://bot.example.com/youtube/websub/private-token',
-      message: buildDiscordMessage({
+      message: createDiscordMessage({
         content: `<@&${ROLE_ID}> A new video is available`,
         nonce: 'dQw4w9WgXcQ',
         allowedMentions: {
@@ -338,22 +338,6 @@ function createRequest(message: DiscordMessageInput) {
     botToken: BOT_TOKEN,
     channelId: CHANNEL_ID,
     applicationUrl: 'https://bot.example.com',
-    message: buildDiscordMessage(message),
-  });
-}
-
-function buildDiscordMessage({
-  content,
-  nonce,
-  allowedMentions,
-  embeds,
-  linkButtons,
-}: DiscordMessageInput) {
-  return createDiscordMessage({
-    content,
-    nonce,
-    allowedMentions,
-    embeds,
-    linkButtons,
+    message: createDiscordMessage(message),
   });
 }

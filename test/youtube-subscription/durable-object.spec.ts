@@ -202,7 +202,11 @@ describe('YouTubeSubscription', () => {
     ]);
     await expect(
       env.YOUTUBE_SUBSCRIPTIONS_INDEX.getWithMetadata(
-        guildSubscriptionKey(GUILD_ID, CHANNEL_ID, youtubeChannelId),
+        createGuildYouTubeSubscriptionKey(
+          GUILD_ID,
+          CHANNEL_ID,
+          youtubeChannelId,
+        ),
       ),
     ).resolves.toMatchObject({
       value: '1',
@@ -210,7 +214,7 @@ describe('YouTubeSubscription', () => {
     });
     await expect(
       env.YOUTUBE_SUBSCRIPTIONS_INDEX.getWithMetadata(
-        channelSubscriptionKey(CHANNEL_ID, youtubeChannelId),
+        createChannelYouTubeSubscriptionKey(CHANNEL_ID, youtubeChannelId),
       ),
     ).resolves.toMatchObject({ value: '1', metadata: null });
   });
@@ -242,7 +246,11 @@ describe('YouTubeSubscription', () => {
     ]);
     await expect(
       env.YOUTUBE_SUBSCRIPTIONS_INDEX.getWithMetadata(
-        guildSubscriptionKey(GUILD_ID, CHANNEL_ID, youtubeChannelId),
+        createGuildYouTubeSubscriptionKey(
+          GUILD_ID,
+          CHANNEL_ID,
+          youtubeChannelId,
+        ),
       ),
     ).resolves.toMatchObject({
       value: '1',
@@ -250,12 +258,16 @@ describe('YouTubeSubscription', () => {
     });
     await expect(
       env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(
-        guildSubscriptionKey(OTHER_GUILD_ID, CHANNEL_ID, youtubeChannelId),
+        createGuildYouTubeSubscriptionKey(
+          OTHER_GUILD_ID,
+          CHANNEL_ID,
+          youtubeChannelId,
+        ),
       ),
     ).resolves.toBeNull();
     await expect(
       env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(
-        channelSubscriptionKey(CHANNEL_ID, youtubeChannelId),
+        createChannelYouTubeSubscriptionKey(CHANNEL_ID, youtubeChannelId),
       ),
     ).resolves.toBe('1');
   });
@@ -263,12 +275,15 @@ describe('YouTubeSubscription', () => {
   it('removes a subscriber and both global lookup indexes', async () => {
     const youtubeChannelId = randomYouTubeChannelId();
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
-    const guildKey = guildSubscriptionKey(
+    const guildKey = createGuildYouTubeSubscriptionKey(
       GUILD_ID,
       CHANNEL_ID,
       youtubeChannelId,
     );
-    const channelKey = channelSubscriptionKey(CHANNEL_ID, youtubeChannelId);
+    const channelKey = createChannelYouTubeSubscriptionKey(
+      CHANNEL_ID,
+      youtubeChannelId,
+    );
 
     await subscription.addSubscriber({
       guildId: GUILD_ID,
@@ -542,7 +557,7 @@ function readSubscribers(
   );
 }
 
-function guildSubscriptionKey(
+function createGuildYouTubeSubscriptionKey(
   guildId: string,
   channelId: string,
   youtubeChannelId: string,
@@ -550,7 +565,7 @@ function guildSubscriptionKey(
   return `guild:${guildId}:channel:${channelId}:youtube:${youtubeChannelId}`;
 }
 
-function channelSubscriptionKey(
+function createChannelYouTubeSubscriptionKey(
   channelId: string,
   youtubeChannelId: string,
 ): string {

@@ -7,7 +7,7 @@ import {
 import { handleYouTubeCommand, YOUTUBE_COMMAND_NAME } from './command/youtube';
 import { handleTwitchCommand, TWITCH_COMMAND_NAME } from './command/twitch';
 import { DiscordInteraction } from './data';
-import { ephemeralInteractionResponse } from './response';
+import { createEphemeralInteractionResponse } from './response';
 
 /** Authenticates and dispatches Discord interaction webhooks. */
 export async function handleDiscordInteraction(
@@ -34,7 +34,9 @@ export async function handleDiscordInteraction(
     return Response.json({ type: InteractionResponseType.PONG });
   }
   if (interaction.type !== Number(InteractionType.APPLICATION_COMMAND)) {
-    return ephemeralInteractionResponse('This interaction is not supported.');
+    return createEphemeralInteractionResponse(
+      'This interaction is not supported.',
+    );
   }
 
   if (interaction.data?.name === YOUTUBE_COMMAND_NAME) {
@@ -43,7 +45,9 @@ export async function handleDiscordInteraction(
   if (interaction.data?.name === TWITCH_COMMAND_NAME) {
     return handleTwitchCommand(interaction, env, ctx);
   }
-  return ephemeralInteractionResponse('This interaction is not supported.');
+  return createEphemeralInteractionResponse(
+    'This interaction is not supported.',
+  );
 }
 
 async function parseJson(
