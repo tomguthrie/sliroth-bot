@@ -22,7 +22,7 @@ export interface GuildTwitchSubscription {
 }
 
 /** Builds the guild-scoped lookup key for a Twitch subscription. */
-export function guildTwitchSubscriptionKey(
+export function createGuildTwitchSubscriptionKey(
   guildId: string,
   channelId: string,
   broadcasterId: string,
@@ -31,7 +31,7 @@ export function guildTwitchSubscriptionKey(
 }
 
 /** Builds the channel-scoped lookup key for a Twitch subscription. */
-export function channelTwitchSubscriptionKey(
+export function createChannelTwitchSubscriptionKey(
   channelId: string,
   broadcasterId: string,
 ): string {

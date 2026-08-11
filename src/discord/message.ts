@@ -134,7 +134,9 @@ export function createDiscordMessage(
 }
 
 /** Derives notification content and its matching Discord mention allowlist. */
-export function createDiscordMention(ping: DiscordMentionTarget | null): {
+export function createDiscordMentionPayload(
+  ping: DiscordMentionTarget | null,
+): {
   content?: string;
   allowedMentions?: DiscordAllowedMentions;
 } {
@@ -169,7 +171,7 @@ export function describeDiscordMention(
 }
 
 /** Derives Discord idempotency nonces for notification deliveries. */
-export async function createDiscordNonce(
+export async function createDiscordMessageNonce(
   sourceId: string,
   channelId: string,
 ): Promise<string> {

@@ -2,12 +2,11 @@ import { describe, expect, it } from 'vitest';
 import * as z from 'zod';
 
 import {
-  createDiscordMention,
+  createDiscordMentionPayload,
   createDiscordMessage,
-  createDiscordNonce,
+  createDiscordMessageNonce,
   describeDiscordMention,
   type DiscordMessage,
-  type DiscordMessageInput,
 } from '../../src/discord/message';
 import { DiscordSnowflake } from '../../src/discord/snowflake';
 
@@ -54,40 +53,24 @@ describe('createDiscordMessage', () => {
       linkButtons: [{ label: 'Open', url: 'javascript:alert(1)' }],
     },
   ])('rejects an invalid message: %#', (message) => {
-    expect(() => buildDiscordMessage(message)).toThrow(z.ZodError);
+    expect(() => createDiscordMessage(message)).toThrow(z.ZodError);
   });
 });
 
-function buildDiscordMessage({
-  content,
-  nonce,
-  allowedMentions,
-  embeds,
-  linkButtons,
-}: DiscordMessageInput) {
-  return createDiscordMessage({
-    content,
-    nonce,
-    allowedMentions,
-    embeds,
-    linkButtons,
-  });
-}
-
 describe('Discord notification messages', () => {
   it('omits an absent mention', () => {
-    expect(createDiscordMention(null)).toEqual({});
+    expect(createDiscordMentionPayload(null)).toEqual({});
   });
 
   it.each(['everyone', 'here'] as const)('enables an @%s mention', (target) => {
-    expect(createDiscordMention(target)).toEqual({
+    expect(createDiscordMentionPayload(target)).toEqual({
       content: `@${target}`,
       allowedMentions: { everyone: true },
     });
   });
 
   it('enables one role mention', () => {
-    expect(createDiscordMention(ROLE_ID)).toEqual({
+    expect(createDiscordMentionPayload(ROLE_ID)).toEqual({
       content: `<@&${ROLE_ID}>`,
       allowedMentions: { roleIds: [ROLE_ID] },
     });
@@ -103,14 +86,17 @@ describe('Discord notification messages', () => {
   });
 
   it('creates a deterministic bounded nonce', async () => {
-    const nonce = await createDiscordNonce('source-id', '123456789012345678');
+    const nonce = await createDiscordMessageNonce(
+      'source-id',
+      '123456789012345678',
+    );
 
     expect(nonce).toBe('0a5fd9843e0a80dd22b5df050');
     await expect(
-      createDiscordNonce('source-id', '123456789012345678'),
+      createDiscordMessageNonce('source-id', '123456789012345678'),
     ).resolves.toBe(nonce);
     await expect(
-      createDiscordNonce('other-source', '123456789012345678'),
+      createDiscordMessageNonce('other-source', '123456789012345678'),
     ).resolves.not.toBe(nonce);
   });
 });

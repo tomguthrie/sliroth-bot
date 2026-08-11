@@ -8,7 +8,7 @@ import type { DiscordSnowflake } from '../snowflake';
 import type { DiscordInteractionToken } from './data';
 
 /** Creates an immediate ephemeral interaction response. */
-export function ephemeralInteractionResponse(content: string): Response {
+export function createEphemeralInteractionResponse(content: string): Response {
   return Response.json({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
     data: {
@@ -20,7 +20,7 @@ export function ephemeralInteractionResponse(content: string): Response {
 }
 
 /** Defers an interaction while preserving its ephemeral visibility. */
-export function deferredEphemeralInteractionResponse(): Response {
+export function createDeferredEphemeralInteractionResponse(): Response {
   return Response.json({
     type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
     data: { flags: InteractionResponseFlags.EPHEMERAL },
