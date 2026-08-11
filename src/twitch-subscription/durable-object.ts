@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { and, count, eq, lt } from 'drizzle-orm';
+import { and, count, eq, isNull, lt } from 'drizzle-orm';
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
@@ -30,15 +30,16 @@ import {
   TwitchTimestamp,
 } from '../twitch/data';
 import {
-  TwitchStreamOfflineEvent,
-  TwitchStreamOnlineEvent,
-} from '../twitch/eventsub-handler';
-import {
+  TWITCH_EVENT_CHANNEL_UPDATE,
   TWITCH_EVENT_STREAM_OFFLINE,
   TWITCH_EVENT_STREAM_ONLINE,
-} from '../twitch/eventsub-handler';
+  TwitchChannelUpdateEvent,
+  TwitchStreamOfflineEvent,
+  TwitchStreamOnlineEvent,
+} from '../twitch/event-sub/events';
 import {
   createTwitchLiveDelivery,
+  createTwitchLiveUpdateDelivery,
   createTwitchOfflineDelivery,
 } from './discord-message';
 import {
@@ -47,10 +48,13 @@ import {
   type TwitchSubscriptionMetadata,
 } from './index';
 
-const DESIRED_EVENT_TYPES = [
-  TWITCH_EVENT_STREAM_ONLINE,
-  TWITCH_EVENT_STREAM_OFFLINE,
+const DESIRED_EVENTSUB_SUBSCRIPTIONS = [
+  { type: TWITCH_EVENT_CHANNEL_UPDATE, version: '2' },
+  { type: TWITCH_EVENT_STREAM_ONLINE, version: '1' },
+  { type: TWITCH_EVENT_STREAM_OFFLINE, version: '1' },
 ] as const;
+type DesiredEventSubSubscription =
+  (typeof DESIRED_EVENTSUB_SUBSCRIPTIONS)[number];
 const ACTIVE_EVENTSUB_STATUSES = new Set([
   'enabled',
   'webhook_callback_verification_pending',
@@ -243,9 +247,15 @@ export class TwitchSubscription extends DurableObject<Env> {
           )
           .onConflictDoNothing();
       }
+      const previewCacheBustMs = Date.now();
       const deliveries = await Promise.all(
         subscriberRows.map((subscriber) =>
-          createTwitchLiveDelivery(broadcaster, stream, subscriber),
+          createTwitchLiveDelivery(
+            broadcaster,
+            stream,
+            subscriber,
+            previewCacheBustMs,
+          ),
         ),
       );
       await enqueueDiscordMessages(this.env.DISCORD_MESSAGES, deliveries);
@@ -255,6 +265,58 @@ export class TwitchSubscription extends DurableObject<Env> {
         .where(eq(streamMessages.streamId, stream.id));
       await this.db.delete(streams).where(eq(streams.id, stream.id));
       throw error;
+    }
+  }
+
+  /** Refreshes delivered notifications from Twitch's current live stream. */
+  async channelUpdate(
+    event: z.input<typeof TwitchChannelUpdateEvent>,
+  ): Promise<void> {
+    const validatedEvent = TwitchChannelUpdateEvent.parse(event);
+    const broadcaster = await this.requireBroadcaster(
+      validatedEvent.broadcaster_user_id,
+    );
+    const client = new TwitchApiClient(this.env);
+    const liveStream = await client.getStreamByUserId(broadcaster.id);
+    if (liveStream === undefined) return;
+
+    const [stream] = await this.db
+      .select({ id: streams.id, revision: streams.revision })
+      .from(streams)
+      .where(and(eq(streams.id, liveStream.id), isNull(streams.endedAt)))
+      .limit(1);
+    if (stream === undefined) return;
+
+    const game =
+      liveStream.gameId === ''
+        ? undefined
+        : await client.getGameById(liveStream.gameId);
+    const [updatedStream] = await this.db
+      .update(streams)
+      .set({
+        title:
+          liveStream.title.trim() === ''
+            ? `${broadcaster.displayName} is live`
+            : liveStream.title,
+        gameName:
+          liveStream.gameName.trim() === ''
+            ? 'No Category'
+            : liveStream.gameName,
+        viewerCount: liveStream.viewerCount,
+        gameBoxArtUrl: game?.boxArtUrl ?? null,
+        previewImageUrl: liveStream.thumbnailUrl,
+        revision: stream.revision + 1,
+      })
+      .where(
+        and(
+          eq(streams.id, stream.id),
+          eq(streams.revision, stream.revision),
+          isNull(streams.endedAt),
+        ),
+      )
+      .returning({ id: streams.id });
+    if (updatedStream !== undefined) {
+      await this.queueStreamUpdates(updatedStream.id);
     }
   }
 
@@ -347,8 +409,8 @@ export class TwitchSubscription extends DurableObject<Env> {
     if (subscriberCount === undefined) {
       throw new Error('Failed to count Twitch subscribers');
     }
-    const desiredTypes: readonly string[] =
-      subscriberCount.value === 0 ? [] : DESIRED_EVENT_TYPES;
+    const desiredSubscriptions: readonly DesiredEventSubSubscription[] =
+      subscriberCount.value === 0 ? [] : DESIRED_EVENTSUB_SUBSCRIPTIONS;
     const client = new TwitchApiClient(this.env);
     const callback = new URL(
       `/twitch/eventsub/${broadcaster.id}`,
@@ -357,35 +419,39 @@ export class TwitchSubscription extends DurableObject<Env> {
     const rows = await this.db.select().from(eventSubSubscriptions);
 
     for (const row of rows) {
-      if (!desiredTypes.includes(row.type)) {
+      if (
+        !desiredSubscriptions.some(
+          (subscription) => subscription.type === row.type,
+        )
+      ) {
         await deleteRemoteSubscription(client, row.subscriptionId);
         await this.deleteLocalSubscription(row.type);
       }
     }
 
-    for (const type of desiredTypes) {
-      const row = rows.find((candidate) => candidate.type === type);
+    for (const desired of desiredSubscriptions) {
+      const row = rows.find((candidate) => candidate.type === desired.type);
       if (row !== undefined) {
         const remote = await getRemoteSubscription(client, row.subscriptionId);
-        if (isDesiredSubscription(remote, type, broadcaster.id, callback)) {
+        if (isDesiredSubscription(remote, desired, broadcaster.id, callback)) {
           continue;
         }
         if (remote !== undefined) {
           await deleteRemoteSubscription(client, remote.id);
         }
-        await this.deleteLocalSubscription(type);
+        await this.deleteLocalSubscription(desired.type);
       }
 
       const created = await client.createEventSubSubscription({
-        type,
-        version: '1',
+        type: desired.type,
+        version: desired.version,
         condition: { broadcaster_user_id: broadcaster.id },
         callback,
         secret: this.env.TWITCH_EVENTSUB_SECRET,
       });
       await this.db
         .insert(eventSubSubscriptions)
-        .values({ type, subscriptionId: created.id })
+        .values({ type: desired.type, subscriptionId: created.id })
         .onConflictDoUpdate({
           target: eventSubSubscriptions.type,
           set: { subscriptionId: created.id },
@@ -421,7 +487,7 @@ export class TwitchSubscription extends DurableObject<Env> {
         .limit(1)
         .then(([value]) => value),
     ]);
-    if (broadcaster === undefined || stream?.endedAt == null) {
+    if (broadcaster === undefined || stream === undefined) {
       return;
     }
 
@@ -444,18 +510,28 @@ export class TwitchSubscription extends DurableObject<Env> {
     const subscribersByChannel = new Map(
       subscriberRows.map((subscriber) => [subscriber.channelId, subscriber]),
     );
+    const previewCacheBustMs = Date.now();
     const deliveredMessages = messages.flatMap((message) => {
       const subscriber = subscribersByChannel.get(message.channelId);
       if (message.messageId === null || subscriber === undefined) return [];
       return [
         {
           channelId: message.channelId,
-          delivery: createTwitchOfflineDelivery(
-            broadcaster,
-            stream,
-            subscriber,
-            message.messageId,
-          ),
+          delivery:
+            stream.endedAt === null
+              ? createTwitchLiveUpdateDelivery(
+                  broadcaster,
+                  stream,
+                  subscriber,
+                  message.messageId,
+                  previewCacheBustMs,
+                )
+              : createTwitchOfflineDelivery(
+                  broadcaster,
+                  stream,
+                  subscriber,
+                  message.messageId,
+                ),
         },
       ];
     });
@@ -523,13 +599,13 @@ async function deleteRemoteSubscription(
 
 function isDesiredSubscription(
   subscription: TwitchEventSubSubscription | undefined,
-  type: string,
+  desired: DesiredEventSubSubscription,
   broadcasterId: string,
   callback: string,
 ): boolean {
   return (
-    subscription?.type === type &&
-    subscription.version === '1' &&
+    subscription?.type === desired.type &&
+    subscription.version === desired.version &&
     subscription.condition.broadcaster_user_id === broadcasterId &&
     subscription.transport.method === 'webhook' &&
     subscription.transport.callback === callback &&
