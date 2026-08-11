@@ -8,7 +8,10 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { eventSubSubscriptions } from '../../src/db/twitch-subscription/schema';
+import {
+  broadcasters,
+  eventSubSubscriptions,
+} from '../../src/db/twitch-subscription/schema';
 import { handleTwitchEventSub } from '../../src/twitch/eventsub-handler';
 import type { TwitchSubscription } from '../../src/twitch-subscription/durable-object';
 import {
@@ -48,7 +51,12 @@ describe('TwitchSubscription EventSub reconciliation', () => {
     ).rejects.toThrow();
   });
   it('creates desired subscriptions and deletes them with the last subscriber', async () => {
-    const requests: { method: string; url: string; eventType?: string }[] = [];
+    const requests: {
+      method: string;
+      url: string;
+      eventType?: string;
+      eventVersion?: string;
+    }[] = [];
     let sequence = 0;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const request = new Request(input, init);
@@ -67,6 +75,7 @@ describe('TwitchSubscription EventSub reconciliation', () => {
           method: request.method,
           url: request.url,
           eventType: body.type,
+          eventVersion: body.version,
         });
         sequence += 1;
         return Response.json({
@@ -110,9 +119,13 @@ describe('TwitchSubscription EventSub reconciliation', () => {
         .filter(
           ({ method, url }) => method === 'POST' && url.includes('/helix/'),
         )
-        .map(({ eventType }) => eventType)
-        .sort(),
-    ).toEqual(['stream.offline', 'stream.online']);
+        .map(({ eventType, eventVersion }) => [eventType, eventVersion])
+        .sort(([left], [right]) => left?.localeCompare(right ?? '') ?? 0),
+    ).toEqual([
+      ['channel.update', '2'],
+      ['stream.offline', '1'],
+      ['stream.online', '1'],
+    ]);
     await expect(
       env.TWITCH_SUBSCRIPTIONS_INDEX.getWithMetadata(
         createGuildTwitchSubscriptionKey(GUILD_ID, CHANNEL_ID, BROADCASTER_ID),
@@ -130,7 +143,7 @@ describe('TwitchSubscription EventSub reconciliation', () => {
     await expect(subscription.removeSubscriber(CHANNEL_ID)).resolves.toBe(true);
     expect(
       requests.filter((request) => request.method === 'DELETE'),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
     await expect(
       env.TWITCH_SUBSCRIPTIONS_INDEX.get(
         createGuildTwitchSubscriptionKey(GUILD_ID, CHANNEL_ID, BROADCASTER_ID),
@@ -202,6 +215,70 @@ describe('Twitch EventSub webhook', () => {
 
     expect(response.status).toBe(400);
     await expect(response.text()).resolves.toBe('Invalid EventSub payload');
+  });
+
+  it('routes a channel update through the broadcaster subscription', async () => {
+    const broadcasterId = '123456789012345681';
+    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId);
+    await runInDurableObject(subscription, async (_instance, state) => {
+      await drizzle(state.storage).insert(broadcasters).values({
+        id: broadcasterId,
+        login: 'sliroth',
+        displayName: 'Sliroth',
+        profileImageUrl: 'https://example.com/profile.png',
+        offlineImageUrl: 'https://example.com/offline.png',
+      });
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation((input, init) => {
+        const request = new Request(input, init);
+        if (request.url.startsWith('https://id.twitch.tv/oauth2/token')) {
+          return Promise.resolve(
+            Response.json({ access_token: 'token', expires_in: 3600 }),
+          );
+        }
+        if (new URL(request.url).pathname.endsWith('/streams')) {
+          return Promise.resolve(Response.json({ data: [] }));
+        }
+        throw new Error(`Unexpected Twitch request: ${request.url}`);
+      });
+    const body = channelUpdateBody(broadcasterId);
+
+    const response = await handleTwitchEventSub(
+      await signedRequest(`channel-update-${crypto.randomUUID()}`, body, {
+        broadcasterId,
+      }),
+      env,
+      createExecutionContext(),
+    );
+
+    expect(response.status).toBe(204);
+    expect(
+      fetchSpy.mock.calls.some(([input, init]) =>
+        new URL(new Request(input, init).url).pathname.endsWith('/streams'),
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects an invalid channel update event', async () => {
+    const body = JSON.stringify({
+      subscription: {
+        id: 'subscription-id',
+        type: 'channel.update',
+        condition: { broadcaster_user_id: WEBHOOK_BROADCASTER_ID },
+      },
+      event: { broadcaster_user_id: WEBHOOK_BROADCASTER_ID },
+    });
+
+    const response = await handleTwitchEventSub(
+      await signedRequest(`channel-update-${crypto.randomUUID()}`, body),
+      env,
+      createExecutionContext(),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.text()).resolves.toBe('Invalid channel.update event');
   });
 
   it('reconciles desired subscriptions after a normal notification', async () => {
@@ -281,7 +358,11 @@ describe('Twitch EventSub webhook', () => {
     );
 
     expect(response.status).toBe(204);
-    expect(createdTypes.sort()).toEqual(['stream.offline', 'stream.online']);
+    expect(createdTypes.sort()).toEqual([
+      'channel.update',
+      'stream.offline',
+      'stream.online',
+    ]);
   });
 
   it('deduplicates Twitch message IDs in KV', async () => {
@@ -314,6 +395,26 @@ function eventBody(): string {
       condition: { broadcaster_user_id: WEBHOOK_BROADCASTER_ID },
     },
     event: { broadcaster_user_id: WEBHOOK_BROADCASTER_ID },
+  });
+}
+
+function channelUpdateBody(broadcasterId: string): string {
+  return JSON.stringify({
+    subscription: {
+      id: 'subscription-channel.update',
+      type: 'channel.update',
+      condition: { broadcaster_user_id: broadcasterId },
+    },
+    event: {
+      broadcaster_user_id: broadcasterId,
+      broadcaster_user_login: 'sliroth',
+      broadcaster_user_name: 'Sliroth',
+      title: 'Updated title',
+      language: 'en',
+      category_id: '84',
+      category_name: 'Science & Technology',
+      content_classification_labels: [],
+    },
   });
 }
 

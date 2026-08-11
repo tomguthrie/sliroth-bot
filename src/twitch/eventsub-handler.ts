@@ -3,10 +3,16 @@ import * as z from 'zod';
 import {
   TwitchBroadcasterId,
   TwitchEventSubSubscriptionId,
-  TwitchLogin,
-  TwitchStreamId,
   TwitchTimestamp,
 } from './data';
+import {
+  TWITCH_EVENT_CHANNEL_UPDATE,
+  TWITCH_EVENT_STREAM_OFFLINE,
+  TWITCH_EVENT_STREAM_ONLINE,
+  TwitchChannelUpdateEvent,
+  TwitchStreamOfflineEvent,
+  TwitchStreamOnlineEvent,
+} from './events';
 
 const MESSAGE_ID_HEADER = 'twitch-eventsub-message-id';
 const MESSAGE_TYPE_HEADER = 'twitch-eventsub-message-type';
@@ -15,9 +21,6 @@ const MESSAGE_SIGNATURE_HEADER = 'twitch-eventsub-message-signature';
 const MAX_MESSAGE_AGE_MS = 10 * 60 * 1000;
 const MAX_FUTURE_SKEW_MS = 60 * 1000;
 const DEDUPE_TTL_SECONDS = 10 * 60;
-
-export const TWITCH_EVENT_STREAM_ONLINE = 'stream.online';
-export const TWITCH_EVENT_STREAM_OFFLINE = 'stream.offline';
 
 const inFlightMessageIds = new Set<string>();
 
@@ -64,26 +67,6 @@ interface AuthenticatedEventSubMessage {
   messageType: string;
   timestamp: TwitchTimestamp;
 }
-
-export const TwitchStreamOnlineEvent = z.object({
-  id: TwitchStreamId,
-  broadcaster_user_id: TwitchBroadcasterId,
-  broadcaster_user_login: TwitchLogin,
-  broadcaster_user_name: z.string().trim().min(1),
-  type: z.string().min(1),
-  started_at: TwitchTimestamp,
-});
-
-export type TwitchStreamOnlineEvent = z.infer<typeof TwitchStreamOnlineEvent>;
-
-export const TwitchStreamOfflineEvent = z.object({
-  id: TwitchStreamId,
-  broadcaster_user_id: TwitchBroadcasterId,
-  broadcaster_user_login: TwitchLogin,
-  broadcaster_user_name: z.string().trim().min(1),
-});
-
-export type TwitchStreamOfflineEvent = z.infer<typeof TwitchStreamOfflineEvent>;
 
 /** Verifies, deduplicates, and routes a Twitch EventSub webhook. */
 export async function handleTwitchEventSub(
@@ -213,7 +196,13 @@ async function processEventSubNotification(
     return new Response('Missing EventSub event', { status: 400 });
   }
   const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId);
-  if (envelope.subscription.type === TWITCH_EVENT_STREAM_ONLINE) {
+  if (envelope.subscription.type === TWITCH_EVENT_CHANNEL_UPDATE) {
+    const result = TwitchChannelUpdateEvent.safeParse(envelope.event);
+    if (!result.success) {
+      return new Response('Invalid channel.update event', { status: 400 });
+    }
+    await subscription.channelUpdate(result.data);
+  } else if (envelope.subscription.type === TWITCH_EVENT_STREAM_ONLINE) {
     const result = TwitchStreamOnlineEvent.safeParse(envelope.event);
     if (!result.success) {
       return new Response('Invalid stream.online event', { status: 400 });
