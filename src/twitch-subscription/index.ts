@@ -15,7 +15,7 @@ export type TwitchSubscriptionMetadata = z.infer<
 >;
 
 export interface GuildTwitchSubscription {
-  discordChannelId: string;
+  discordChannelId: DiscordSnowflake;
   twitchBroadcasterId: TwitchBroadcasterId;
   twitchBroadcasterLogin: string;
   twitchBroadcasterDisplayName: string;
@@ -97,9 +97,10 @@ function parseGuildTwitchSubscriptionKey(
   const twitchBroadcasterId = suffix.slice(separatorOffset + separator.length);
   const parsedBroadcasterId =
     TwitchBroadcasterId.safeParse(twitchBroadcasterId);
+  const parsedDiscordChannelId = DiscordSnowflake.safeParse(discordChannelId);
   const parsedMetadata = TwitchSubscriptionMetadata.safeParse(metadata);
   if (
-    !DiscordSnowflake.safeParse(discordChannelId).success ||
+    !parsedDiscordChannelId.success ||
     !parsedBroadcasterId.success ||
     !parsedMetadata.success
   ) {
@@ -107,7 +108,7 @@ function parseGuildTwitchSubscriptionKey(
   }
 
   return {
-    discordChannelId,
+    discordChannelId: parsedDiscordChannelId.data,
     twitchBroadcasterId: parsedBroadcasterId.data,
     twitchBroadcasterLogin: parsedMetadata.data.login,
     twitchBroadcasterDisplayName: parsedMetadata.data.displayName,

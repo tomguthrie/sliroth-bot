@@ -1,6 +1,7 @@
 import * as z from 'zod';
 
 import { DiscordSnowflake } from '../discord/snowflake';
+import { YouTubeChannelId } from '../youtube/data';
 
 const NonBlankString = z.string().refine((value) => value.trim() !== '');
 
@@ -13,8 +14,8 @@ export type YouTubeSubscriptionMetadata = z.infer<
 >;
 
 export interface GuildYouTubeSubscription {
-  discordChannelId: string;
-  youtubeChannelId: string;
+  discordChannelId: DiscordSnowflake;
+  youtubeChannelId: YouTubeChannelId;
   youtubeChannelTitle: string;
 }
 
@@ -65,21 +66,23 @@ export async function listGuildYouTubeSubscriptions(
 export async function listChannelYouTubeSubscriptions(
   index: KVNamespace,
   channelId: string,
-): Promise<string[]> {
+): Promise<YouTubeChannelId[]> {
   DiscordSnowflake.parse(channelId);
   const prefix = `channel:${channelId}:youtube:`;
   const page = await index.list({ prefix });
 
   return page.keys.flatMap((key) => {
-    const youtubeChannelId = key.name.slice(prefix.length);
-    if (youtubeChannelId === '' || youtubeChannelId.includes(':')) {
+    const youtubeChannelId = YouTubeChannelId.safeParse(
+      key.name.slice(prefix.length),
+    );
+    if (!youtubeChannelId.success) {
       console.warn({
         event: 'youtube_subscription_index_key_invalid',
         key: key.name,
       });
       return [];
     }
-    return [youtubeChannelId];
+    return [youtubeChannelId.data];
   });
 }
 
@@ -101,19 +104,20 @@ function parseGuildSubscriptionKey(
 
   const discordChannelId = suffix.slice(0, separatorOffset);
   const youtubeChannelId = suffix.slice(separatorOffset + separator.length);
+  const parsedDiscordChannelId = DiscordSnowflake.safeParse(discordChannelId);
+  const parsedYouTubeChannelId = YouTubeChannelId.safeParse(youtubeChannelId);
   const parsedMetadata = YouTubeSubscriptionMetadata.safeParse(metadata);
   if (
-    !DiscordSnowflake.safeParse(discordChannelId).success ||
-    youtubeChannelId === '' ||
-    youtubeChannelId.includes(':') ||
+    !parsedDiscordChannelId.success ||
+    !parsedYouTubeChannelId.success ||
     !parsedMetadata.success
   ) {
     return undefined;
   }
 
   return {
-    discordChannelId,
-    youtubeChannelId,
+    discordChannelId: parsedDiscordChannelId.data,
+    youtubeChannelId: parsedYouTubeChannelId.data,
     youtubeChannelTitle: parsedMetadata.data.title,
   };
 }

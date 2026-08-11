@@ -22,17 +22,18 @@ export type DiscordApplicationCommandOption = z.infer<
   typeof DiscordApplicationCommandOption
 >;
 
+const DiscordResolvedRole = z.object({
+  mentionable: z.boolean().optional(),
+});
+
+type DiscordResolvedRole = z.infer<typeof DiscordResolvedRole>;
+
 export const DiscordApplicationCommandData = z.object({
   name: z.string(),
   options: z.array(DiscordApplicationCommandOption).optional(),
   resolved: z
     .object({
-      roles: z
-        .record(
-          DiscordSnowflake,
-          z.object({ mentionable: z.boolean().optional() }),
-        )
-        .optional(),
+      roles: z.record(DiscordSnowflake, DiscordResolvedRole).optional(),
     })
     .optional(),
 });
@@ -68,6 +69,6 @@ export type DiscordInteraction = z.infer<typeof DiscordInteraction>;
 export function getResolvedInteractionRole(
   data: DiscordApplicationCommandData | undefined,
   roleId: DiscordSnowflake,
-): { mentionable?: boolean } | undefined {
+): DiscordResolvedRole | undefined {
   return data?.resolved?.roles?.[roleId];
 }

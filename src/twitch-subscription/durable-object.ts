@@ -74,7 +74,7 @@ type TwitchSubscriberRegistrationInput = z.input<
 /** Coordinates subscribers and EventSub state for one Twitch broadcaster. */
 export class TwitchSubscription extends DurableObject<Env> {
   private readonly db: DrizzleSqliteDODatabase;
-  private reconciliation?: Promise<void>;
+  private reconciliation: Promise<void> | undefined;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);

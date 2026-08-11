@@ -17,6 +17,8 @@ const OTHER_CHANNEL_ID = '345678901234567890';
 const APPLICATION_ID = '456789012345678901';
 const ROLE_ID = '567890123456789012';
 const YOUTUBE_CHANNEL_ID = 'UC_x5XG1OV2P6uZZ5FSM9Ttw';
+const CURRENT_YOUTUBE_CHANNEL_ID = 'UCaaaaaaaaaaaaaaaaaaaaaa';
+const OTHER_YOUTUBE_CHANNEL_ID = 'UCbbbbbbbbbbbbbbbbbbbbbb';
 const TWITCH_ADD_BROADCASTER_ID = '678901234567890123';
 const TWITCH_LIST_BROADCASTER_ID = '678901234567890124';
 const TWITCH_REMOVE_BROADCASTER_ID = '678901234567890125';
@@ -94,12 +96,12 @@ describe('Discord interactions', () => {
   it('lists cached subscriptions ephemerally with the current channel first', async () => {
     await Promise.all([
       env.YOUTUBE_SUBSCRIPTIONS_INDEX.put(
-        `guild:${GUILD_ID}:channel:${OTHER_CHANNEL_ID}:youtube:UC_OTHER`,
+        `guild:${GUILD_ID}:channel:${OTHER_CHANNEL_ID}:youtube:${OTHER_YOUTUBE_CHANNEL_ID}`,
         '1',
         { metadata: { title: 'Other channel' } },
       ),
       env.YOUTUBE_SUBSCRIPTIONS_INDEX.put(
-        `guild:${GUILD_ID}:channel:${CURRENT_CHANNEL_ID}:youtube:UC_CURRENT`,
+        `guild:${GUILD_ID}:channel:${CURRENT_CHANNEL_ID}:youtube:${CURRENT_YOUTUBE_CHANNEL_ID}`,
         '1',
         { metadata: { title: 'Current channel' } },
       ),
@@ -115,7 +117,7 @@ describe('Discord interactions', () => {
     expect(body.data.flags).toBe(64);
     expect(body.data.allowed_mentions).toEqual({ parse: [] });
     expect(body.data.content).toContain(
-      `⭐ [Current channel](https://www.youtube.com/channel/UC_CURRENT) → <#${CURRENT_CHANNEL_ID}> **— current channel**`,
+      `⭐ [Current channel](https://www.youtube.com/channel/${CURRENT_YOUTUBE_CHANNEL_ID}) → <#${CURRENT_CHANNEL_ID}> **— current channel**`,
     );
     expect(body.data.content.indexOf('Current channel')).toBeLessThan(
       body.data.content.indexOf('Other channel'),
