@@ -125,87 +125,59 @@ export const DiscordMessage = z
 export type DiscordMessage = z.infer<typeof DiscordMessage>;
 export type DiscordMessageInput = z.input<typeof DiscordMessage>;
 type DiscordAllowedMentions = z.infer<typeof DiscordAllowedMentions>;
-type DiscordAllowedMentionsInput = z.input<typeof DiscordAllowedMentions>;
-type DiscordEmbedInput = z.input<typeof DiscordEmbed>;
-type DiscordLinkButtonInput = z.input<typeof DiscordLinkButton>;
 
-/** Builds and validates a Discord message before it reaches delivery code. */
-export class DiscordMessageBuilder {
-  private readonly message: DiscordMessageInput;
-
-  constructor(content: string) {
-    this.message = { content };
-  }
-
-  setNonce(nonce: string): this {
-    this.message.nonce = nonce;
-    return this;
-  }
-
-  setAllowedMentions(allowedMentions: DiscordAllowedMentionsInput): this {
-    this.message.allowedMentions = allowedMentions;
-    return this;
-  }
-
-  addEmbed(embed: DiscordEmbedInput): this {
-    (this.message.embeds ??= []).push(embed);
-    return this;
-  }
-
-  addLinkButton(linkButton: DiscordLinkButtonInput): this {
-    (this.message.linkButtons ??= []).push(linkButton);
-    return this;
-  }
-
-  build(): DiscordMessage {
-    return DiscordMessage.parse(this.message);
-  }
+/** Validates a Discord message before it reaches delivery code. */
+export function createDiscordMessage(
+  message: DiscordMessageInput,
+): DiscordMessage {
+  return DiscordMessage.parse(message);
 }
 
 /** Derives notification content and its matching Discord mention allowlist. */
-export const DiscordMention = {
-  from(ping: DiscordMentionTarget | null): {
-    content?: string;
-    allowedMentions?: DiscordAllowedMentions;
-  } {
-    if (ping === null) {
-      return {};
-    }
+export function createDiscordMention(ping: DiscordMentionTarget | null): {
+  content?: string;
+  allowedMentions?: DiscordAllowedMentions;
+} {
+  if (ping === null) {
+    return {};
+  }
 
-    if (ping === 'everyone' || ping === 'here') {
-      return {
-        content: `@${ping}`,
-        allowedMentions: { everyone: true },
-      };
-    }
-
+  if (ping === 'everyone' || ping === 'here') {
     return {
-      content: `<@&${ping}>`,
-      allowedMentions: { roleIds: [ping] },
+      content: `@${ping}`,
+      allowedMentions: { everyone: true },
     };
-  },
+  }
 
-  /** Describes the mention in a notification configuration summary. */
-  describe(ping: DiscordMentionTarget | undefined): string {
-    if (ping === undefined) {
-      return '';
-    }
-    if (ping === 'everyone' || ping === 'here') {
-      return ` and mention @${ping}`;
-    }
-    return ` and mention <@&${ping}>`;
-  },
-};
+  return {
+    content: `<@&${ping}>`,
+    allowedMentions: { roleIds: [ping] },
+  };
+}
+
+/** Describes the mention in a notification configuration summary. */
+export function describeDiscordMention(
+  ping: DiscordMentionTarget | undefined,
+): string {
+  if (ping === undefined) {
+    return '';
+  }
+  if (ping === 'everyone' || ping === 'here') {
+    return ` and mention @${ping}`;
+  }
+  return ` and mention <@&${ping}>`;
+}
 
 /** Derives Discord idempotency nonces for notification deliveries. */
-export const DiscordNonce = {
-  async from(sourceId: string, channelId: string): Promise<string> {
-    const bytes = new TextEncoder().encode(`${sourceId}:${channelId}`);
-    const digest = await crypto.subtle.digest('SHA-256', bytes);
-    return Array.from(new Uint8Array(digest), (byte) =>
-      byte.toString(16).padStart(2, '0'),
-    )
-      .join('')
-      .slice(0, MAX_DISCORD_NONCE_LENGTH);
-  },
-};
+export async function createDiscordNonce(
+  sourceId: string,
+  channelId: string,
+): Promise<string> {
+  const bytes = new TextEncoder().encode(`${sourceId}:${channelId}`);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, '0'),
+  )
+    .join('')
+    .slice(0, MAX_DISCORD_NONCE_LENGTH);
+}

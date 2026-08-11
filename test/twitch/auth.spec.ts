@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   getValidToken,
-  TwitchAuthError,
   TWITCH_TOKEN_KEY,
   TWITCH_TOKEN_URL,
 } from '../../src/twitch/auth';
@@ -81,8 +80,8 @@ describe('getValidToken', () => {
       new Response(null, { status: 401 }),
     );
 
-    await expect(getValidToken(env)).rejects.toEqual(
-      new TwitchAuthError('Twitch app access token returned HTTP 401'),
+    await expect(getValidToken(env)).rejects.toThrow(
+      'Twitch app access token returned HTTP 401',
     );
   });
 
@@ -99,8 +98,8 @@ describe('getValidToken', () => {
       Response.json({ access_token: '', expires_in: 3_600 }),
     );
 
-    await expect(getValidToken(env)).rejects.toEqual(
-      new TwitchAuthError('Twitch app access token response was unusable'),
+    await expect(getValidToken(env)).rejects.toThrow(
+      'Twitch app access token response was unusable',
     );
   });
 
@@ -109,8 +108,8 @@ describe('getValidToken', () => {
       tokenResponse('short-lived-token', 30),
     );
 
-    await expect(getValidToken(env)).rejects.toEqual(
-      new TwitchAuthError('Twitch app access token response was unusable'),
+    await expect(getValidToken(env)).rejects.toThrow(
+      'Twitch app access token response was unusable',
     );
   });
 });

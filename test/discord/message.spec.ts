@@ -2,21 +2,23 @@ import { describe, expect, it } from 'vitest';
 import * as z from 'zod';
 
 import {
-  DiscordMention,
-  DiscordNonce,
+  createDiscordMention,
+  createDiscordMessage,
+  createDiscordNonce,
+  describeDiscordMention,
   type DiscordMessage,
-  DiscordMessageBuilder,
   type DiscordMessageInput,
 } from '../../src/discord/message';
 import { DiscordSnowflake } from '../../src/discord/snowflake';
 
 const ROLE_ID = DiscordSnowflake.parse('123456789012345678');
 
-describe('DiscordMessageBuilder', () => {
+describe('createDiscordMessage', () => {
   it('builds a validated Discord message', () => {
-    const message: DiscordMessage = new DiscordMessageBuilder('A message')
-      .setAllowedMentions({ roleIds: [ROLE_ID] })
-      .build();
+    const message: DiscordMessage = createDiscordMessage({
+      content: 'A message',
+      allowedMentions: { roleIds: [ROLE_ID] },
+    });
 
     expect(message).toEqual({
       content: 'A message',
@@ -63,32 +65,29 @@ function buildDiscordMessage({
   embeds,
   linkButtons,
 }: DiscordMessageInput) {
-  const builder = new DiscordMessageBuilder(content);
-  if (nonce !== undefined) builder.setNonce(nonce);
-  if (allowedMentions !== undefined) {
-    builder.setAllowedMentions(allowedMentions);
-  }
-  for (const embed of embeds ?? []) builder.addEmbed(embed);
-  for (const linkButton of linkButtons ?? []) {
-    builder.addLinkButton(linkButton);
-  }
-  return builder.build();
+  return createDiscordMessage({
+    content,
+    nonce,
+    allowedMentions,
+    embeds,
+    linkButtons,
+  });
 }
 
 describe('Discord notification messages', () => {
   it('omits an absent mention', () => {
-    expect(DiscordMention.from(null)).toEqual({});
+    expect(createDiscordMention(null)).toEqual({});
   });
 
   it.each(['everyone', 'here'] as const)('enables an @%s mention', (target) => {
-    expect(DiscordMention.from(target)).toEqual({
+    expect(createDiscordMention(target)).toEqual({
       content: `@${target}`,
       allowedMentions: { everyone: true },
     });
   });
 
   it('enables one role mention', () => {
-    expect(DiscordMention.from(ROLE_ID)).toEqual({
+    expect(createDiscordMention(ROLE_ID)).toEqual({
       content: `<@&${ROLE_ID}>`,
       allowedMentions: { roleIds: [ROLE_ID] },
     });
@@ -100,18 +99,18 @@ describe('Discord notification messages', () => {
     ['here' as const, ' and mention @here'],
     [ROLE_ID, ` and mention <@&${ROLE_ID}>`],
   ])('describes %s for configuration summaries', (target, expected) => {
-    expect(DiscordMention.describe(target)).toBe(expected);
+    expect(describeDiscordMention(target)).toBe(expected);
   });
 
   it('creates a deterministic bounded nonce', async () => {
-    const nonce = await DiscordNonce.from('source-id', '123456789012345678');
+    const nonce = await createDiscordNonce('source-id', '123456789012345678');
 
     expect(nonce).toBe('0a5fd9843e0a80dd22b5df050');
     await expect(
-      DiscordNonce.from('source-id', '123456789012345678'),
+      createDiscordNonce('source-id', '123456789012345678'),
     ).resolves.toBe(nonce);
     await expect(
-      DiscordNonce.from('other-source', '123456789012345678'),
+      createDiscordNonce('other-source', '123456789012345678'),
     ).resolves.not.toBe(nonce);
   });
 });

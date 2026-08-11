@@ -6,7 +6,7 @@ import {
   editDiscordMessage,
   sendDiscordMessage,
 } from '../../src/discord/client';
-import { DiscordMessageBuilder } from '../../src/discord/message';
+import { createDiscordMessage } from '../../src/discord/message';
 import { DiscordSnowflake } from '../../src/discord/snowflake';
 
 const BOT_TOKEN = 'test-discord-bot-token';
@@ -122,11 +122,10 @@ function createMessageOptions() {
     botToken: BOT_TOKEN,
     channelId: CHANNEL_ID,
     applicationUrl: 'https://bot.example.com',
-    message: new DiscordMessageBuilder(
-      `<@&${ROLE_ID}> A new video is available`,
-    )
-      .setNonce('dQw4w9WgXcQ')
-      .setAllowedMentions({ roleIds: [ROLE_ID] })
-      .build(),
+    message: createDiscordMessage({
+      content: `<@&${ROLE_ID}> A new video is available`,
+      nonce: 'dQw4w9WgXcQ',
+      allowedMentions: { roleIds: [ROLE_ID] },
+    }),
   };
 }
