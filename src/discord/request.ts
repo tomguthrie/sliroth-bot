@@ -119,20 +119,21 @@ export function createDiscordMessageRequest({
 
   const body: DiscordCreateMessagePayload = {
     content: message.content,
-    nonce: message.nonce,
-    enforce_nonce: message.nonce === undefined ? undefined : true,
     allowed_mentions: allowedMentions,
-    embeds,
-    components:
-      linkButtons === undefined
-        ? undefined
-        : [
-            {
-              type: MessageComponentTypes.ACTION_ROW,
-              components: linkButtons,
-            },
-          ],
   };
+  if (message.nonce !== undefined) {
+    body.nonce = message.nonce;
+    body.enforce_nonce = true;
+  }
+  if (embeds !== undefined) body.embeds = embeds;
+  if (linkButtons !== undefined) {
+    body.components = [
+      {
+        type: MessageComponentTypes.ACTION_ROW,
+        components: linkButtons,
+      },
+    ];
+  }
 
   return new Request(
     new URL(`channels/${channelId}/messages`, DISCORD_API_BASE_URL),
@@ -169,27 +170,31 @@ export function createDiscordEditMessageRequest({
 }
 
 function createEmbedPayload(embed: DiscordEmbed): DiscordEmbedPayload {
-  return {
-    author:
-      embed.author === undefined
-        ? undefined
-        : {
-            name: embed.author.name,
-            icon_url: embed.author.iconUrl,
-          },
-    title: embed.title,
-    url: embed.url,
-    color: embed.color,
-    fields: embed.fields?.map((field) => ({
-      name: field.name,
-      value: field.value,
-      inline: field.inline,
-    })),
-    thumbnail:
-      embed.thumbnail === undefined ? undefined : { url: embed.thumbnail.url },
-    image: embed.image === undefined ? undefined : { url: embed.image.url },
-    footer:
-      embed.footer === undefined ? undefined : { text: embed.footer.text },
-    timestamp: embed.timestamp,
-  };
+  const payload: DiscordEmbedPayload = {};
+  if (embed.author !== undefined) {
+    payload.author = { name: embed.author.name };
+    if (embed.author.iconUrl !== undefined) {
+      payload.author.icon_url = embed.author.iconUrl;
+    }
+  }
+  if (embed.title !== undefined) payload.title = embed.title;
+  if (embed.url !== undefined) payload.url = embed.url;
+  if (embed.color !== undefined) payload.color = embed.color;
+  if (embed.fields !== undefined) {
+    payload.fields = embed.fields.map((field) => {
+      const payloadField: NonNullable<DiscordEmbedPayload['fields']>[number] = {
+        name: field.name,
+        value: field.value,
+      };
+      if (field.inline !== undefined) payloadField.inline = field.inline;
+      return payloadField;
+    });
+  }
+  if (embed.thumbnail !== undefined) {
+    payload.thumbnail = { url: embed.thumbnail.url };
+  }
+  if (embed.image !== undefined) payload.image = { url: embed.image.url };
+  if (embed.footer !== undefined) payload.footer = { text: embed.footer.text };
+  if (embed.timestamp !== undefined) payload.timestamp = embed.timestamp;
+  return payload;
 }
