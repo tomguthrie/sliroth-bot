@@ -9,22 +9,18 @@ export const APPLICATION_COMMAND_OPTION_TYPE = {
   role: 8,
 } as const;
 
-export interface DiscordApplicationCommandOption {
-  type: number;
-  name: string;
-  value?: string;
-  options?: DiscordApplicationCommandOption[];
-}
+export const DiscordApplicationCommandOption = z.object({
+  type: z.number(),
+  name: z.string(),
+  value: z.string().optional(),
+  get options() {
+    return z.array(DiscordApplicationCommandOption).optional();
+  },
+});
 
-export const DiscordApplicationCommandOption: z.ZodType<DiscordApplicationCommandOption> =
-  z.lazy(() =>
-    z.object({
-      type: z.number(),
-      name: z.string(),
-      value: z.string().optional(),
-      options: z.array(DiscordApplicationCommandOption).optional(),
-    }),
-  );
+export type DiscordApplicationCommandOption = z.infer<
+  typeof DiscordApplicationCommandOption
+>;
 
 export const DiscordApplicationCommandData = z.object({
   name: z.string(),

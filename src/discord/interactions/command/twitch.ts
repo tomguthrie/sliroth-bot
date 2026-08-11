@@ -24,6 +24,7 @@ import {
 import { DiscordSnowflake } from '../../snowflake';
 import {
   APPLICATION_COMMAND_OPTION_TYPE,
+  type DiscordApplicationCommandOption,
   type DiscordInteraction,
   type DiscordInteractionToken,
 } from '../data';
@@ -72,37 +73,57 @@ const TwitchAddCommandOption = z.discriminatedUnion('name', [
   }),
 ]);
 
-const TwitchAddOptions = z
-  .array(TwitchAddCommandOption)
-  .refine(
-    (options) =>
-      new Set(options.map((option) => option.name)).size === options.length,
-  )
-  .transform((options) =>
-    Object.fromEntries(
-      options.map(({ name, value }) => [
-        name === 'role' ? 'roleId' : name,
-        value,
-      ]),
-    ),
-  )
-  .pipe(
-    z.object({
-      twitch: z.string().min(1),
-      message: z
-        .string()
-        .transform((value) => (value === '' ? undefined : value))
-        .optional(),
-      offline: z
-        .string()
-        .transform((value) => (value === '' ? undefined : value))
-        .optional(),
-      ping: z.enum(['everyone', 'here']).optional(),
-      roleId: DiscordSnowflake.optional(),
-    }),
-  );
+interface TwitchAddOptions {
+  twitch: string;
+  message?: string;
+  offline?: string;
+  ping?: 'everyone' | 'here';
+  roleId?: DiscordSnowflake;
+}
 
-type TwitchAddOptions = z.infer<typeof TwitchAddOptions>;
+function parseTwitchAddOptions(
+  options: readonly DiscordApplicationCommandOption[],
+): TwitchAddOptions | undefined {
+  const result = z.array(TwitchAddCommandOption).safeParse(options);
+  if (!result.success) return undefined;
+
+  let twitch: string | undefined;
+  let message: string | undefined;
+  let offline: string | undefined;
+  let ping: 'everyone' | 'here' | undefined;
+  let roleId: DiscordSnowflake | undefined;
+  const names = new Set<string>();
+  for (const option of result.data) {
+    if (names.has(option.name)) return undefined;
+    names.add(option.name);
+    switch (option.name) {
+      case 'twitch':
+        twitch = option.value;
+        break;
+      case 'message':
+        message = option.value;
+        break;
+      case 'offline':
+        offline = option.value;
+        break;
+      case 'ping':
+        ping = option.value;
+        break;
+      case 'role':
+        roleId = option.value;
+        break;
+    }
+  }
+  if (twitch === undefined || twitch === '') return undefined;
+
+  return {
+    twitch,
+    ...(message === undefined || message === '' ? {} : { message }),
+    ...(offline === undefined || offline === '' ? {} : { offline }),
+    ...(ping === undefined ? {} : { ping }),
+    ...(roleId === undefined ? {} : { roleId }),
+  };
+}
 
 /** Handles the authenticated `/twitch` application command. */
 export async function handleTwitchCommand(
@@ -162,13 +183,12 @@ export async function handleTwitchCommand(
     }
 
     if (command.name === 'add') {
-      const optionsResult = TwitchAddOptions.safeParse(command.options);
-      if (!optionsResult.success) {
+      const options = parseTwitchAddOptions(command.options);
+      if (options === undefined) {
         return ephemeralInteractionResponse(
           'This interaction is not supported.',
         );
       }
-      const options = optionsResult.data;
       if (options.roleId !== undefined && options.ping !== undefined) {
         return ephemeralInteractionResponse(
           'Choose either a role or an @everyone/@here ping, not both.',

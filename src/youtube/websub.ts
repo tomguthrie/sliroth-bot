@@ -26,16 +26,12 @@ export const WebSubLeaseSeconds = z
 
 export type WebSubLeaseSeconds = z.infer<typeof WebSubLeaseSeconds>;
 
-export const CreateYouTubeWebSubRequestOptions = z.object({
-  mode: WebSubMode,
-  channelId: YouTubeChannelId,
-  publicBaseUrl: HttpOrigin,
-  secret: YouTubeWebSubSecret,
-});
-
-export type CreateYouTubeWebSubRequestOptions = z.infer<
-  typeof CreateYouTubeWebSubRequestOptions
->;
+export interface CreateYouTubeWebSubRequestOptions {
+  mode: WebSubMode;
+  channelId: YouTubeChannelId;
+  publicBaseUrl: string;
+  secret: YouTubeWebSubSecret;
+}
 
 export function createYouTubeTopicUrl(channelId: YouTubeChannelId): string {
   const topicUrl = new URL(YOUTUBE_FEED_URL);
@@ -45,10 +41,10 @@ export function createYouTubeTopicUrl(channelId: YouTubeChannelId): string {
 }
 
 export function createYouTubeWebSubRequest(
-  options: z.input<typeof CreateYouTubeWebSubRequestOptions>,
+  options: CreateYouTubeWebSubRequestOptions,
 ): Request {
-  const { mode, channelId, publicBaseUrl, secret } =
-    CreateYouTubeWebSubRequestOptions.parse(options);
+  const { mode, channelId, secret } = options;
+  const publicBaseUrl = HttpOrigin.parse(options.publicBaseUrl);
   const body = new URLSearchParams({
     'hub.mode': mode,
     'hub.topic': createYouTubeTopicUrl(channelId),

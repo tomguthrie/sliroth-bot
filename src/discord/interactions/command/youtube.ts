@@ -17,6 +17,7 @@ import {
 } from '../response';
 import {
   APPLICATION_COMMAND_OPTION_TYPE,
+  type DiscordApplicationCommandOption,
   type DiscordInteraction,
   type DiscordInteractionToken,
 } from '../data';
@@ -65,33 +66,51 @@ const YouTubeAddCommandOption = z.discriminatedUnion('name', [
   }),
 ]);
 
-const YouTubeAddOptions = z
-  .array(YouTubeAddCommandOption)
-  .refine(
-    (options) =>
-      new Set(options.map((option) => option.name)).size === options.length,
-  )
-  .transform((options) =>
-    Object.fromEntries(
-      options.map(({ name, value }) => [
-        name === 'role' ? 'roleId' : name,
-        value,
-      ]),
-    ),
-  )
-  .pipe(
-    z.object({
-      youtube: z.string().min(1),
-      message: z
-        .string()
-        .transform((value) => (value === '' ? undefined : value))
-        .optional(),
-      ping: z.enum(['everyone', 'here']).optional(),
-      roleId: DiscordSnowflake.optional(),
-    }),
-  );
+interface YouTubeAddOptions {
+  youtube: string;
+  message?: string;
+  ping?: 'everyone' | 'here';
+  roleId?: DiscordSnowflake;
+}
 
-type YouTubeAddOptions = z.infer<typeof YouTubeAddOptions>;
+function parseYouTubeAddOptions(
+  options: readonly DiscordApplicationCommandOption[],
+): YouTubeAddOptions | undefined {
+  const result = z.array(YouTubeAddCommandOption).safeParse(options);
+  if (!result.success) return undefined;
+
+  let youtube: string | undefined;
+  let message: string | undefined;
+  let ping: 'everyone' | 'here' | undefined;
+  let roleId: DiscordSnowflake | undefined;
+  const names = new Set<string>();
+  for (const option of result.data) {
+    if (names.has(option.name)) return undefined;
+    names.add(option.name);
+    switch (option.name) {
+      case 'youtube':
+        youtube = option.value;
+        break;
+      case 'message':
+        message = option.value;
+        break;
+      case 'ping':
+        ping = option.value;
+        break;
+      case 'role':
+        roleId = option.value;
+        break;
+    }
+  }
+  if (youtube === undefined || youtube === '') return undefined;
+
+  return {
+    youtube,
+    ...(message === undefined || message === '' ? {} : { message }),
+    ...(ping === undefined ? {} : { ping }),
+    ...(roleId === undefined ? {} : { roleId }),
+  };
+}
 
 /** Handles the authenticated `/youtube` application command. */
 export async function handleYouTubeCommand(
@@ -143,13 +162,12 @@ export async function handleYouTubeCommand(
     }
 
     if (command.name === 'add') {
-      const optionsResult = YouTubeAddOptions.safeParse(command.options);
-      if (!optionsResult.success) {
+      const options = parseYouTubeAddOptions(command.options);
+      if (options === undefined) {
         return ephemeralInteractionResponse(
           'This interaction is not supported.',
         );
       }
-      const options = optionsResult.data;
       if (options.roleId !== undefined && options.ping !== undefined) {
         return ephemeralInteractionResponse(
           'Choose either a role or an @everyone/@here ping, not both.',
