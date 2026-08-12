@@ -66,6 +66,7 @@ export async function deliverDiscordMessageBatch(
   env: Env,
 ): Promise<void> {
   for (const queuedMessage of batch.messages) {
+    const startedAt = Date.now();
     try {
       const options = {
         botToken: env.DISCORD_BOT_TOKEN,
@@ -73,26 +74,43 @@ export async function deliverDiscordMessageBatch(
         channelId: DiscordSnowflake.parse(queuedMessage.body.channelId),
         message: queuedMessage.body.message,
       };
+      const discordStartedAt = Date.now();
+      let receiptDurationMs: number | undefined;
       if (queuedMessage.body.operation === 'create') {
         const receipt = await sendDiscordMessage(options);
+        const discordDurationMs = Date.now() - discordStartedAt;
         const target = queuedMessage.body.receiptTarget;
         switch (target.type) {
           case DISCORD_RECEIPT_IGNORE:
             break;
-          case DISCORD_RECEIPT_TWITCH_STREAM:
+          case DISCORD_RECEIPT_TWITCH_STREAM: {
+            const receiptStartedAt = Date.now();
             await recordTwitchStreamMessageReceipt(
               target.broadcasterId,
               target.streamId,
               receipt,
               env,
             );
+            receiptDurationMs = Date.now() - receiptStartedAt;
             break;
+          }
         }
+        logDeliverySuccess(
+          queuedMessage,
+          startedAt,
+          discordDurationMs,
+          receiptDurationMs,
+        );
       } else {
         await editDiscordMessage({
           ...options,
           messageId: DiscordSnowflake.parse(queuedMessage.body.messageId),
         });
+        logDeliverySuccess(
+          queuedMessage,
+          startedAt,
+          Date.now() - discordStartedAt,
+        );
       }
       queuedMessage.ack();
     } catch (error) {
@@ -119,6 +137,26 @@ export async function deliverDiscordMessageBatch(
       );
     }
   }
+}
+
+function logDeliverySuccess(
+  queuedMessage: Message<DiscordMessageDelivery>,
+  startedAt: number,
+  discordDurationMs: number,
+  receiptDurationMs?: number,
+): void {
+  console.info({
+    event: 'discord_message_delivered',
+    queueMessageId: queuedMessage.id,
+    guildId: queuedMessage.body.guildId,
+    channelId: queuedMessage.body.channelId,
+    operation: queuedMessage.body.operation,
+    attempt: queuedMessage.attempts,
+    queueAgeMs: Math.max(0, startedAt - queuedMessage.timestamp.getTime()),
+    discordDurationMs,
+    receiptDurationMs,
+    durationMs: Date.now() - startedAt,
+  });
 }
 
 function getRetryDelaySeconds(error: unknown): number | undefined {
