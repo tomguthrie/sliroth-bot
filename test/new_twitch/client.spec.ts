@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as z from 'zod';
 
 import { getAccessToken } from '../../src/new_twitch/auth';
-import { TwitchClient } from '../../src/new_twitch/client';
+import { TwitchApiClient } from '../../src/new_twitch/client';
 
 vi.mock('../../src/new_twitch/auth', () => ({
   getAccessToken: vi.fn(),
@@ -60,7 +60,7 @@ describe('TwitchClient GET methods', () => {
     const fetcher = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(Response.json({ data: [USER] }));
-    const client = new TwitchClient(env);
+    const client = new TwitchApiClient(env);
 
     await expect(client.getUserById(BROADCASTER_ID)).resolves.toEqual({
       id: '123',
@@ -84,7 +84,7 @@ describe('TwitchClient GET methods', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(Response.json({ data: [USER] }))
       .mockResolvedValueOnce(Response.json({ data: [] }));
-    const client = new TwitchClient(env);
+    const client = new TwitchApiClient(env);
 
     await expect(client.getUserByLogin(LOGIN)).resolves.toEqual({
       id: '123',
@@ -104,7 +104,7 @@ describe('TwitchClient GET methods', () => {
     const fetcher = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(Response.json({ data: [STREAM] }));
-    const client = new TwitchClient(env);
+    const client = new TwitchApiClient(env);
 
     await expect(client.getStream(BROADCASTER_ID)).resolves.toEqual({
       id: 'stream-1',
@@ -129,7 +129,7 @@ describe('TwitchClient GET methods', () => {
     );
 
     await expect(
-      new TwitchClient(env).getStream('offline'),
+      new TwitchApiClient(env).getStream('offline'),
     ).resolves.toBeUndefined();
   });
 
@@ -137,7 +137,7 @@ describe('TwitchClient GET methods', () => {
     const fetcher = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(Response.json({ data: [GAME] }));
-    const client = new TwitchClient(env);
+    const client = new TwitchApiClient(env);
 
     await expect(client.getGame(GAME_ID)).resolves.toEqual({
       id: 'game-1',
@@ -155,7 +155,7 @@ describe('TwitchClient GET methods', () => {
     );
 
     await expect(
-      new TwitchClient(env).getUserById('123'),
+      new TwitchApiClient(env).getUserById('123'),
     ).rejects.toBeInstanceOf(z.ZodError);
   });
 
@@ -163,7 +163,7 @@ describe('TwitchClient GET methods', () => {
     vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(Response.json({ data: [USER] }))
       .mockResolvedValueOnce(Response.json({ data: [GAME] }));
-    const client = new TwitchClient(env);
+    const client = new TwitchApiClient(env);
 
     await client.getUserById('123');
     await client.getGame('game-1');
@@ -179,7 +179,7 @@ describe('TwitchClient GET methods', () => {
       ),
     );
 
-    const error = await new TwitchClient(env)
+    const error = await new TwitchApiClient(env)
       .getUserById('123')
       .catch((value: unknown) => value);
 
@@ -199,7 +199,7 @@ describe('TwitchClient GET methods', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(new Response(null, { status: 401 }))
       .mockResolvedValueOnce(Response.json({ data: [USER] }));
-    const client = new TwitchClient(env);
+    const client = new TwitchApiClient(env);
 
     await expect(client.getUserById('123')).resolves.toMatchObject({
       id: '123',
@@ -221,7 +221,7 @@ describe('TwitchClient GET methods', () => {
       .mockResolvedValueOnce(new Response(null, { status: 401 }));
 
     await expect(
-      new TwitchClient(env).getUserById('123'),
+      new TwitchApiClient(env).getUserById('123'),
     ).rejects.toMatchObject({
       status: 401,
     });
@@ -239,7 +239,7 @@ describe('TwitchClient GET methods', () => {
     );
 
     await expect(
-      new TwitchClient(env).getUserById('123'),
+      new TwitchApiClient(env).getUserById('123'),
     ).rejects.toMatchObject({
       message: 'Twitch API returned HTTP 500: Internal Server Error',
       status: 500,
@@ -259,7 +259,7 @@ describe('TwitchClient GET methods', () => {
       ),
     );
 
-    const error = await new TwitchClient(env)
+    const error = await new TwitchApiClient(env)
       .getUserById('123')
       .catch((value: unknown) => value);
 
@@ -292,7 +292,7 @@ describe('TwitchClient EventSub methods', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(Response.json({ data: [SUBSCRIPTION] }));
 
-    const client = new TwitchClient(env);
+    const client = new TwitchApiClient(env);
 
     await expect(
       client.createEventSubSubscription({
@@ -351,7 +351,7 @@ describe('TwitchClient EventSub methods', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(Response.json({ data: [SUBSCRIPTION] }));
 
-    const client = new TwitchClient(env);
+    const client = new TwitchApiClient(env);
 
     await expect(
       client.getEventSubSubscription('sub-123'),
@@ -372,7 +372,7 @@ describe('TwitchClient EventSub methods', () => {
     );
 
     await expect(
-      new TwitchClient(env).getEventSubSubscription('missing'),
+      new TwitchApiClient(env).getEventSubSubscription('missing'),
     ).resolves.toBeUndefined();
   });
 
@@ -381,7 +381,7 @@ describe('TwitchClient EventSub methods', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response(null, { status: 204 }));
 
-    const client = new TwitchClient(env);
+    const client = new TwitchApiClient(env);
 
     await expect(
       client.deleteEventSubSubscription('sub-123'),
@@ -406,7 +406,7 @@ describe('TwitchClient EventSub methods', () => {
     );
 
     await expect(
-      new TwitchClient(env).createEventSubSubscription({
+      new TwitchApiClient(env).createEventSubSubscription({
         type: 'stream.online',
         version: '1',
         condition: {

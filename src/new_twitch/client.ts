@@ -126,7 +126,7 @@ type TwitchEventSubSubscription = z.output<typeof TwitchEventSubSubscription>;
  * @throws {z.ZodError} When Twitch returns a response that does not match the
  * expected schema.
  */
-export class TwitchClient {
+export class TwitchApiClient {
   private accessToken: Promise<string> | undefined;
 
   /**
