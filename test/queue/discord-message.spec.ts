@@ -167,7 +167,7 @@ describe('Discord Queue consumer', () => {
     },
   );
 
-  it('logs and acknowledges request validation failures', async () => {
+  it('logs and retries request validation failures', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
 
@@ -177,8 +177,10 @@ describe('Discord Queue consumer', () => {
     });
 
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(result.explicitAcks).toEqual(['invalid']);
-    expect(result.retryMessages).toEqual([]);
+    expect(result.explicitAcks).toEqual([]);
+    expect(result.retryMessages).toEqual([
+      { msgId: 'invalid', delaySeconds: undefined },
+    ]);
   });
 
   it('retries rate limits using Discord Retry-After', async () => {

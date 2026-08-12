@@ -52,9 +52,6 @@
       "binding": "TOKEN_STORE",
     },
     {
-      "binding": "TWITCH_EVENT_IDS",
-    },
-    {
       "binding": "TWITCH_SUBSCRIPTIONS_INDEX",
     },
     {
@@ -67,6 +64,10 @@
         "binding": "DISCORD_MESSAGES",
         "queue": "discord-messages",
       },
+      {
+        "binding": "SUBSCRIPTION_EVENTS",
+        "queue": "subscription-events",
+      },
     ],
     "consumers": [
       {
@@ -76,6 +77,14 @@
         "max_retries": 5,
         "dead_letter_queue": "discord-messages-dlq",
         "max_concurrency": 1,
+        "retry_delay": 30,
+      },
+      {
+        "queue": "subscription-events",
+        "max_batch_size": 1,
+        "max_batch_timeout": 0,
+        "max_retries": 5,
+        "dead_letter_queue": "subscription-events-dlq",
         "retry_delay": 30,
       },
     ],

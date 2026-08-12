@@ -152,6 +152,19 @@ describe('TwitchApiClient', () => {
     ]);
   });
 
+  it('reuses one access token across requests from the same client', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(Response.json({ data: [USER] }))
+      .mockResolvedValueOnce(Response.json({ data: [] }));
+    const getToken = tokenGetter('access-token');
+    const client = new TwitchApiClient(env, getToken);
+
+    await client.getUserById(BROADCASTER_ID);
+    await client.getGameById(GAME_ID);
+
+    expect(getToken).toHaveBeenCalledOnce();
+  });
+
   it('invalidates and retries once after a Helix 401', async () => {
     await env.TOKEN_STORE.put('twitch', 'old');
     const getToken = tokenGetter('old', 'new');

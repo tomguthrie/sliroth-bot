@@ -18,7 +18,7 @@ const TWITCH_COLOR = 0x9146ff;
 const DEFAULT_LIVE_MESSAGE = 'is live now!';
 const DEFAULT_OFFLINE_MESSAGE = 'was live.';
 
-type Broadcaster = typeof broadcasters.$inferSelect;
+type Broadcaster = Omit<typeof broadcasters.$inferSelect, 'eventSubAuditedAt'>;
 type Stream = typeof streams.$inferSelect;
 type Subscriber = typeof twitchSubscribers.$inferSelect;
 
