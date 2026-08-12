@@ -4,6 +4,7 @@ import { toLoggableError } from '../log';
 import {
   TwitchBroadcasterId,
   TwitchEventSubSubscriptionId,
+  TwitchStreamId,
   TwitchTimestamp,
 } from '../twitch/data';
 import {
@@ -46,6 +47,14 @@ export const TwitchEventSubDelivery = z.discriminatedUnion('kind', [
 
 export type TwitchEventSubDelivery = z.infer<typeof TwitchEventSubDelivery>;
 
+export const TwitchVodLookupDelivery = z.object({
+  kind: z.literal('twitch-vod-lookup'),
+  broadcasterId: TwitchBroadcasterId,
+  streamId: TwitchStreamId,
+});
+
+export type TwitchVodLookupDelivery = z.infer<typeof TwitchVodLookupDelivery>;
+
 export const YouTubeVideoDelivery = z.object({
   kind: z.literal('youtube-video'),
   channelId: YouTubeChannelId,
@@ -56,6 +65,7 @@ export type YouTubeVideoDelivery = z.infer<typeof YouTubeVideoDelivery>;
 
 export const SubscriptionEventDelivery = z.discriminatedUnion('kind', [
   ...TwitchEventSubDelivery.options,
+  TwitchVodLookupDelivery,
   YouTubeVideoDelivery,
 ]);
 
@@ -76,6 +86,30 @@ export async function deliverSubscriptionEventBatch(
         await env.YOUTUBE_SUBSCRIPTIONS.getByName(
           delivery.channelId,
         ).recordVideo(delivery.notification);
+      } else if (delivery.kind === 'twitch-vod-lookup') {
+        const result = await env.TWITCH_SUBSCRIPTIONS.getByName(
+          delivery.broadcasterId,
+        ).enrichStreamVod(delivery.streamId);
+        if (result === 'not-found') {
+          const delaySeconds = [60, 120, 240, 480][queuedMessage.attempts - 1];
+          if (delaySeconds !== undefined) {
+            console.info({
+              event: 'twitch_vod_lookup_deferred',
+              queueMessageId: queuedMessage.id,
+              streamId: delivery.streamId,
+              attempt: queuedMessage.attempts,
+              delaySeconds,
+            });
+            queuedMessage.retry({ delaySeconds });
+            continue;
+          }
+          console.warn({
+            event: 'twitch_vod_lookup_exhausted',
+            queueMessageId: queuedMessage.id,
+            streamId: delivery.streamId,
+            attempt: queuedMessage.attempts,
+          });
+        }
       } else {
         await env.TWITCH_SUBSCRIPTIONS.getByName(
           delivery.broadcasterId,

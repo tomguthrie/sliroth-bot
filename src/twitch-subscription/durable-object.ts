@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { and, count, eq, isNull, lt } from 'drizzle-orm';
+import { and, count, eq, isNotNull, isNull, lt } from 'drizzle-orm';
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
@@ -21,6 +21,7 @@ import { enqueueDiscordMessages } from '../queue/discord-message';
 import {
   TwitchEventSubDelivery,
   type TwitchEventSubDelivery as TwitchEventSubDeliveryType,
+  type TwitchVodLookupDelivery,
 } from '../queue/subscription-event';
 import {
   TwitchApiClient,
@@ -334,9 +335,7 @@ export class TwitchSubscription extends DurableObject<Env> {
     endedAtValue: string,
   ): Promise<void> {
     const validatedEvent = TwitchStreamOfflineEvent.parse(event);
-    const broadcaster = await this.requireBroadcaster(
-      validatedEvent.broadcaster_user_id,
-    );
+    await this.requireBroadcaster(validatedEvent.broadcaster_user_id);
     const endedAt = new Date(TwitchTimestamp.parse(endedAtValue));
     const [stream] = await this.db
       .select()
@@ -345,24 +344,73 @@ export class TwitchSubscription extends DurableObject<Env> {
       .limit(1);
     if (stream === undefined) return;
 
+    if (stream.endedAt === null) {
+      const [updatedStream] = await this.db
+        .update(streams)
+        .set({ endedAt, revision: stream.revision + 1 })
+        .where(and(eq(streams.id, stream.id), isNull(streams.endedAt)))
+        .returning({ id: streams.id });
+      if (updatedStream !== undefined) {
+        await this.queueStreamUpdates(updatedStream.id);
+      }
+    }
+
+    if (stream.vodUrl === null) {
+      const delivery: TwitchVodLookupDelivery = {
+        kind: 'twitch-vod-lookup',
+        broadcasterId: validatedEvent.broadcaster_user_id,
+        streamId: validatedEvent.id,
+      };
+      await this.env.SUBSCRIPTION_EVENTS.send(delivery, { delaySeconds: 30 });
+    }
+  }
+
+  /** Adds a published archive URL to an ended stream when Twitch exposes it. */
+  async enrichStreamVod(
+    streamIdValue: string,
+  ): Promise<'updated' | 'already-enriched' | 'not-found'> {
+    const streamId = TwitchStreamId.parse(streamIdValue);
+    const [stream] = await this.db
+      .select()
+      .from(streams)
+      .where(eq(streams.id, streamId))
+      .limit(1);
+    if (stream === undefined) {
+      return 'already-enriched';
+    }
+    if (stream.endedAt === null) {
+      return 'already-enriched';
+    }
+    if (stream.vodUrl !== null) {
+      await this.queueStreamUpdates(stream.id);
+      return 'already-enriched';
+    }
+
+    const broadcaster = await this.getBroadcaster();
+    if (broadcaster === undefined) {
+      throw new Error('Twitch broadcaster has not been registered');
+    }
     const vods = await new TwitchApiClient(this.env).getArchiveVideosByUserId(
-      broadcaster.id,
+      TwitchBroadcasterId.parse(broadcaster.id),
     );
     const vod = vods.find((candidate) => candidate.streamId === stream.id);
-    const revisionChanged =
-      stream.endedAt === null || (stream.vodUrl === null && vod !== undefined);
+    if (vod === undefined) return 'not-found';
+
     const [updatedStream] = await this.db
       .update(streams)
-      .set({
-        endedAt: stream.endedAt ?? endedAt,
-        vodUrl: stream.vodUrl ?? vod?.url ?? null,
-        revision: revisionChanged ? stream.revision + 1 : stream.revision,
-      })
-      .where(eq(streams.id, stream.id))
+      .set({ vodUrl: vod.url, revision: stream.revision + 1 })
+      .where(
+        and(
+          eq(streams.id, stream.id),
+          eq(streams.revision, stream.revision),
+          isNotNull(streams.endedAt),
+          isNull(streams.vodUrl),
+        ),
+      )
       .returning({ id: streams.id });
-    if (updatedStream !== undefined) {
-      await this.queueStreamUpdates(updatedStream.id);
-    }
+    if (updatedStream === undefined) return 'already-enriched';
+    await this.queueStreamUpdates(updatedStream.id);
+    return 'updated';
   }
 
   /** Records Discord's create-message receipt for a queued live message. */
