@@ -1,0 +1,5 @@
+saveExact: true
+allowBuilds:
+  esbuild@0.25.12: true
+  esbuild@0.28.1: true
+  workerd@1.20260801.1: true
