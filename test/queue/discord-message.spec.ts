@@ -71,6 +71,7 @@ describe('Discord Queue producer', () => {
 
 describe('Discord Queue consumer', () => {
   it('acknowledges a successful delivery', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       Response.json({ id: '345678901234567890', channel_id: CHANNEL_ID }),
     );
@@ -79,6 +80,18 @@ describe('Discord Queue consumer', () => {
 
     expect(result.explicitAcks).toEqual(['success']);
     expect(result.retryMessages).toEqual([]);
+    const logged: unknown = info.mock.calls[0]?.[0];
+    expect(isRecord(logged)).toBe(true);
+    if (!isRecord(logged)) throw new Error('Expected a structured log');
+    expect(logged).toMatchObject({
+      event: 'discord_message_delivered',
+      queueMessageId: 'success',
+      operation: 'create',
+      attempt: 1,
+    });
+    expect(typeof logged.queueAgeMs).toBe('number');
+    expect(typeof logged.discordDurationMs).toBe('number');
+    expect(typeof logged.durationMs).toBe('number');
   });
 
   it('edits and acknowledges an exact Discord message', async () => {
