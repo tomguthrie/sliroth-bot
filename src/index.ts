@@ -1,8 +1,7 @@
 import { AutoRouter, type IRequest } from 'itty-router';
 
 import { handleDiscordInteraction } from './discord/interactions';
-import type { DiscordMessageDelivery } from './queue/discord-message';
-import { deliverDiscordMessageBatch } from './queue/discord-message';
+import { deliverQueueBatch, type WorkerQueueMessage } from './queue';
 import {
   handleYouTubeWebSubIntent,
   handleYouTubeWebSubNotification,
@@ -22,5 +21,5 @@ router
 
 export default {
   fetch: router.fetch,
-  queue: deliverDiscordMessageBatch,
-} satisfies ExportedHandler<Env, DiscordMessageDelivery>;
+  queue: deliverQueueBatch,
+} satisfies ExportedHandler<Env, WorkerQueueMessage>;

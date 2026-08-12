@@ -17,6 +17,7 @@ export const broadcasters = snakeCase.table(
     displayName: text().notNull(),
     profileImageUrl: text().notNull(),
     offlineImageUrl: text().notNull(),
+    eventSubAuditedAt: integer({ mode: 'timestamp_ms' }),
   },
   (table) => [primaryKey({ columns: [table.id] })],
 );
@@ -47,6 +48,18 @@ export const eventSubSubscriptions = snakeCase.table(
     uniqueIndex('eventsub_subscriptions_subscription_id_idx').on(
       table.subscriptionId,
     ),
+  ],
+);
+
+export const processedEventSubMessages = snakeCase.table(
+  'processed_eventsub_messages',
+  {
+    messageId: text().notNull(),
+    processedAt: integer({ mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.messageId] }),
+    index('processed_eventsub_messages_processed_at_idx').on(table.processedAt),
   ],
 );
 

@@ -5,42 +5,56 @@ import {
   editDiscordMessage,
   sendDiscordMessage,
 } from '../discord/client';
-import type { DiscordMessage } from '../discord/message';
+import { DiscordMessage as DiscordMessageSchema } from '../discord/message';
 import { DiscordSnowflake } from '../discord/snowflake';
 import { toLoggableError } from '../log';
 import { recordTwitchStreamMessageReceipt } from '../twitch-subscription/message-receipt';
 
 const MAX_QUEUE_RETRY_DELAY_SECONDS = 24 * 60 * 60;
 
-interface DiscordMessageDeliveryBase {
-  guildId: string;
-  channelId: string;
-  message: DiscordMessage;
-}
-
 export const DISCORD_RECEIPT_IGNORE = 'ignore';
 export const DISCORD_RECEIPT_TWITCH_STREAM = 'twitch-stream';
 
-export type DiscordMessageReceiptTarget =
-  | { type: typeof DISCORD_RECEIPT_IGNORE }
-  | {
-      type: typeof DISCORD_RECEIPT_TWITCH_STREAM;
-      broadcasterId: string;
-      streamId: string;
-    };
+export const DiscordMessageReceiptTarget = z.discriminatedUnion('type', [
+  z.object({ type: z.literal(DISCORD_RECEIPT_IGNORE) }),
+  z.object({
+    type: z.literal(DISCORD_RECEIPT_TWITCH_STREAM),
+    broadcasterId: z.string(),
+    streamId: z.string(),
+  }),
+]);
 
-export interface DiscordCreateMessageDelivery extends DiscordMessageDeliveryBase {
-  operation: 'create';
-  receiptTarget: DiscordMessageReceiptTarget;
-}
+export type DiscordMessageReceiptTarget = z.infer<
+  typeof DiscordMessageReceiptTarget
+>;
 
-export interface DiscordEditMessageDelivery extends DiscordMessageDeliveryBase {
-  operation: 'edit';
-  messageId: string;
-}
+const DiscordMessageDeliveryBase = z.object({
+  guildId: z.string(),
+  channelId: z.string(),
+  message: DiscordMessageSchema,
+});
 
-export type DiscordMessageDelivery =
-  DiscordCreateMessageDelivery | DiscordEditMessageDelivery;
+export const DiscordCreateMessageDelivery = DiscordMessageDeliveryBase.extend({
+  operation: z.literal('create'),
+  receiptTarget: DiscordMessageReceiptTarget,
+});
+export type DiscordCreateMessageDelivery = z.infer<
+  typeof DiscordCreateMessageDelivery
+>;
+
+export const DiscordEditMessageDelivery = DiscordMessageDeliveryBase.extend({
+  operation: z.literal('edit'),
+  messageId: z.string(),
+});
+export type DiscordEditMessageDelivery = z.infer<
+  typeof DiscordEditMessageDelivery
+>;
+
+export const DiscordMessageDelivery = z.discriminatedUnion('operation', [
+  DiscordCreateMessageDelivery,
+  DiscordEditMessageDelivery,
+]);
+export type DiscordMessageDelivery = z.infer<typeof DiscordMessageDelivery>;
 
 interface DiscordMessageQueue {
   sendBatch(
@@ -68,18 +82,19 @@ export async function deliverDiscordMessageBatch(
   for (const queuedMessage of batch.messages) {
     const startedAt = Date.now();
     try {
+      const body = queuedMessage.body;
       const options = {
         botToken: env.DISCORD_BOT_TOKEN,
         applicationUrl: env.PUBLIC_BASE_URL,
-        channelId: DiscordSnowflake.parse(queuedMessage.body.channelId),
-        message: queuedMessage.body.message,
+        channelId: DiscordSnowflake.parse(body.channelId),
+        message: body.message,
       };
       const discordStartedAt = Date.now();
       let receiptDurationMs: number | undefined;
-      if (queuedMessage.body.operation === 'create') {
+      if (body.operation === 'create') {
         const receipt = await sendDiscordMessage(options);
         const discordDurationMs = Date.now() - discordStartedAt;
-        const target = queuedMessage.body.receiptTarget;
+        const target = body.receiptTarget;
         switch (target.type) {
           case DISCORD_RECEIPT_IGNORE:
             break;
@@ -104,7 +119,7 @@ export async function deliverDiscordMessageBatch(
       } else {
         await editDiscordMessage({
           ...options,
-          messageId: DiscordSnowflake.parse(queuedMessage.body.messageId),
+          messageId: DiscordSnowflake.parse(body.messageId),
         });
         logDeliverySuccess(
           queuedMessage,
@@ -114,12 +129,6 @@ export async function deliverDiscordMessageBatch(
       }
       queuedMessage.ack();
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        logDeliveryFailure(queuedMessage, error, false);
-        queuedMessage.ack();
-        continue;
-      }
-
       if (
         error instanceof DiscordApiError &&
         error.status !== 429 &&

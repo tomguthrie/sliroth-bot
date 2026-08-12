@@ -1,6 +1,7 @@
 import * as z from 'zod';
 
 import { getValidToken, TWITCH_TOKEN_KEY } from './auth';
+import type { TwitchAccessToken } from './auth';
 import {
   TwitchBroadcasterId,
   TwitchEventSubSubscriptionId,
@@ -172,6 +173,8 @@ const TwitchApiErrorResponse = z.object({ message: z.string().optional() });
 
 /** A typed client for the Twitch Helix endpoints used by the integration. */
 export class TwitchApiClient {
+  private token: Promise<TwitchAccessToken> | undefined;
+
   constructor(
     private readonly env: Env,
     private readonly getToken: typeof getValidToken = getValidToken,
@@ -274,7 +277,7 @@ export class TwitchApiClient {
       url.searchParams.set(name, value);
     }
 
-    let token = await this.getToken(this.env);
+    let token = await this.readToken();
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const headers = new Headers(init?.headers);
       headers.set('authorization', `Bearer ${token}`);
@@ -286,7 +289,8 @@ export class TwitchApiClient {
       if (response.status === 401 && attempt === 0) {
         await cancelBody(response);
         await this.env.TOKEN_STORE.delete(TWITCH_TOKEN_KEY);
-        token = await this.getToken(this.env);
+        this.token = undefined;
+        token = await this.readToken();
         continue;
       }
       if (!response.ok) {
@@ -296,6 +300,11 @@ export class TwitchApiClient {
     }
 
     throw new TwitchApiError('Twitch API authentication failed', 401);
+  }
+
+  private readToken(): Promise<TwitchAccessToken> {
+    this.token ??= this.getToken(this.env);
+    return this.token;
   }
 }
 

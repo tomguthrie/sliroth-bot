@@ -11,6 +11,7 @@ import { DiscordMentionTarget } from '../discord/message';
 import { DiscordSnowflake } from '../discord/snowflake';
 import { toLoggableError } from '../log';
 import { enqueueDiscordMessages } from '../queue/discord-message';
+import type { YouTubeVideoDelivery } from '../queue/subscription-event';
 import { YouTubeChannelId, YouTubeWebSubSecret } from '../youtube/data';
 import {
   parseYouTubeVideoNotifications,
@@ -234,7 +235,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
     return true;
   }
 
-  /** Authenticates and records a WebSub content notification. */
+  /** Authenticates and durably queues a WebSub content notification. */
   async receiveWebSubNotification(
     body: ArrayBuffer,
     signatureHeader: string | null,
@@ -256,8 +257,17 @@ export class YouTubeSubscription extends DurableObject<Env> {
     const notifications = parseYouTubeVideoNotifications(
       new TextDecoder().decode(body),
     );
-    for (const notification of notifications) {
-      await this.recordVideo(notification);
+    if (notifications.length !== 0) {
+      await this.env.SUBSCRIPTION_EVENTS.sendBatch(
+        notifications.map((notification) => {
+          const delivery: YouTubeVideoDelivery = {
+            kind: 'youtube-video',
+            channelId: notification.channelId,
+            notification,
+          };
+          return { body: delivery };
+        }),
+      );
     }
 
     return true;

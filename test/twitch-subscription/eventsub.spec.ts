@@ -2,15 +2,14 @@ import {
   createExecutionContext,
   env,
   runInDurableObject,
-  waitOnExecutionContext,
 } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  broadcasters,
   eventSubSubscriptions,
+  processedEventSubMessages,
 } from '../../src/db/twitch-subscription/schema';
 import { handleTwitchEventSub } from '../../src/twitch/event-sub/handler';
 import type { TwitchSubscription } from '../../src/twitch-subscription/durable-object';
@@ -217,48 +216,29 @@ describe('Twitch EventSub webhook', () => {
     await expect(response.text()).resolves.toBe('Invalid EventSub payload');
   });
 
-  it('routes a channel update through the broadcaster subscription', async () => {
+  it('queues an authenticated channel update', async () => {
     const broadcasterId = '123456789012345681';
-    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId);
-    await runInDurableObject(subscription, async (_instance, state) => {
-      await drizzle(state.storage).insert(broadcasters).values({
-        id: broadcasterId,
-        login: 'sliroth',
-        displayName: 'Sliroth',
-        profileImageUrl: 'https://example.com/profile.png',
-        offlineImageUrl: 'https://example.com/offline.png',
-      });
-    });
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockImplementation((input, init) => {
-        const request = new Request(input, init);
-        if (request.url.startsWith('https://id.twitch.tv/oauth2/token')) {
-          return Promise.resolve(
-            Response.json({ access_token: 'token', expires_in: 3600 }),
-          );
-        }
-        if (new URL(request.url).pathname.endsWith('/streams')) {
-          return Promise.resolve(Response.json({ data: [] }));
-        }
-        throw new Error(`Unexpected Twitch request: ${request.url}`);
-      });
+    const send = vi
+      .spyOn(env.SUBSCRIPTION_EVENTS, 'send')
+      .mockResolvedValue(queueSendResponse());
     const body = channelUpdateBody(broadcasterId);
+    const messageId = `channel-update-${crypto.randomUUID()}`;
 
     const response = await handleTwitchEventSub(
-      await signedRequest(`channel-update-${crypto.randomUUID()}`, body, {
-        broadcasterId,
-      }),
+      await signedRequest(messageId, body, { broadcasterId }),
       env,
       createExecutionContext(),
     );
 
     expect(response.status).toBe(204);
-    expect(
-      fetchSpy.mock.calls.some(([input, init]) =>
-        new URL(new Request(input, init).url).pathname.endsWith('/streams'),
-      ),
-    ).toBe(true);
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'twitch-channel-update',
+        messageId,
+        broadcasterId,
+        subscriptionId: 'subscription-channel.update',
+      }),
+    );
   });
 
   it('rejects an invalid channel update event', async () => {
@@ -281,8 +261,9 @@ describe('Twitch EventSub webhook', () => {
     await expect(response.text()).resolves.toBe('Invalid channel.update event');
   });
 
-  it('reconciles desired subscriptions after a normal notification', async () => {
+  it('repairs only locally missing subscriptions after a normal notification', async () => {
     const createdTypes: string[] = [];
+    let eventSubReads = 0;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const request = new Request(input, init);
       if (request.url.startsWith('https://id.twitch.tv/oauth2/token')) {
@@ -309,6 +290,9 @@ describe('Twitch EventSub webhook', () => {
         return Response.json({ data: [remote] });
       }
       if (request.method === 'GET') {
+        if (new URL(request.url).pathname.endsWith('/eventsub/subscriptions')) {
+          eventSubReads += 1;
+        }
         return Response.json({ data: [] });
       }
       throw new Error(
@@ -335,55 +319,47 @@ describe('Twitch EventSub webhook', () => {
         .where(eq(eventSubSubscriptions.type, 'stream.online'));
     });
     createdTypes.length = 0;
+    eventSubReads = 0;
 
-    const body = JSON.stringify({
-      subscription: {
-        id: 'subscription-stream.offline',
-        type: 'stream.offline',
-        condition: { broadcaster_user_id: RECONCILE_BROADCASTER_ID },
-      },
-      event: {
-        id: 'stream-id',
-        broadcaster_user_id: RECONCILE_BROADCASTER_ID,
-        broadcaster_user_login: 'sliroth',
-        broadcaster_user_name: 'Sliroth',
-      },
+    await subscription.processEventSubMessage({
+      kind: 'twitch-channel-update',
+      messageId: `notification-${crypto.randomUUID()}`,
+      subscriptionId: 'subscription-channel.update',
+      broadcasterId: RECONCILE_BROADCASTER_ID,
+      event: channelUpdateEvent(RECONCILE_BROADCASTER_ID),
     });
-    const response = await handleTwitchEventSub(
-      await signedRequest(`notification-${crypto.randomUUID()}`, body, {
-        broadcasterId: RECONCILE_BROADCASTER_ID,
-      }),
-      env,
-      createExecutionContext(),
-    );
 
-    expect(response.status).toBe(204);
-    expect(createdTypes.sort()).toEqual([
-      'channel.update',
-      'stream.offline',
-      'stream.online',
-    ]);
+    expect(createdTypes).toEqual(['stream.online']);
+    expect(eventSubReads).toBe(0);
   });
 
-  it('deduplicates Twitch message IDs in KV', async () => {
+  it('deduplicates processed Twitch message IDs in SQLite', async () => {
+    const broadcasterId = '123456789012345682';
     const messageId = `notification-${crypto.randomUUID()}`;
-    const body = eventBody();
-    const firstContext = createExecutionContext();
-    const first = await handleTwitchEventSub(
-      await signedRequest(messageId, body, { type: 'revocation' }),
-      env,
-      firstContext,
-    );
-    await waitOnExecutionContext(firstContext);
-    const second = await handleTwitchEventSub(
-      await signedRequest(messageId, body, { type: 'revocation' }),
-      env,
-      createExecutionContext(),
-    );
+    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId);
+    const delivery = {
+      kind: 'twitch-channel-update',
+      messageId,
+      subscriptionId: 'subscription-channel',
+      broadcasterId,
+      event: channelUpdateEvent(broadcasterId),
+    } as const;
 
-    expect(first.status).toBe(204);
-    expect(second.status).toBe(204);
-    await expect(env.TWITCH_EVENT_IDS.get(messageId)).resolves.toBe('1');
+    const processed = await runInDurableObject(
+      subscription,
+      async (instance, state) => {
+        const channelUpdate = vi
+          .spyOn(instance, 'channelUpdate')
+          .mockResolvedValue(undefined);
+        await instance.processEventSubMessage(delivery);
+        await instance.processEventSubMessage(delivery);
+        expect(channelUpdate).toHaveBeenCalledOnce();
+        return drizzle(state.storage).select().from(processedEventSubMessages);
+      },
+    );
+    expect(processed).toHaveLength(1);
+    expect(processed[0]?.messageId).toBe(messageId);
+    expect(processed[0]?.processedAt).toBeInstanceOf(Date);
   });
 });
 
@@ -405,17 +381,25 @@ function channelUpdateBody(broadcasterId: string): string {
       type: 'channel.update',
       condition: { broadcaster_user_id: broadcasterId },
     },
-    event: {
-      broadcaster_user_id: broadcasterId,
-      broadcaster_user_login: 'sliroth',
-      broadcaster_user_name: 'Sliroth',
-      title: 'Updated title',
-      language: 'en',
-      category_id: '84',
-      category_name: 'Science & Technology',
-      content_classification_labels: [],
-    },
+    event: channelUpdateEvent(broadcasterId),
   });
+}
+
+function channelUpdateEvent(broadcasterId: string) {
+  return {
+    broadcaster_user_id: broadcasterId,
+    broadcaster_user_login: 'sliroth',
+    broadcaster_user_name: 'Sliroth',
+    title: 'Updated title',
+    language: 'en',
+    category_id: '84',
+    category_name: 'Science & Technology',
+    content_classification_labels: [],
+  };
+}
+
+function queueSendResponse(): QueueSendResponse {
+  return { metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } };
 }
 
 async function signedRequest(

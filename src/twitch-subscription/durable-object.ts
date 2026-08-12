@@ -9,6 +9,7 @@ import migrations from '../db/twitch-subscription/migrations/migrations.js';
 import {
   broadcasters,
   eventSubSubscriptions,
+  processedEventSubMessages,
   streamMessages,
   streams,
   twitchSubscribers,
@@ -17,6 +18,10 @@ import type { DiscordMessageReceipt } from '../discord/client';
 import { DiscordMentionTarget } from '../discord/message';
 import { DiscordSnowflake } from '../discord/snowflake';
 import { enqueueDiscordMessages } from '../queue/discord-message';
+import {
+  TwitchEventSubDelivery,
+  type TwitchEventSubDelivery as TwitchEventSubDeliveryType,
+} from '../queue/subscription-event';
 import {
   TwitchApiClient,
   TwitchApiError,
@@ -59,6 +64,8 @@ const ACTIVE_EVENTSUB_STATUSES = new Set([
   'enabled',
   'webhook_callback_verification_pending',
 ]);
+const EVENTSUB_AUDIT_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const EVENTSUB_MESSAGE_RETENTION_MS = 24 * 60 * 60 * 1000;
 
 export const TwitchSubscriberRegistration = z.object({
   guildId: DiscordSnowflake,
@@ -79,6 +86,7 @@ type TwitchSubscriberRegistrationInput = z.input<
 export class TwitchSubscription extends DurableObject<Env> {
   private readonly db: DrizzleSqliteDODatabase;
   private reconciliation: Promise<void> | undefined;
+  private readonly eventSubProcessing = new Map<string, Promise<void>>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -378,6 +386,23 @@ export class TwitchSubscription extends DurableObject<Env> {
     }
   }
 
+  /** Idempotently applies a queued EventSub message and repairs subscriptions. */
+  processEventSubMessage(
+    input: z.input<typeof TwitchEventSubDelivery>,
+  ): Promise<void> {
+    const delivery = TwitchEventSubDelivery.parse(input);
+    const existing = this.eventSubProcessing.get(delivery.messageId);
+    if (existing !== undefined) return existing;
+
+    const processing = this.processEventSubMessageNow(delivery).finally(() => {
+      if (this.eventSubProcessing.get(delivery.messageId) === processing) {
+        this.eventSubProcessing.delete(delivery.messageId);
+      }
+    });
+    this.eventSubProcessing.set(delivery.messageId, processing);
+    return processing;
+  }
+
   /** Removes a revoked local subscription so reconciliation recreates it. */
   async revokeEventSub(subscriptionId: string): Promise<void> {
     const validatedSubscriptionId =
@@ -457,6 +482,122 @@ export class TwitchSubscription extends DurableObject<Env> {
           set: { subscriptionId: created.id },
         });
     }
+
+    await this.db
+      .update(broadcasters)
+      .set({ eventSubAuditedAt: new Date() })
+      .where(eq(broadcasters.id, broadcaster.id));
+  }
+
+  private async processEventSubMessageNow(
+    delivery: TwitchEventSubDeliveryType,
+  ): Promise<void> {
+    const [processed] = await this.db
+      .select({ messageId: processedEventSubMessages.messageId })
+      .from(processedEventSubMessages)
+      .where(eq(processedEventSubMessages.messageId, delivery.messageId))
+      .limit(1);
+
+    if (processed === undefined) {
+      switch (delivery.kind) {
+        case 'twitch-channel-update':
+          await this.channelUpdate(delivery.event);
+          break;
+        case 'twitch-stream-online':
+          await this.streamOnline(delivery.event);
+          break;
+        case 'twitch-stream-offline':
+          await this.streamOffline(delivery.event, delivery.timestamp);
+          break;
+        case 'twitch-revocation':
+          await this.revokeEventSub(delivery.subscriptionId);
+          break;
+      }
+
+      const processedAt = new Date();
+      await this.db
+        .insert(processedEventSubMessages)
+        .values({ messageId: delivery.messageId, processedAt })
+        .onConflictDoNothing({ target: processedEventSubMessages.messageId });
+      await this.db
+        .delete(processedEventSubMessages)
+        .where(
+          lt(
+            processedEventSubMessages.processedAt,
+            new Date(processedAt.getTime() - EVENTSUB_MESSAGE_RETENTION_MS),
+          ),
+        );
+    }
+
+    if (delivery.kind !== 'twitch-revocation') {
+      await this.recordIncomingEventSubSubscription(delivery);
+      await this.repairMissingEventSubSubscriptions();
+      await this.auditEventSubSubscriptionsIfDue();
+    }
+  }
+
+  private async recordIncomingEventSubSubscription(
+    delivery: Exclude<
+      TwitchEventSubDeliveryType,
+      { kind: 'twitch-revocation' }
+    >,
+  ): Promise<void> {
+    await this.db
+      .insert(eventSubSubscriptions)
+      .values({
+        type: eventSubTypeForDelivery(delivery),
+        subscriptionId: delivery.subscriptionId,
+      })
+      .onConflictDoUpdate({
+        target: eventSubSubscriptions.type,
+        set: { subscriptionId: delivery.subscriptionId },
+      });
+  }
+
+  private async repairMissingEventSubSubscriptions(): Promise<void> {
+    const broadcaster = await this.getBroadcaster();
+    if (broadcaster === undefined) return;
+    const [subscriberCount] = await this.db
+      .select({ value: count() })
+      .from(twitchSubscribers);
+    if (subscriberCount?.value === 0) return;
+
+    const rows = await this.db.select().from(eventSubSubscriptions);
+    const client = new TwitchApiClient(this.env);
+    const callback = new URL(
+      `/twitch/eventsub/${broadcaster.id}`,
+      this.env.PUBLIC_BASE_URL,
+    ).toString();
+    for (const desired of DESIRED_EVENTSUB_SUBSCRIPTIONS) {
+      if (rows.some((row) => row.type === desired.type)) continue;
+      const created = await client.createEventSubSubscription({
+        type: desired.type,
+        version: desired.version,
+        condition: { broadcaster_user_id: broadcaster.id },
+        callback,
+        secret: this.env.TWITCH_EVENTSUB_SECRET,
+      });
+      await this.db
+        .insert(eventSubSubscriptions)
+        .values({ type: desired.type, subscriptionId: created.id })
+        .onConflictDoUpdate({
+          target: eventSubSubscriptions.type,
+          set: { subscriptionId: created.id },
+        });
+    }
+  }
+
+  private async auditEventSubSubscriptionsIfDue(): Promise<void> {
+    const broadcaster = await this.getBroadcaster();
+    if (
+      broadcaster?.eventSubAuditedAt !== null &&
+      broadcaster?.eventSubAuditedAt !== undefined &&
+      broadcaster.eventSubAuditedAt.getTime() >
+        Date.now() - EVENTSUB_AUDIT_INTERVAL_MS
+    ) {
+      return;
+    }
+    await this.reconcile();
   }
 
   private async requireBroadcaster(
@@ -566,6 +707,19 @@ export class TwitchSubscription extends DurableObject<Env> {
     await this.db
       .delete(eventSubSubscriptions)
       .where(eq(eventSubSubscriptions.type, type));
+  }
+}
+
+function eventSubTypeForDelivery(
+  delivery: Exclude<TwitchEventSubDeliveryType, { kind: 'twitch-revocation' }>,
+): string {
+  switch (delivery.kind) {
+    case 'twitch-channel-update':
+      return TWITCH_EVENT_CHANNEL_UPDATE;
+    case 'twitch-stream-online':
+      return TWITCH_EVENT_STREAM_ONLINE;
+    case 'twitch-stream-offline':
+      return TWITCH_EVENT_STREAM_OFFLINE;
   }
 }
 

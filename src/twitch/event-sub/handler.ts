@@ -1,6 +1,10 @@
 import * as z from 'zod';
 
 import {
+  EventSubMessageId,
+  type TwitchEventSubDelivery,
+} from '../../queue/subscription-event';
+import {
   TwitchBroadcasterId,
   TwitchEventSubSubscriptionId,
   TwitchTimestamp,
@@ -20,12 +24,6 @@ const MESSAGE_TIMESTAMP_HEADER = 'twitch-eventsub-message-timestamp';
 const MESSAGE_SIGNATURE_HEADER = 'twitch-eventsub-message-signature';
 const MAX_MESSAGE_AGE_MS = 10 * 60 * 1000;
 const MAX_FUTURE_SKEW_MS = 60 * 1000;
-const DEDUPE_TTL_SECONDS = 10 * 60;
-
-const inFlightMessageIds = new Set<string>();
-
-const EventSubMessageId = z.string().min(1).brand<'EventSubMessageId'>();
-type EventSubMessageId = z.infer<typeof EventSubMessageId>;
 const EventSubSignature = z
   .string()
   .regex(/^sha256=[0-9a-f]{64}$/i)
@@ -153,75 +151,82 @@ async function processEventSubDelivery(
   if (messageType !== 'notification' && messageType !== 'revocation') {
     return new Response('Unsupported EventSub message type', { status: 400 });
   }
-  if (
-    inFlightMessageIds.has(messageId) ||
-    (await env.TWITCH_EVENT_IDS.get(messageId)) !== null
-  ) {
-    return new Response(null, { status: 204 });
+  let delivery: TwitchEventSubDelivery | Response;
+  if (messageType === 'notification') {
+    delivery = createEventSubNotificationDelivery(
+      messageId,
+      envelope.subscription.id,
+      broadcasterId,
+      envelope,
+      timestamp,
+    );
+  } else {
+    delivery = {
+      kind: 'twitch-revocation',
+      messageId,
+      subscriptionId: envelope.subscription.id,
+      broadcasterId,
+    };
+  }
+  if (delivery instanceof Response) {
+    return delivery;
   }
 
-  inFlightMessageIds.add(messageId);
-  try {
-    if (messageType === 'notification') {
-      const error = await processEventSubNotification(
-        env,
-        broadcasterId,
-        envelope,
-        timestamp,
-      );
-      if (error !== undefined) {
-        return error;
-      }
-    } else {
-      await env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId).revokeEventSub(
-        envelope.subscription.id,
-      );
-    }
-    await env.TWITCH_EVENT_IDS.put(messageId, '1', {
-      expirationTtl: DEDUPE_TTL_SECONDS,
-    });
-    return new Response(null, { status: 204 });
-  } finally {
-    inFlightMessageIds.delete(messageId);
-  }
+  await env.SUBSCRIPTION_EVENTS.send(delivery);
+  return new Response(null, { status: 204 });
 }
 
-async function processEventSubNotification(
-  env: Env,
+function createEventSubNotificationDelivery(
+  messageId: EventSubMessageId,
+  subscriptionId: TwitchEventSubSubscriptionId,
   broadcasterId: TwitchBroadcasterId,
   envelope: EventSubEnvelope,
   timestamp: TwitchTimestamp,
-): Promise<Response | undefined> {
+): TwitchEventSubDelivery | Response {
   if (envelope.event === undefined) {
     return new Response('Missing EventSub event', { status: 400 });
   }
-  const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId);
   if (envelope.subscription.type === TWITCH_EVENT_CHANNEL_UPDATE) {
     const result = TwitchChannelUpdateEvent.safeParse(envelope.event);
-    if (!result.success) {
-      return new Response('Invalid channel.update event', { status: 400 });
-    }
-    await subscription.channelUpdate(result.data);
-  } else if (envelope.subscription.type === TWITCH_EVENT_STREAM_ONLINE) {
+    return result.success
+      ? {
+          kind: 'twitch-channel-update',
+          messageId,
+          subscriptionId,
+          broadcasterId,
+          event: result.data,
+        }
+      : new Response('Invalid channel.update event', { status: 400 });
+  }
+  if (envelope.subscription.type === TWITCH_EVENT_STREAM_ONLINE) {
     const result = TwitchStreamOnlineEvent.safeParse(envelope.event);
-    if (!result.success) {
-      return new Response('Invalid stream.online event', { status: 400 });
-    }
-    await subscription.streamOnline(result.data);
-  } else if (envelope.subscription.type === TWITCH_EVENT_STREAM_OFFLINE) {
+    return result.success
+      ? {
+          kind: 'twitch-stream-online',
+          messageId,
+          subscriptionId,
+          broadcasterId,
+          event: result.data,
+        }
+      : new Response('Invalid stream.online event', { status: 400 });
+  }
+  if (envelope.subscription.type === TWITCH_EVENT_STREAM_OFFLINE) {
     const result = TwitchStreamOfflineEvent.safeParse(envelope.event);
-    if (!result.success) {
-      return new Response('Invalid stream.offline event', { status: 400 });
-    }
-    await subscription.streamOffline(result.data, timestamp);
-  } else {
-    return new Response('Unsupported EventSub subscription type', {
-      status: 400,
-    });
+    return result.success
+      ? {
+          kind: 'twitch-stream-offline',
+          messageId,
+          subscriptionId,
+          broadcasterId,
+          event: result.data,
+          timestamp,
+        }
+      : new Response('Invalid stream.offline event', { status: 400 });
   }
 
-  await subscription.reconcile();
-  return undefined;
+  return new Response('Unsupported EventSub subscription type', {
+    status: 400,
+  });
 }
 
 async function verifySignature(

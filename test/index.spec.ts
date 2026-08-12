@@ -81,7 +81,7 @@ describe('worker', () => {
     expect(stale.status).toBe(404);
   });
 
-  it('authenticates and records a WebSub notification', async () => {
+  it('authenticates and queues a WebSub notification', async () => {
     const youtubeChannelId = randomYouTubeChannelId();
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
     await subscription.addSubscriber({
@@ -89,9 +89,27 @@ describe('worker', () => {
       channelId: DISCORD_CHANNEL_ID,
       channelTitle: YOUTUBE_CHANNEL_TITLE,
     });
+    const queuedDeliveries: unknown[] = [];
     const secret = await runInDurableObject(
       subscription,
-      async (_instance, state) => state.storage.get<string>('websub:secret'),
+      async (instance, state) => {
+        Object.defineProperty(instance, 'env', {
+          configurable: true,
+          value: {
+            SUBSCRIPTION_EVENTS: {
+              sendBatch(
+                messages: Iterable<MessageSendRequest<unknown>>,
+              ): Promise<void> {
+                queuedDeliveries.push(
+                  ...Array.from(messages, ({ body: delivery }) => delivery),
+                );
+                return Promise.resolve();
+              },
+            },
+          },
+        });
+        return state.storage.get<string>('websub:secret');
+      },
     );
     if (secret === undefined) {
       throw new Error('YouTubeSubscription did not create a WebSub secret');
@@ -115,11 +133,18 @@ describe('worker', () => {
       subscription,
       async (_instance, state) => drizzle(state.storage).select().from(videos),
     );
-    expect(storedVideos).toEqual([
-      expect.objectContaining({
-        id: 'video-id',
-        title: 'A YouTube video',
-      }),
+    expect(storedVideos).toEqual([]);
+    expect(queuedDeliveries).toEqual([
+      {
+        kind: 'youtube-video',
+        channelId: youtubeChannelId,
+        notification: {
+          videoId: 'video-id',
+          channelId: youtubeChannelId,
+          title: 'A YouTube video',
+          publishedAt: '2026-08-08T12:00:00Z',
+        },
+      },
     ]);
   });
 
