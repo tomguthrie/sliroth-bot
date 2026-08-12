@@ -6,8 +6,8 @@ uploaded to a specific channel.
 ## Development
 
 ```sh
-npm install
-npm run check
+pnpm i
+pnpm check
 ```
 
 Runtime configuration is declared in `wrangler.jsonc`. Secret values must be
@@ -19,5 +19,5 @@ Each Durable Object has an independent Drizzle Kit configuration, schema, and
 migration history. Generate every pending migration with:
 
 ```sh
-npm run db:generate
+pnpm db:generate
 ```
