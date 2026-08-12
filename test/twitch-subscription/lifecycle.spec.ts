@@ -31,6 +31,11 @@ describe('Twitch stream lifecycle', () => {
     mockTwitchApi(() => currentStream);
     const now = vi.spyOn(Date, 'now').mockReturnValue(1780680480000);
     const batches: DiscordMessageDelivery[][] = [];
+    const subscriptionEvents: unknown[] = [];
+    const sendSubscriptionEvent = vi.fn((body: unknown) => {
+      subscriptionEvents.push(body);
+      return Promise.resolve(queueSendResponse());
+    });
     const sendBatch = vi.fn(
       (messages: Iterable<MessageSendRequest<DiscordMessageDelivery>>) => {
         batches.push(Array.from(messages, ({ body }) => body));
@@ -59,6 +64,9 @@ describe('Twitch stream lifecycle', () => {
         configurable: true,
         value: {
           DISCORD_MESSAGES: { sendBatch },
+          SUBSCRIPTION_EVENTS: {
+            send: sendSubscriptionEvent,
+          },
           TOKEN_STORE: env.TOKEN_STORE,
           TWITCH_CLIENT_ID: env.TWITCH_CLIENT_ID,
           TWITCH_CLIENT_SECRET: env.TWITCH_CLIENT_SECRET,
@@ -176,6 +184,33 @@ describe('Twitch stream lifecycle', () => {
       expect(batches).toHaveLength(3);
       expect(batches[2]?.[0]).toMatchObject({
         operation: 'edit',
+        message: {
+          embeds: [{ url: 'https://twitch.tv/sliroth' }],
+          linkButtons: [
+            {
+              label: 'Watch Channel',
+              url: 'https://twitch.tv/sliroth',
+            },
+          ],
+        },
+      });
+      expect(subscriptionEvents).toEqual([
+        {
+          kind: 'twitch-vod-lookup',
+          broadcasterId: BROADCASTER_ID,
+          streamId: '9001',
+        },
+      ]);
+      expect(sendSubscriptionEvent).toHaveBeenCalledWith(
+        subscriptionEvents[0],
+        { delaySeconds: 30 },
+      );
+
+      await expect(instance.enrichStreamVod('9001')).resolves.toBe('updated');
+
+      expect(batches).toHaveLength(4);
+      expect(batches[3]?.[0]).toMatchObject({
+        operation: 'edit',
         channelId: CHANNEL_ID,
         messageId: MESSAGE_ID,
         message: {
@@ -207,8 +242,8 @@ describe('Twitch stream lifecycle', () => {
       });
       const [storedStream] = await database.select().from(streams);
       const [storedMessage] = await database.select().from(streamMessages);
-      expect(storedStream?.revision).toBe(3);
-      expect(storedMessage?.enqueuedRevision).toBe(3);
+      expect(storedStream?.revision).toBe(4);
+      expect(storedMessage?.enqueuedRevision).toBe(4);
     });
   });
 
@@ -349,4 +384,8 @@ function mockTwitchApi(getStream: () => MockTwitchStream | undefined): void {
     }
     throw new Error(`Unexpected Twitch request: ${request.url}`);
   });
+}
+
+function queueSendResponse(): QueueSendResponse {
+  return { metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } };
 }
