@@ -13,6 +13,9 @@
     "logs": {
       "head_sampling_rate": 1,
     },
+    "traces": {
+      "enabled": true,
+    },
   },
   "upload_source_maps": true,
   "secrets": {
