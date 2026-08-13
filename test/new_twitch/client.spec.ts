@@ -55,7 +55,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('TwitchClient GET methods', () => {
+describe('TwitchApiClient GET methods', () => {
   it('gets a complete user by ID with an authenticated request', async () => {
     const fetcher = vi
       .spyOn(globalThis, 'fetch')
@@ -268,9 +268,108 @@ describe('TwitchClient GET methods', () => {
       retryAtMs: undefined,
     });
   });
+
+  it('gets archive videos for a broadcaster', async () => {
+    const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json({
+        data: [
+          {
+            id: 'video-1',
+            stream_id: 'stream-1',
+            user_id: '123',
+            user_login: 'sliroth',
+            user_name: 'Sliroth',
+            title: 'Latest VOD',
+            description: 'Latest stream',
+            created_at: '2026-08-13T19:00:00Z',
+            published_at: '2026-08-13T19:05:00Z',
+            url: 'https://www.twitch.tv/videos/1',
+            thumbnail_url: 'https://example.com/{width}x{height}.jpg',
+            viewable: 'public',
+            view_count: 42,
+            language: 'en',
+            type: 'archive',
+            duration: '1h23m45s',
+          },
+        ],
+      }),
+    );
+
+    await expect(
+      new TwitchApiClient(env).getVideos(BROADCASTER_ID),
+    ).resolves.toEqual([
+      {
+        id: 'video-1',
+        streamId: 'stream-1',
+        broadcasterId: '123',
+        broadcasterLogin: 'sliroth',
+        broadcasterName: 'Sliroth',
+        title: 'Latest VOD',
+        description: 'Latest stream',
+        createdAt: new Date('2026-08-13T19:00:00Z'),
+        publishedAt: new Date('2026-08-13T19:05:00Z'),
+        url: 'https://www.twitch.tv/videos/1',
+        thumbnailUrl: 'https://example.com/{width}x{height}.jpg',
+        viewable: 'public',
+        viewCount: 42,
+        language: 'en',
+        type: 'archive',
+        duration: '1h23m45s',
+      },
+    ]);
+
+    expect(requestUrl(fetcher.mock.calls[0]?.[0])).toBe(
+      'https://api.twitch.tv/helix/videos?user_id=123&type=archive&first=20',
+    );
+  });
+
+  it('requests only the latest archive video when first is 1', async () => {
+    const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json({
+        data: [
+          {
+            id: 'video-latest',
+            stream_id: 'stream-latest',
+            user_id: '123',
+            user_login: 'sliroth',
+            user_name: 'Sliroth',
+            title: 'Latest VOD',
+            description: '',
+            created_at: '2026-08-13T20:00:00Z',
+            published_at: '2026-08-13T20:05:00Z',
+            url: 'https://www.twitch.tv/videos/latest',
+            thumbnail_url: 'https://example.com/{width}x{height}.jpg',
+            viewable: 'public',
+            view_count: 10,
+            language: 'en',
+            type: 'archive',
+            duration: '2h',
+          },
+        ],
+      }),
+    );
+
+    await expect(
+      new TwitchApiClient(env).getVideos(BROADCASTER_ID, 1),
+    ).resolves.toHaveLength(1);
+
+    expect(requestUrl(fetcher.mock.calls[0]?.[0])).toBe(
+      'https://api.twitch.tv/helix/videos?user_id=123&type=archive&first=1',
+    );
+  });
+
+  it('returns an empty array when the broadcaster has no archive videos', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json({ data: [] }),
+    );
+
+    await expect(
+      new TwitchApiClient(env).getVideos(BROADCASTER_ID, 1),
+    ).resolves.toEqual([]);
+  });
 });
 
-describe('TwitchClient EventSub methods', () => {
+describe('TwitchApiClient EventSub methods', () => {
   const SUBSCRIPTION = {
     id: 'sub-123',
     status: 'webhook_callback_verification_pending',

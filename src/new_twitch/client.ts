@@ -76,6 +76,47 @@ const TwitchGame = z
 /** A Twitch game or category returned by the Helix API. */
 export type TwitchGame = z.infer<typeof TwitchGame>;
 
+export const TwitchVideo = z
+  .object({
+    id: z.string(),
+    stream_id: z.string(),
+    user_id: z.string(),
+    user_login: z.string(),
+    user_name: z.string(),
+    title: z.string(),
+    description: z.string(),
+    created_at: z.iso.datetime().transform((str) => new Date(str)),
+    published_at: z.iso.datetime().transform((str) => new Date(str)),
+    url: z.url(),
+    thumbnail_url: z.url(),
+    viewable: z.enum(['public', 'private', 'unlisted']),
+    view_count: z.number().int(),
+    language: z.string(),
+    type: z.enum(['archive', 'highlight', 'upload']),
+    duration: z.string(),
+  })
+  .transform((data) => ({
+    id: data.id,
+    streamId: data.stream_id,
+    broadcasterId: data.user_id,
+    broadcasterLogin: data.user_login,
+    broadcasterName: data.user_name,
+    title: data.title,
+    description: data.description,
+    createdAt: data.created_at,
+    publishedAt: data.published_at,
+    url: data.url,
+    thumbnailUrl: data.thumbnail_url,
+    viewable: data.viewable,
+    viewCount: data.view_count,
+    language: data.language,
+    type: data.type,
+    duration: data.duration,
+  }));
+
+/** A Twitch video (VOD) returned by the Helix API. */
+export type TwitchVideo = z.infer<typeof TwitchVideo>;
+
 const CreateEventSubSubscription = z.object({
   type: z.string(),
   version: z.string(),
@@ -271,6 +312,20 @@ export class TwitchApiClient {
     return this.requestOne(
       `games?id=${encodeURIComponent(gameId)}`,
       TwitchGame,
+    );
+  }
+
+  /**
+   * Gets the most recent archive videos (VODs) for a broadcaster.
+   *
+   * @param broadcasterId Twitch user ID of the broadcaster.
+   * @param first Maximum number of videos to return (default: 20).
+   * @returns Archive videos, or an empty array if the broadcaster has no VODs.
+   */
+  async getVideos(broadcasterId: string, first = 20): Promise<TwitchVideo[]> {
+    return this.request(
+      `videos?user_id=${encodeURIComponent(broadcasterId)}&type=archive&first=${first}`,
+      TwitchVideo,
     );
   }
 
