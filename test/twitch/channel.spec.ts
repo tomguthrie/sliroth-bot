@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  isTwitchChannelId,
+  isTwitchBroadcasterId,
   isTwitchChannelLogin,
   parseTwitchChannelLogin,
   resolveTwitchChannel,
@@ -20,17 +20,17 @@ vi.mock('../../src/twitch/client', () => ({
   },
 }));
 
-describe('isTwitchChannelId', () => {
+describe('isTwitchBroadcasterId', () => {
   it('accepts numeric broadcaster IDs', () => {
-    expect(isTwitchChannelId('123')).toBe(true);
-    expect(isTwitchChannelId('987654321')).toBe(true);
+    expect(isTwitchBroadcasterId('123')).toBe(true);
+    expect(isTwitchBroadcasterId('987654321')).toBe(true);
   });
 
   it('rejects non-numeric values', () => {
-    expect(isTwitchChannelId('sliroth')).toBe(false);
-    expect(isTwitchChannelId('123abc')).toBe(false);
-    expect(isTwitchChannelId('')).toBe(false);
-    expect(isTwitchChannelId(' 123 ')).toBe(false);
+    expect(isTwitchBroadcasterId('sliroth')).toBe(false);
+    expect(isTwitchBroadcasterId('123abc')).toBe(false);
+    expect(isTwitchBroadcasterId('')).toBe(false);
+    expect(isTwitchBroadcasterId(' 123 ')).toBe(false);
   });
 });
 

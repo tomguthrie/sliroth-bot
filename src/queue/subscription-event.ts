@@ -1,47 +1,19 @@
-import * as z from 'zod';
-
 import { toLoggableError } from '../log';
-import {
-  type ChannelUpdateEvent,
-  type EventSubMessage,
-  type StreamOfflineEvent,
-  type StreamOnlineEvent,
-  TWITCH_EVENT_CHANNEL_UPDATE,
-  TWITCH_EVENT_STREAM_OFFLINE,
-  TWITCH_EVENT_STREAM_ONLINE,
+import type {
+  EventSubNotification,
+  EventSubRevocation,
 } from '../twitch/eventsub';
-import { YouTubeChannelId } from '../youtube/data';
-import { YouTubeVideoNotification } from '../youtube/notification';
+import type { YouTubeChannelId } from '../youtube/data';
+import type { YouTubeVideoNotification } from '../youtube/notification';
 
 export const SUBSCRIPTION_EVENTS_QUEUE = 'subscription-events';
 
-interface TwitchEventSubDeliveryBase {
+export interface TwitchEventSubDelivery {
+  kind: 'twitch-eventsub';
   messageId: string;
-  broadcasterId: string;
-  subscriptionId: string;
+  timestamp: string;
+  message: EventSubNotification | EventSubRevocation;
 }
-
-type StreamOnlineQueueEvent = Omit<StreamOnlineEvent, 'startedAt'> & {
-  startedAt: string;
-};
-
-export type TwitchEventSubDelivery =
-  | (TwitchEventSubDeliveryBase & {
-      kind: 'twitch-channel-update';
-      event: ChannelUpdateEvent;
-    })
-  | (TwitchEventSubDeliveryBase & {
-      kind: 'twitch-stream-online';
-      event: StreamOnlineQueueEvent;
-    })
-  | (TwitchEventSubDeliveryBase & {
-      kind: 'twitch-stream-offline';
-      event: StreamOfflineEvent;
-      timestamp: string;
-    })
-  | (TwitchEventSubDeliveryBase & {
-      kind: 'twitch-revocation';
-    });
 
 export interface TwitchVodLookupDelivery {
   kind: 'twitch-vod-lookup';
@@ -49,58 +21,11 @@ export interface TwitchVodLookupDelivery {
   streamId: string;
 }
 
-/** Converts a parsed Twitch message into the Queue's JSON-safe wire shape. */
-export function createTwitchEventSubDelivery(
-  messageId: string,
-  message: EventSubMessage,
-  timestamp: Date,
-): TwitchEventSubDelivery {
-  const base = {
-    messageId,
-    broadcasterId: message.subscription.broadcasterId,
-    subscriptionId: message.subscription.id,
-  };
-
-  if (message.messageType === 'revocation') {
-    return { ...base, kind: 'twitch-revocation' };
-  }
-  if (message.messageType === 'webhook_callback_verification') {
-    throw new Error('EventSub challenges are not queue deliveries');
-  }
-
-  switch (message.eventType) {
-    case TWITCH_EVENT_CHANNEL_UPDATE:
-      return {
-        ...base,
-        kind: 'twitch-channel-update',
-        event: message.event,
-      };
-    case TWITCH_EVENT_STREAM_ONLINE:
-      return {
-        ...base,
-        kind: 'twitch-stream-online',
-        event: {
-          ...message.event,
-          startedAt: message.event.startedAt.toISOString(),
-        },
-      };
-    case TWITCH_EVENT_STREAM_OFFLINE:
-      return {
-        ...base,
-        kind: 'twitch-stream-offline',
-        event: message.event,
-        timestamp: timestamp.toISOString(),
-      };
-  }
+export interface YouTubeVideoDelivery {
+  kind: 'youtube-video';
+  channelId: YouTubeChannelId;
+  notification: YouTubeVideoNotification;
 }
-
-export const YouTubeVideoDelivery = z.object({
-  kind: z.literal('youtube-video'),
-  channelId: YouTubeChannelId,
-  notification: YouTubeVideoNotification,
-});
-
-export type YouTubeVideoDelivery = z.infer<typeof YouTubeVideoDelivery>;
 
 export type SubscriptionEventDelivery =
   TwitchEventSubDelivery | TwitchVodLookupDelivery | YouTubeVideoDelivery;
@@ -144,7 +69,7 @@ export async function deliverSubscriptionEventBatch(
         }
       } else {
         await env.TWITCH_SUBSCRIPTIONS.getByName(
-          delivery.broadcasterId,
+          delivery.message.subscription.broadcasterId,
         ).processEventSubMessage(delivery);
       }
       console.info({

@@ -45,7 +45,7 @@ const StreamOnlineEvent = z
     broadcaster_user_login: z.string(),
     broadcaster_user_name: z.string(),
     type: z.string(),
-    started_at: z.iso.datetime().transform((value) => new Date(value)),
+    started_at: z.iso.datetime(),
   })
   .transform((data) => ({
     streamId: data.id,
@@ -73,18 +73,6 @@ const StreamOfflineEvent = z
 
 export type StreamOfflineEvent = z.output<typeof StreamOfflineEvent>;
 
-export type TwitchEvent =
-  ChannelUpdateEvent | StreamOnlineEvent | StreamOfflineEvent;
-
-const EventSubEnvelope = z.object({
-  subscription: z.object({
-    id: z.string(),
-    type: z.string(),
-    version: z.string(),
-  }),
-  event: z.unknown(),
-});
-
 const EventSubSubscription = z
   .object({
     id: z.string(),
@@ -103,7 +91,7 @@ const EventSubSubscription = z
 
 export type EventSubSubscription = z.output<typeof EventSubSubscription>;
 
-type EventSubNotification =
+export type EventSubNotification =
   | {
       messageType: 'notification';
       eventType: typeof TWITCH_EVENT_CHANNEL_UPDATE;
@@ -123,18 +111,19 @@ type EventSubNotification =
       event: StreamOfflineEvent;
     };
 
-export type EventSubMessage = EventSubNotification | VerificationOrRevocation;
+export interface EventSubVerification {
+  messageType: 'webhook_callback_verification';
+  subscription: EventSubSubscription;
+  challenge: string;
+}
 
-type VerificationOrRevocation =
-  | {
-      messageType: 'webhook_callback_verification';
-      subscription: EventSubSubscription;
-      challenge: string;
-    }
-  | {
-      messageType: 'revocation';
-      subscription: EventSubSubscription & { status: string };
-    };
+export interface EventSubRevocation {
+  messageType: 'revocation';
+  subscription: EventSubSubscription & { status: string };
+}
+
+export type EventSubMessage =
+  EventSubNotification | EventSubVerification | EventSubRevocation;
 
 const EventSubNotificationMessage = z.object({
   subscription: EventSubSubscription,
@@ -150,41 +139,30 @@ const EventSubRevocationMessage = z.object({
   subscription: EventSubSubscription.and(z.object({ status: z.string() })),
 });
 
-type ParsedEventSubNotification =
-  | {
-      eventType: typeof TWITCH_EVENT_CHANNEL_UPDATE;
-      event: ChannelUpdateEvent;
-    }
-  | {
-      eventType: typeof TWITCH_EVENT_STREAM_ONLINE;
-      event: StreamOnlineEvent;
-    }
-  | {
-      eventType: typeof TWITCH_EVENT_STREAM_OFFLINE;
-      event: StreamOfflineEvent;
-    };
-
-function parseEventSubNotificationData(
-  body: unknown,
-): ParsedEventSubNotification {
-  const envelope = EventSubEnvelope.parse(body);
-
+function parseEventSubNotification(body: unknown): EventSubNotification {
+  const envelope = EventSubNotificationMessage.parse(body);
   switch (envelope.subscription.type) {
     case TWITCH_EVENT_CHANNEL_UPDATE:
       return {
+        messageType: 'notification',
         eventType: TWITCH_EVENT_CHANNEL_UPDATE,
+        subscription: envelope.subscription,
         event: ChannelUpdateEvent.parse(envelope.event),
       };
 
     case TWITCH_EVENT_STREAM_ONLINE:
       return {
+        messageType: 'notification',
         eventType: TWITCH_EVENT_STREAM_ONLINE,
+        subscription: envelope.subscription,
         event: StreamOnlineEvent.parse(envelope.event),
       };
 
     case TWITCH_EVENT_STREAM_OFFLINE:
       return {
+        messageType: 'notification',
         eventType: TWITCH_EVENT_STREAM_OFFLINE,
+        subscription: envelope.subscription,
         event: StreamOfflineEvent.parse(envelope.event),
       };
 
@@ -195,29 +173,19 @@ function parseEventSubNotificationData(
   }
 }
 
-export function parseEventSubNotification(body: unknown): TwitchEvent {
-  return parseEventSubNotificationData(body).event;
-}
-
 /**
  * Parses a Twitch EventSub body and returns normalized message data.
  *
  * This is the boundary between Twitch's wire format and application code. The
- * returned value contains camel-case fields and native dates where applicable.
+ * returned value contains camel-case fields and ISO timestamps.
  */
 export function parseEventSubMessage(
   messageType: EventSubMessageType,
   body: unknown,
 ): EventSubMessage {
   switch (messageType) {
-    case 'notification': {
-      const envelope = EventSubNotificationMessage.parse(body);
-      return {
-        messageType,
-        subscription: envelope.subscription,
-        ...parseEventSubNotificationData(body),
-      };
-    }
+    case 'notification':
+      return parseEventSubNotification(body);
 
     case 'webhook_callback_verification': {
       const envelope = EventSubVerificationMessage.parse(body);
@@ -315,29 +283,6 @@ export function getEventSubMessageType(
     default:
       return undefined;
   }
-}
-
-const EventSubChallenge = z.object({
-  challenge: z.string(),
-});
-
-export function parseEventSubChallenge(body: unknown): string {
-  return EventSubChallenge.parse(body).challenge;
-}
-
-const EventSubRevocation = z.object({
-  subscription: z.object({
-    id: z.string(),
-    type: z.string(),
-    version: z.string(),
-    status: z.string(),
-  }),
-});
-
-export type EventSubRevocation = z.output<typeof EventSubRevocation>;
-
-export function parseEventSubRevocation(body: unknown): EventSubRevocation {
-  return EventSubRevocation.parse(body);
 }
 
 export function getEventSubMessageId(request: Request): string | undefined {

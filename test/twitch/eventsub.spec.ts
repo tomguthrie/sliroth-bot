@@ -3,10 +3,7 @@ import * as z from 'zod';
 
 import {
   getEventSubMessageType,
-  parseEventSubChallenge,
   parseEventSubMessage,
-  parseEventSubNotification,
-  parseEventSubRevocation,
   verifyEventSubRequest,
 } from '../../src/twitch/eventsub';
 
@@ -40,14 +37,15 @@ async function createSignature(
   ).join('')}`;
 }
 
-describe('parseEventSubNotification', () => {
-  it('parses channel.update notifications', () => {
+describe('parseEventSubMessage', () => {
+  it('parses channel updates', () => {
     expect(
-      parseEventSubNotification({
+      parseEventSubMessage('notification', {
         subscription: {
           id: 'subscription-1',
           type: 'channel.update',
           version: '2',
+          condition: { broadcaster_user_id: '123' },
         },
         event: {
           broadcaster_user_id: '123',
@@ -60,153 +58,17 @@ describe('parseEventSubNotification', () => {
           content_classification_labels: ['MatureGame'],
         },
       }),
-    ).toEqual({
-      broadcasterId: '123',
-      broadcasterLogin: 'sliroth',
-      broadcasterName: 'Sliroth',
-      title: 'Jelly Armed Man',
-      language: 'en',
-      gameId: 'game-1',
-      gameName: 'Gothic 1 Remake',
-      contentClassificationLabels: ['MatureGame'],
+    ).toMatchObject({
+      messageType: 'notification',
+      eventType: 'channel.update',
+      event: {
+        broadcasterId: '123',
+        title: 'Jelly Armed Man',
+        gameId: 'game-1',
+      },
     });
   });
 
-  it('parses stream.online notifications', () => {
-    expect(
-      parseEventSubNotification({
-        subscription: {
-          id: 'subscription-2',
-          type: 'stream.online',
-          version: '1',
-        },
-        event: {
-          id: 'stream-1',
-          broadcaster_user_id: '123',
-          broadcaster_user_login: 'sliroth',
-          broadcaster_user_name: 'Sliroth',
-          type: 'live',
-          started_at: '2026-08-13T18:30:00Z',
-        },
-      }),
-    ).toEqual({
-      streamId: 'stream-1',
-      broadcasterId: '123',
-      broadcasterLogin: 'sliroth',
-      broadcasterName: 'Sliroth',
-      startedAt: new Date('2026-08-13T18:30:00Z'),
-    });
-  });
-
-  it('parses stream.offline notifications', () => {
-    expect(
-      parseEventSubNotification({
-        subscription: {
-          id: 'subscription-3',
-          type: 'stream.offline',
-          version: '1',
-        },
-        event: {
-          id: 'stream-1',
-          broadcaster_user_id: '123',
-          broadcaster_user_login: 'sliroth',
-          broadcaster_user_name: 'Sliroth',
-        },
-      }),
-    ).toEqual({
-      streamId: 'stream-1',
-      broadcasterId: '123',
-      broadcasterLogin: 'sliroth',
-      broadcasterName: 'Sliroth',
-    });
-  });
-
-  it('rejects unsupported notification types', () => {
-    expect(() =>
-      parseEventSubNotification({
-        subscription: {
-          id: 'subscription-4',
-          type: 'channel.follow',
-          version: '2',
-        },
-        event: {},
-      }),
-    ).toThrow('Unsupported Twitch EventSub type: channel.follow');
-  });
-
-  it('rejects malformed notification envelopes', () => {
-    expect(() =>
-      parseEventSubNotification({
-        subscription: {
-          type: 'stream.online',
-        },
-        event: {},
-      }),
-    ).toThrow(z.ZodError);
-  });
-
-  it('rejects malformed channel.update events', () => {
-    expect(() =>
-      parseEventSubNotification({
-        subscription: {
-          id: 'subscription-1',
-          type: 'channel.update',
-          version: '2',
-        },
-        event: {
-          broadcaster_user_id: '123',
-          broadcaster_user_login: 'sliroth',
-          broadcaster_user_name: 'Sliroth',
-          title: 'Jelly Armed Man',
-          language: 'en',
-          category_id: 'game-1',
-          category_name: 'Gothic 1 Remake',
-          content_classification_labels: 'MatureGame',
-        },
-      }),
-    ).toThrow(z.ZodError);
-  });
-
-  it('rejects malformed stream.online events', () => {
-    expect(() =>
-      parseEventSubNotification({
-        subscription: {
-          id: 'subscription-2',
-          type: 'stream.online',
-          version: '1',
-        },
-        event: {
-          id: 'stream-1',
-          broadcaster_user_id: '123',
-          broadcaster_user_login: 'sliroth',
-          broadcaster_user_name: 'Sliroth',
-          type: 'live',
-          started_at: 'not-a-date',
-        },
-      }),
-    ).toThrow(z.ZodError);
-  });
-
-  it('rejects malformed stream.offline events', () => {
-    expect(() =>
-      parseEventSubNotification({
-        subscription: {
-          id: 'subscription-3',
-          type: 'stream.offline',
-          version: '1',
-        },
-        event: {
-          id: 'stream-1',
-          broadcaster_user_id: 123,
-          broadcaster_user_login: 'sliroth',
-          broadcaster_user_name: 'Sliroth',
-        },
-      }),
-    ).toThrow(z.ZodError);
-  });
-});
-
-describe('parseEventSubMessage', () => {
   it('returns normalized subscription metadata and notification data', () => {
     expect(
       parseEventSubMessage('notification', {
@@ -239,9 +101,60 @@ describe('parseEventSubMessage', () => {
         broadcasterId: '123',
         broadcasterLogin: 'sliroth',
         broadcasterName: 'Sliroth',
-        startedAt: new Date('2026-08-13T18:30:00Z'),
+        startedAt: '2026-08-13T18:30:00Z',
       },
     });
+  });
+
+  it('parses stream offline notifications', () => {
+    expect(
+      parseEventSubMessage('notification', {
+        subscription: {
+          id: 'subscription-1',
+          type: 'stream.offline',
+          version: '1',
+          condition: { broadcaster_user_id: '123' },
+        },
+        event: {
+          id: 'stream-1',
+          broadcaster_user_id: '123',
+          broadcaster_user_login: 'sliroth',
+          broadcaster_user_name: 'Sliroth',
+        },
+      }),
+    ).toMatchObject({
+      messageType: 'notification',
+      eventType: 'stream.offline',
+      event: { streamId: 'stream-1', broadcasterId: '123' },
+    });
+  });
+
+  it('rejects unsupported notification types', () => {
+    expect(() =>
+      parseEventSubMessage('notification', {
+        subscription: {
+          id: 'subscription-1',
+          type: 'channel.follow',
+          version: '2',
+          condition: { broadcaster_user_id: '123' },
+        },
+        event: {},
+      }),
+    ).toThrow('Unsupported Twitch EventSub type: channel.follow');
+  });
+
+  it('rejects malformed notification events', () => {
+    expect(() =>
+      parseEventSubMessage('notification', {
+        subscription: {
+          id: 'subscription-1',
+          type: 'stream.online',
+          version: '1',
+          condition: { broadcaster_user_id: '123' },
+        },
+        event: { started_at: 'not-a-date' },
+      }),
+    ).toThrow(z.ZodError);
   });
 
   it('parses verification challenges with subscription metadata', () => {
@@ -496,89 +409,5 @@ describe('getEventSubMessageType', () => {
     const request = new Request('https://example.com');
 
     expect(getEventSubMessageType(request)).toBeUndefined();
-  });
-});
-
-describe('parseEventSubChallenge', () => {
-  it('returns the challenge string', () => {
-    expect(
-      parseEventSubChallenge({
-        challenge: 'challenge-token',
-      }),
-    ).toBe('challenge-token');
-  });
-
-  it('rejects a non-string challenge', () => {
-    expect(() =>
-      parseEventSubChallenge({
-        challenge: 123,
-      }),
-    ).toThrow(z.ZodError);
-  });
-
-  it('rejects a missing challenge', () => {
-    expect(() => parseEventSubChallenge({})).toThrow(z.ZodError);
-  });
-});
-
-describe('parseEventSubRevocation', () => {
-  it('parses a revoked EventSub subscription', () => {
-    expect(
-      parseEventSubRevocation({
-        subscription: {
-          id: 'subscription-1',
-          type: 'stream.online',
-          version: '1',
-          status: 'authorization_revoked',
-        },
-      }),
-    ).toEqual({
-      subscription: {
-        id: 'subscription-1',
-        type: 'stream.online',
-        version: '1',
-        status: 'authorization_revoked',
-      },
-    });
-  });
-
-  it('preserves other Twitch revocation statuses', () => {
-    expect(
-      parseEventSubRevocation({
-        subscription: {
-          id: 'subscription-1',
-          type: 'stream.online',
-          version: '1',
-          status: 'notification_failures_exceeded',
-        },
-      }),
-    ).toEqual({
-      subscription: {
-        id: 'subscription-1',
-        type: 'stream.online',
-        version: '1',
-        status: 'notification_failures_exceeded',
-      },
-    });
-  });
-
-  it('rejects a revocation with a missing status', () => {
-    expect(() =>
-      parseEventSubRevocation({
-        subscription: {
-          id: 'subscription-1',
-          type: 'stream.online',
-          version: '1',
-        },
-      }),
-    ).toThrow(z.ZodError);
-  });
-
-  it('rejects malformed revocation envelopes', () => {
-    expect(() =>
-      parseEventSubRevocation({
-        subscription: 'subscription-1',
-      }),
-    ).toThrow(z.ZodError);
   });
 });

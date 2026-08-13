@@ -1,6 +1,7 @@
 import * as z from 'zod';
 
 import { DiscordSnowflake } from '../discord/snowflake';
+import { isTwitchBroadcasterId } from '../twitch';
 
 const NonBlankString = z.string().refine((value) => value.trim() !== '');
 
@@ -109,10 +110,6 @@ function parseGuildTwitchSubscriptionKey(
     twitchBroadcasterLogin: parsedMetadata.data.login,
     twitchBroadcasterDisplayName: parsedMetadata.data.displayName,
   };
-}
-
-function isTwitchBroadcasterId(value: string): boolean {
-  return /^\d+$/.test(value);
 }
 
 function logInvalidIndexKey(key: string): void {

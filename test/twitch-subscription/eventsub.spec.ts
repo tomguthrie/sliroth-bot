@@ -224,25 +224,34 @@ describe('Twitch EventSub webhook', () => {
       .mockResolvedValue(queueSendResponse());
     const body = channelUpdateBody(broadcasterId);
     const messageId = `channel-update-${crypto.randomUUID()}`;
+    const timestamp = new Date().toISOString();
 
     const response = await handleTwitchEventSub(
-      await signedRequest(messageId, body, { broadcasterId }),
+      await signedRequest(messageId, body, { broadcasterId, timestamp }),
       env,
       createExecutionContext(),
     );
 
     expect(response.status).toBe(204);
-    expect(send).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: 'twitch-channel-update',
-        messageId,
-        broadcasterId,
-        subscriptionId: 'subscription-channel.update',
-      }),
-    );
+    expect(send).toHaveBeenCalledWith({
+      kind: 'twitch-eventsub',
+      messageId,
+      timestamp,
+      message: {
+        messageType: 'notification',
+        eventType: 'channel.update',
+        subscription: {
+          id: 'subscription-channel.update',
+          type: 'channel.update',
+          version: '2',
+          broadcasterId,
+        },
+        event: channelUpdateEvent(broadcasterId),
+      },
+    });
   });
 
-  it('serializes notification dates for the Queue wire format', async () => {
+  it('queues parsed notifications using their JSON-safe message shape', async () => {
     const broadcasterId = '123456789012345683';
     const send = vi
       .spyOn(env.SUBSCRIPTION_EVENTS, 'send')
@@ -276,16 +285,25 @@ describe('Twitch EventSub webhook', () => {
 
     expect(response.status).toBe(204);
     expect(send).toHaveBeenCalledWith({
-      kind: 'twitch-stream-online',
+      kind: 'twitch-eventsub',
       messageId: 'stream-online-id',
-      broadcasterId,
-      subscriptionId: 'subscription-stream.online',
-      event: {
-        streamId: 'stream-1',
-        broadcasterId,
-        broadcasterLogin: 'sliroth',
-        broadcasterName: 'Sliroth',
-        startedAt: '2026-08-13T18:30:00.000Z',
+      timestamp,
+      message: {
+        messageType: 'notification',
+        eventType: 'stream.online',
+        subscription: {
+          id: 'subscription-stream.online',
+          type: 'stream.online',
+          version: '1',
+          broadcasterId,
+        },
+        event: {
+          streamId: 'stream-1',
+          broadcasterId,
+          broadcasterLogin: 'sliroth',
+          broadcasterName: 'Sliroth',
+          startedAt: '2026-08-13T18:30:00Z',
+        },
       },
     });
   });
@@ -315,12 +333,22 @@ describe('Twitch EventSub webhook', () => {
     );
 
     expect(response.status).toBe(204);
-    expect(send).toHaveBeenCalledWith({
-      kind: 'twitch-revocation',
-      messageId: 'revocation-id',
-      broadcasterId,
-      subscriptionId: 'subscription-revoked',
-    });
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'twitch-eventsub',
+        messageId: 'revocation-id',
+        message: {
+          messageType: 'revocation',
+          subscription: {
+            id: 'subscription-revoked',
+            type: 'stream.online',
+            version: '1',
+            status: 'authorization_revoked',
+            broadcasterId,
+          },
+        },
+      }),
+    );
   });
 
   it('rejects a broadcaster that does not match the callback route', async () => {
@@ -421,11 +449,20 @@ describe('Twitch EventSub webhook', () => {
     eventSubReads = 0;
 
     await subscription.processEventSubMessage({
-      kind: 'twitch-channel-update',
+      kind: 'twitch-eventsub',
       messageId: `notification-${crypto.randomUUID()}`,
-      subscriptionId: 'subscription-channel.update',
-      broadcasterId: RECONCILE_BROADCASTER_ID,
-      event: channelUpdateEvent(RECONCILE_BROADCASTER_ID),
+      timestamp: new Date().toISOString(),
+      message: {
+        messageType: 'notification',
+        eventType: 'channel.update',
+        subscription: {
+          id: 'subscription-channel.update',
+          type: 'channel.update',
+          version: '2',
+          broadcasterId: RECONCILE_BROADCASTER_ID,
+        },
+        event: channelUpdateEvent(RECONCILE_BROADCASTER_ID),
+      },
     });
 
     expect(createdTypes).toEqual(['stream.online']);
@@ -437,11 +474,20 @@ describe('Twitch EventSub webhook', () => {
     const messageId = `notification-${crypto.randomUUID()}`;
     const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId);
     const delivery = {
-      kind: 'twitch-channel-update',
+      kind: 'twitch-eventsub',
       messageId,
-      subscriptionId: 'subscription-channel',
-      broadcasterId,
-      event: channelUpdateEvent(broadcasterId),
+      timestamp: new Date().toISOString(),
+      message: {
+        messageType: 'notification',
+        eventType: 'channel.update',
+        subscription: {
+          id: 'subscription-channel',
+          type: 'channel.update',
+          version: '2',
+          broadcasterId,
+        },
+        event: channelUpdateEvent(broadcasterId),
+      },
     } as const;
 
     const processed = await runInDurableObject(

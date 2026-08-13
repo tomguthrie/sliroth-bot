@@ -22,13 +22,15 @@ import {
   type TwitchEventSubDelivery,
   type TwitchVodLookupDelivery,
 } from '../queue/subscription-event';
-import { TwitchApiClient, type TwitchUser } from '../twitch';
+import {
+  isTwitchApiErrorStatus,
+  TwitchApiClient,
+  type TwitchUser,
+} from '../twitch';
 import {
   TWITCH_EVENTSUB_SUBSCRIPTIONS,
-  TWITCH_EVENT_CHANNEL_UPDATE,
-  TWITCH_EVENT_STREAM_OFFLINE,
-  TWITCH_EVENT_STREAM_ONLINE,
   type ChannelUpdateEvent,
+  type EventSubNotification,
   type EventSubSubscriptionDefinition,
   type StreamOfflineEvent,
   type StreamOnlineEvent,
@@ -73,10 +75,6 @@ const TwitchBroadcaster = z.object({
   profileImageUrl: z.url(),
   offlineImageUrl: z.url(),
 });
-
-type StreamOnlineQueueEvent = Omit<StreamOnlineEvent, 'startedAt'> & {
-  startedAt: string;
-};
 
 type TwitchEventSubSubscription = NonNullable<
   Awaited<ReturnType<TwitchApiClient['getEventSubSubscription']>>
@@ -202,7 +200,7 @@ export class TwitchSubscription extends DurableObject<Env> {
   }
 
   /** Claims a live stream and queues one notification per subscriber. */
-  async streamOnline(event: StreamOnlineQueueEvent): Promise<void> {
+  async streamOnline(event: StreamOnlineEvent): Promise<void> {
     const broadcaster = await this.requireBroadcaster(event.broadcasterId);
     const startedAt = parseIsoDate(event.startedAt, 'stream start');
     const client = new TwitchApiClient(this.env);
@@ -535,19 +533,21 @@ export class TwitchSubscription extends DurableObject<Env> {
       .limit(1);
 
     if (processed === undefined) {
-      switch (delivery.kind) {
-        case 'twitch-channel-update':
-          await this.channelUpdate(delivery.event);
-          break;
-        case 'twitch-stream-online':
-          await this.streamOnline(delivery.event);
-          break;
-        case 'twitch-stream-offline':
-          await this.streamOffline(delivery.event, delivery.timestamp);
-          break;
-        case 'twitch-revocation':
-          await this.revokeEventSub(delivery.subscriptionId);
-          break;
+      const { message } = delivery;
+      if (message.messageType === 'revocation') {
+        await this.revokeEventSub(message.subscription.id);
+      } else {
+        switch (message.eventType) {
+          case 'channel.update':
+            await this.channelUpdate(message.event);
+            break;
+          case 'stream.online':
+            await this.streamOnline(message.event);
+            break;
+          case 'stream.offline':
+            await this.streamOffline(message.event, delivery.timestamp);
+            break;
+        }
       }
 
       const processedAt = new Date();
@@ -565,25 +565,25 @@ export class TwitchSubscription extends DurableObject<Env> {
         );
     }
 
-    if (delivery.kind !== 'twitch-revocation') {
-      await this.recordIncomingEventSubSubscription(delivery);
+    if (delivery.message.messageType === 'notification') {
+      await this.recordIncomingEventSubSubscription(delivery.message);
       await this.repairMissingEventSubSubscriptions();
       await this.auditEventSubSubscriptionsIfDue();
     }
   }
 
   private async recordIncomingEventSubSubscription(
-    delivery: Exclude<TwitchEventSubDelivery, { kind: 'twitch-revocation' }>,
+    message: EventSubNotification,
   ): Promise<void> {
     await this.db
       .insert(eventSubSubscriptions)
       .values({
-        type: eventSubTypeForDelivery(delivery),
-        subscriptionId: delivery.subscriptionId,
+        type: message.eventType,
+        subscriptionId: message.subscription.id,
       })
       .onConflictDoUpdate({
         target: eventSubSubscriptions.type,
-        set: { subscriptionId: delivery.subscriptionId },
+        set: { subscriptionId: message.subscription.id },
       });
   }
 
@@ -744,19 +744,6 @@ export class TwitchSubscription extends DurableObject<Env> {
   }
 }
 
-function eventSubTypeForDelivery(
-  delivery: Exclude<TwitchEventSubDelivery, { kind: 'twitch-revocation' }>,
-): string {
-  switch (delivery.kind) {
-    case 'twitch-channel-update':
-      return TWITCH_EVENT_CHANNEL_UPDATE;
-    case 'twitch-stream-online':
-      return TWITCH_EVENT_STREAM_ONLINE;
-    case 'twitch-stream-offline':
-      return TWITCH_EVENT_STREAM_OFFLINE;
-  }
-}
-
 async function getRemoteSubscription(
   client: TwitchApiClient,
   id: string,
@@ -794,10 +781,6 @@ function isDesiredSubscription(
     subscription.transport.callback === callback &&
     ACTIVE_EVENTSUB_STATUSES.has(subscription.status)
   );
-}
-
-function isTwitchApiErrorStatus(error: unknown, status: number): boolean {
-  return error instanceof Error && 'status' in error && error.status === status;
 }
 
 function requireNonBlank(value: string, name: string): string {

@@ -1,11 +1,8 @@
-export { TwitchApiClient } from './client';
-export { resolveTwitchChannel } from './channel';
+export { TwitchApiClient, isTwitchApiErrorStatus } from './client';
+export { isTwitchBroadcasterId, resolveTwitchChannel } from './channel';
 export {
   getEventSubMessageType,
-  parseEventSubChallenge,
   parseEventSubMessage,
-  parseEventSubNotification,
-  parseEventSubRevocation,
   TWITCH_EVENTSUB_SUBSCRIPTIONS,
   TWITCH_EVENT_CHANNEL_UPDATE,
   TWITCH_EVENT_STREAM_OFFLINE,
@@ -17,7 +14,8 @@ export type { TwitchGame, TwitchStream, TwitchUser } from './client';
 export type {
   EventSubMessage,
   EventSubMessageType,
+  EventSubNotification,
+  EventSubRevocation,
   EventSubSubscription,
   EventSubSubscriptionDefinition,
-  TwitchEvent,
 } from './eventsub';

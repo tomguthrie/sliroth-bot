@@ -1,7 +1,7 @@
 import { TwitchApiClient, TwitchUser } from './client';
 
 /** Returns whether the input is a numeric Twitch broadcaster ID. */
-export function isTwitchChannelId(input: string): boolean {
+export function isTwitchBroadcasterId(input: string): boolean {
   return /^\d+$/.test(input);
 }
 
@@ -43,7 +43,7 @@ export async function resolveTwitchChannel(
 ): Promise<TwitchUser | undefined> {
   const client = new TwitchApiClient(env);
 
-  if (isTwitchChannelId(input)) {
+  if (isTwitchBroadcasterId(input)) {
     return client.getUserById(input);
   }
 

@@ -5,7 +5,7 @@ import {
   parseEventSubMessage,
   verifyEventSubRequest,
 } from '../twitch/eventsub';
-import { createTwitchEventSubDelivery } from '../queue/subscription-event';
+import type { TwitchEventSubDelivery } from '../queue/subscription-event';
 
 const MAX_MESSAGE_AGE_MS = 10 * 60 * 1000;
 const MAX_FUTURE_SKEW_MS = 60 * 1000;
@@ -60,8 +60,12 @@ export async function handleTwitchEventSub(
     });
   }
 
-  await env.SUBSCRIPTION_EVENTS.send(
-    createTwitchEventSubDelivery(messageId, message, timestamp),
-  );
+  const delivery: TwitchEventSubDelivery = {
+    kind: 'twitch-eventsub',
+    messageId,
+    timestamp: timestamp.toISOString(),
+    message,
+  };
+  await env.SUBSCRIPTION_EVENTS.send(delivery);
   return new Response(null, { status: 204 });
 }

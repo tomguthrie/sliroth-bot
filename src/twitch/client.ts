@@ -15,6 +15,14 @@ class TwitchApiError extends Error {
   }
 }
 
+/** Returns whether an unknown value is a Twitch API error with this status. */
+export function isTwitchApiErrorStatus(
+  error: unknown,
+  status: number,
+): boolean {
+  return error instanceof TwitchApiError && error.status === status;
+}
+
 const TwitchUser = z
   .object({
     id: z.string(),
