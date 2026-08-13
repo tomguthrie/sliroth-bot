@@ -195,3 +195,21 @@ export type EventSubRevocation = z.output<typeof EventSubRevocation>;
 export function parseEventSubRevocation(body: unknown): EventSubRevocation {
   return EventSubRevocation.parse(body);
 }
+
+export function getEventSubMessageId(request: Request): string | undefined {
+  return request.headers.get('Twitch-Eventsub-Message-Id') ?? undefined;
+}
+
+export function getEventSubMessageTimestamp(
+  request: Request,
+): Date | undefined {
+  const value = request.headers.get('Twitch-Eventsub-Message-Timestamp');
+
+  if (value === null) {
+    return undefined;
+  }
+
+  const timestamp = new Date(value);
+
+  return Number.isNaN(timestamp.getTime()) ? undefined : timestamp;
+}
