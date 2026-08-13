@@ -4,10 +4,11 @@ import * as z from 'zod';
 import {
   getEventSubMessageType,
   parseEventSubChallenge,
+  parseEventSubMessage,
   parseEventSubNotification,
   parseEventSubRevocation,
   verifyEventSubRequest,
-} from '../../src/new_twitch/eventsub';
+} from '../../src/twitch/eventsub';
 
 const SECRET = '0123456789abcdef';
 
@@ -60,7 +61,6 @@ describe('parseEventSubNotification', () => {
         },
       }),
     ).toEqual({
-      type: 'channel.update',
       broadcasterId: '123',
       broadcasterLogin: 'sliroth',
       broadcasterName: 'Sliroth',
@@ -90,7 +90,6 @@ describe('parseEventSubNotification', () => {
         },
       }),
     ).toEqual({
-      type: 'stream.online',
       streamId: 'stream-1',
       broadcasterId: '123',
       broadcasterLogin: 'sliroth',
@@ -115,7 +114,6 @@ describe('parseEventSubNotification', () => {
         },
       }),
     ).toEqual({
-      type: 'stream.offline',
       streamId: 'stream-1',
       broadcasterId: '123',
       broadcasterLogin: 'sliroth',
@@ -202,6 +200,104 @@ describe('parseEventSubNotification', () => {
           broadcaster_user_id: 123,
           broadcaster_user_login: 'sliroth',
           broadcaster_user_name: 'Sliroth',
+        },
+      }),
+    ).toThrow(z.ZodError);
+  });
+});
+
+describe('parseEventSubMessage', () => {
+  it('returns normalized subscription metadata and notification data', () => {
+    expect(
+      parseEventSubMessage('notification', {
+        subscription: {
+          id: 'subscription-1',
+          type: 'stream.online',
+          version: '1',
+          condition: { broadcaster_user_id: '123' },
+        },
+        event: {
+          id: 'stream-1',
+          broadcaster_user_id: '123',
+          broadcaster_user_login: 'sliroth',
+          broadcaster_user_name: 'Sliroth',
+          type: 'live',
+          started_at: '2026-08-13T18:30:00Z',
+        },
+      }),
+    ).toEqual({
+      messageType: 'notification',
+      eventType: 'stream.online',
+      subscription: {
+        id: 'subscription-1',
+        type: 'stream.online',
+        version: '1',
+        broadcasterId: '123',
+      },
+      event: {
+        streamId: 'stream-1',
+        broadcasterId: '123',
+        broadcasterLogin: 'sliroth',
+        broadcasterName: 'Sliroth',
+        startedAt: new Date('2026-08-13T18:30:00Z'),
+      },
+    });
+  });
+
+  it('parses verification challenges with subscription metadata', () => {
+    expect(
+      parseEventSubMessage('webhook_callback_verification', {
+        challenge: 'challenge-token',
+        subscription: {
+          id: 'subscription-1',
+          type: 'stream.online',
+          version: '1',
+          condition: { broadcaster_user_id: '123' },
+        },
+      }),
+    ).toEqual({
+      messageType: 'webhook_callback_verification',
+      challenge: 'challenge-token',
+      subscription: {
+        id: 'subscription-1',
+        type: 'stream.online',
+        version: '1',
+        broadcasterId: '123',
+      },
+    });
+  });
+
+  it('parses revocations with their status', () => {
+    expect(
+      parseEventSubMessage('revocation', {
+        subscription: {
+          id: 'subscription-1',
+          type: 'stream.online',
+          version: '1',
+          status: 'authorization_revoked',
+          condition: { broadcaster_user_id: '123' },
+        },
+      }),
+    ).toEqual({
+      messageType: 'revocation',
+      subscription: {
+        id: 'subscription-1',
+        type: 'stream.online',
+        version: '1',
+        broadcasterId: '123',
+        status: 'authorization_revoked',
+      },
+    });
+  });
+
+  it('rejects messages without a broadcaster condition', () => {
+    expect(() =>
+      parseEventSubMessage('revocation', {
+        subscription: {
+          id: 'subscription-1',
+          type: 'stream.online',
+          version: '1',
+          status: 'authorization_revoked',
         },
       }),
     ).toThrow(z.ZodError);

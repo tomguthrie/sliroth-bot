@@ -2,58 +2,97 @@ import * as z from 'zod';
 
 import { toLoggableError } from '../log';
 import {
-  TwitchBroadcasterId,
-  TwitchEventSubSubscriptionId,
-  TwitchStreamId,
-  TwitchTimestamp,
-} from '../twitch/data';
-import {
-  TwitchChannelUpdateEvent,
-  TwitchStreamOfflineEvent,
-  TwitchStreamOnlineEvent,
-} from '../twitch/event-sub/events';
+  type ChannelUpdateEvent,
+  type EventSubMessage,
+  type StreamOfflineEvent,
+  type StreamOnlineEvent,
+  TWITCH_EVENT_CHANNEL_UPDATE,
+  TWITCH_EVENT_STREAM_OFFLINE,
+  TWITCH_EVENT_STREAM_ONLINE,
+} from '../twitch/eventsub';
 import { YouTubeChannelId } from '../youtube/data';
 import { YouTubeVideoNotification } from '../youtube/notification';
 
 export const SUBSCRIPTION_EVENTS_QUEUE = 'subscription-events';
 
-export const EventSubMessageId = z.string().min(1).brand<'EventSubMessageId'>();
-export type EventSubMessageId = z.infer<typeof EventSubMessageId>;
+interface TwitchEventSubDeliveryBase {
+  messageId: string;
+  broadcasterId: string;
+  subscriptionId: string;
+}
 
-const TwitchEventSubDeliveryBase = z.object({
-  messageId: EventSubMessageId,
-  broadcasterId: TwitchBroadcasterId,
-  subscriptionId: TwitchEventSubSubscriptionId,
-});
+type StreamOnlineQueueEvent = Omit<StreamOnlineEvent, 'startedAt'> & {
+  startedAt: string;
+};
 
-export const TwitchEventSubDelivery = z.discriminatedUnion('kind', [
-  TwitchEventSubDeliveryBase.extend({
-    kind: z.literal('twitch-channel-update'),
-    event: TwitchChannelUpdateEvent,
-  }),
-  TwitchEventSubDeliveryBase.extend({
-    kind: z.literal('twitch-stream-online'),
-    event: TwitchStreamOnlineEvent,
-  }),
-  TwitchEventSubDeliveryBase.extend({
-    kind: z.literal('twitch-stream-offline'),
-    event: TwitchStreamOfflineEvent,
-    timestamp: TwitchTimestamp,
-  }),
-  TwitchEventSubDeliveryBase.extend({
-    kind: z.literal('twitch-revocation'),
-  }),
-]);
+export type TwitchEventSubDelivery =
+  | (TwitchEventSubDeliveryBase & {
+      kind: 'twitch-channel-update';
+      event: ChannelUpdateEvent;
+    })
+  | (TwitchEventSubDeliveryBase & {
+      kind: 'twitch-stream-online';
+      event: StreamOnlineQueueEvent;
+    })
+  | (TwitchEventSubDeliveryBase & {
+      kind: 'twitch-stream-offline';
+      event: StreamOfflineEvent;
+      timestamp: string;
+    })
+  | (TwitchEventSubDeliveryBase & {
+      kind: 'twitch-revocation';
+    });
 
-export type TwitchEventSubDelivery = z.infer<typeof TwitchEventSubDelivery>;
+export interface TwitchVodLookupDelivery {
+  kind: 'twitch-vod-lookup';
+  broadcasterId: string;
+  streamId: string;
+}
 
-export const TwitchVodLookupDelivery = z.object({
-  kind: z.literal('twitch-vod-lookup'),
-  broadcasterId: TwitchBroadcasterId,
-  streamId: TwitchStreamId,
-});
+/** Converts a parsed Twitch message into the Queue's JSON-safe wire shape. */
+export function createTwitchEventSubDelivery(
+  messageId: string,
+  message: EventSubMessage,
+  timestamp: Date,
+): TwitchEventSubDelivery {
+  const base = {
+    messageId,
+    broadcasterId: message.subscription.broadcasterId,
+    subscriptionId: message.subscription.id,
+  };
 
-export type TwitchVodLookupDelivery = z.infer<typeof TwitchVodLookupDelivery>;
+  if (message.messageType === 'revocation') {
+    return { ...base, kind: 'twitch-revocation' };
+  }
+  if (message.messageType === 'webhook_callback_verification') {
+    throw new Error('EventSub challenges are not queue deliveries');
+  }
+
+  switch (message.eventType) {
+    case TWITCH_EVENT_CHANNEL_UPDATE:
+      return {
+        ...base,
+        kind: 'twitch-channel-update',
+        event: message.event,
+      };
+    case TWITCH_EVENT_STREAM_ONLINE:
+      return {
+        ...base,
+        kind: 'twitch-stream-online',
+        event: {
+          ...message.event,
+          startedAt: message.event.startedAt.toISOString(),
+        },
+      };
+    case TWITCH_EVENT_STREAM_OFFLINE:
+      return {
+        ...base,
+        kind: 'twitch-stream-offline',
+        event: message.event,
+        timestamp: timestamp.toISOString(),
+      };
+  }
+}
 
 export const YouTubeVideoDelivery = z.object({
   kind: z.literal('youtube-video'),
@@ -63,15 +102,8 @@ export const YouTubeVideoDelivery = z.object({
 
 export type YouTubeVideoDelivery = z.infer<typeof YouTubeVideoDelivery>;
 
-export const SubscriptionEventDelivery = z.discriminatedUnion('kind', [
-  ...TwitchEventSubDelivery.options,
-  TwitchVodLookupDelivery,
-  YouTubeVideoDelivery,
-]);
-
-export type SubscriptionEventDelivery = z.infer<
-  typeof SubscriptionEventDelivery
->;
+export type SubscriptionEventDelivery =
+  TwitchEventSubDelivery | TwitchVodLookupDelivery | YouTubeVideoDelivery;
 
 /** Processes durable subscription events with per-message retry decisions. */
 export async function deliverSubscriptionEventBatch(

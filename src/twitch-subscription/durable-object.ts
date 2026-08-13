@@ -19,30 +19,20 @@ import { DiscordMentionTarget } from '../discord/message';
 import { DiscordSnowflake } from '../discord/snowflake';
 import { enqueueDiscordMessages } from '../queue/discord-message';
 import {
-  TwitchEventSubDelivery,
-  type TwitchEventSubDelivery as TwitchEventSubDeliveryType,
+  type TwitchEventSubDelivery,
   type TwitchVodLookupDelivery,
 } from '../queue/subscription-event';
+import { TwitchApiClient, type TwitchUser } from '../twitch';
 import {
-  TwitchApiClient,
-  TwitchApiError,
-  TwitchUser,
-  type TwitchEventSubSubscription,
-} from '../twitch/client';
-import {
-  TwitchBroadcasterId,
-  TwitchEventSubSubscriptionId,
-  TwitchStreamId,
-  TwitchTimestamp,
-} from '../twitch/data';
-import {
+  TWITCH_EVENTSUB_SUBSCRIPTIONS,
   TWITCH_EVENT_CHANNEL_UPDATE,
   TWITCH_EVENT_STREAM_OFFLINE,
   TWITCH_EVENT_STREAM_ONLINE,
-  TwitchChannelUpdateEvent,
-  TwitchStreamOfflineEvent,
-  TwitchStreamOnlineEvent,
-} from '../twitch/event-sub/events';
+  type ChannelUpdateEvent,
+  type EventSubSubscriptionDefinition,
+  type StreamOfflineEvent,
+  type StreamOnlineEvent,
+} from '../twitch/eventsub';
 import {
   createTwitchLiveDelivery,
   createTwitchLiveUpdateDelivery,
@@ -54,13 +44,6 @@ import {
   type TwitchSubscriptionMetadata,
 } from './index';
 
-const DESIRED_EVENTSUB_SUBSCRIPTIONS = [
-  { type: TWITCH_EVENT_CHANNEL_UPDATE, version: '2' },
-  { type: TWITCH_EVENT_STREAM_ONLINE, version: '1' },
-  { type: TWITCH_EVENT_STREAM_OFFLINE, version: '1' },
-] as const;
-type DesiredEventSubSubscription =
-  (typeof DESIRED_EVENTSUB_SUBSCRIPTIONS)[number];
 const ACTIVE_EVENTSUB_STATUSES = new Set([
   'enabled',
   'webhook_callback_verification_pending',
@@ -83,6 +66,22 @@ type TwitchSubscriberRegistrationInput = z.input<
   typeof TwitchSubscriberRegistration
 >;
 
+const TwitchBroadcaster = z.object({
+  id: z.string().regex(/^\d+$/),
+  login: z.string().min(1),
+  displayName: z.string().trim().min(1),
+  profileImageUrl: z.url(),
+  offlineImageUrl: z.url(),
+});
+
+type StreamOnlineQueueEvent = Omit<StreamOnlineEvent, 'startedAt'> & {
+  startedAt: string;
+};
+
+type TwitchEventSubSubscription = NonNullable<
+  Awaited<ReturnType<TwitchApiClient['getEventSubSubscription']>>
+>;
+
 /** Coordinates subscribers and EventSub state for one Twitch broadcaster. */
 export class TwitchSubscription extends DurableObject<Env> {
   private readonly db: DrizzleSqliteDODatabase;
@@ -102,10 +101,10 @@ export class TwitchSubscription extends DurableObject<Env> {
 
   /** Adds or updates a subscriber, then reconciles Twitch EventSub state. */
   async addSubscriber(
-    broadcaster: z.input<typeof TwitchUser>,
+    broadcaster: TwitchUser,
     registration: TwitchSubscriberRegistrationInput,
   ): Promise<void> {
-    const validatedBroadcaster = TwitchUser.parse(broadcaster);
+    const validatedBroadcaster = TwitchBroadcaster.parse(broadcaster);
     const validated = TwitchSubscriberRegistration.parse(registration);
     const [existingSubscriber] = await this.db
       .select({ guildId: twitchSubscribers.guildId })
@@ -203,28 +202,23 @@ export class TwitchSubscription extends DurableObject<Env> {
   }
 
   /** Claims a live stream and queues one notification per subscriber. */
-  async streamOnline(
-    event: z.input<typeof TwitchStreamOnlineEvent>,
-  ): Promise<void> {
-    const validatedEvent = TwitchStreamOnlineEvent.parse(event);
-    const broadcaster = await this.requireBroadcaster(
-      validatedEvent.broadcaster_user_id,
-    );
-    const startedAt = new Date(validatedEvent.started_at);
+  async streamOnline(event: StreamOnlineQueueEvent): Promise<void> {
+    const broadcaster = await this.requireBroadcaster(event.broadcasterId);
+    const startedAt = parseIsoDate(event.startedAt, 'stream start');
     const client = new TwitchApiClient(this.env);
-    const liveStream = await client.getStreamByUserId(broadcaster.id);
-    if (liveStream?.id !== validatedEvent.id) {
-      throw new Error(`Twitch stream ${validatedEvent.id} is not live`);
+    const liveStream = await client.getStream(broadcaster.id);
+    if (liveStream?.id !== event.streamId) {
+      throw new Error(`Twitch stream ${event.streamId} is not live`);
     }
     const game =
       liveStream.gameId === ''
         ? undefined
-        : await client.getGameById(liveStream.gameId);
+        : await client.getGame(liveStream.gameId);
 
     const [stream] = await this.db
       .insert(streams)
       .values({
-        id: validatedEvent.id,
+        id: event.streamId,
         title:
           liveStream.title.trim() === ''
             ? `${broadcaster.displayName} is live`
@@ -278,15 +272,10 @@ export class TwitchSubscription extends DurableObject<Env> {
   }
 
   /** Refreshes delivered notifications from Twitch's current live stream. */
-  async channelUpdate(
-    event: z.input<typeof TwitchChannelUpdateEvent>,
-  ): Promise<void> {
-    const validatedEvent = TwitchChannelUpdateEvent.parse(event);
-    const broadcaster = await this.requireBroadcaster(
-      validatedEvent.broadcaster_user_id,
-    );
+  async channelUpdate(event: ChannelUpdateEvent): Promise<void> {
+    const broadcaster = await this.requireBroadcaster(event.broadcasterId);
     const client = new TwitchApiClient(this.env);
-    const liveStream = await client.getStreamByUserId(broadcaster.id);
+    const liveStream = await client.getStream(broadcaster.id);
     if (liveStream === undefined) return;
 
     const [stream] = await this.db
@@ -299,7 +288,7 @@ export class TwitchSubscription extends DurableObject<Env> {
     const game =
       liveStream.gameId === ''
         ? undefined
-        : await client.getGameById(liveStream.gameId);
+        : await client.getGame(liveStream.gameId);
     const [updatedStream] = await this.db
       .update(streams)
       .set({
@@ -331,16 +320,15 @@ export class TwitchSubscription extends DurableObject<Env> {
 
   /** Marks the current stream offline and edits delivered notifications. */
   async streamOffline(
-    event: z.input<typeof TwitchStreamOfflineEvent>,
+    event: StreamOfflineEvent,
     endedAtValue: string,
   ): Promise<void> {
-    const validatedEvent = TwitchStreamOfflineEvent.parse(event);
-    await this.requireBroadcaster(validatedEvent.broadcaster_user_id);
-    const endedAt = new Date(TwitchTimestamp.parse(endedAtValue));
+    await this.requireBroadcaster(event.broadcasterId);
+    const endedAt = parseIsoDate(endedAtValue, 'stream end');
     const [stream] = await this.db
       .select()
       .from(streams)
-      .where(eq(streams.id, validatedEvent.id))
+      .where(eq(streams.id, event.streamId))
       .limit(1);
     if (stream === undefined) return;
 
@@ -358,8 +346,8 @@ export class TwitchSubscription extends DurableObject<Env> {
     if (stream.vodUrl === null) {
       const delivery: TwitchVodLookupDelivery = {
         kind: 'twitch-vod-lookup',
-        broadcasterId: validatedEvent.broadcaster_user_id,
-        streamId: validatedEvent.id,
+        broadcasterId: event.broadcasterId,
+        streamId: event.streamId,
       };
       await this.env.SUBSCRIPTION_EVENTS.send(delivery, { delaySeconds: 30 });
     }
@@ -369,7 +357,7 @@ export class TwitchSubscription extends DurableObject<Env> {
   async enrichStreamVod(
     streamIdValue: string,
   ): Promise<'updated' | 'already-enriched' | 'not-found'> {
-    const streamId = TwitchStreamId.parse(streamIdValue);
+    const streamId = requireNonBlank(streamIdValue, 'Twitch stream ID');
     const [stream] = await this.db
       .select()
       .from(streams)
@@ -390,9 +378,7 @@ export class TwitchSubscription extends DurableObject<Env> {
     if (broadcaster === undefined) {
       throw new Error('Twitch broadcaster has not been registered');
     }
-    const vods = await new TwitchApiClient(this.env).getArchiveVideosByUserId(
-      TwitchBroadcasterId.parse(broadcaster.id),
-    );
+    const vods = await new TwitchApiClient(this.env).getVideos(broadcaster.id);
     const vod = vods.find((candidate) => candidate.streamId === stream.id);
     if (vod === undefined) return 'not-found';
 
@@ -418,7 +404,7 @@ export class TwitchSubscription extends DurableObject<Env> {
     streamId: string,
     receipt: DiscordMessageReceipt,
   ): Promise<void> {
-    const validatedStreamId = TwitchStreamId.parse(streamId);
+    const validatedStreamId = requireNonBlank(streamId, 'Twitch stream ID');
     const [message] = await this.db
       .update(streamMessages)
       .set({ messageId: receipt.messageId })
@@ -435,10 +421,7 @@ export class TwitchSubscription extends DurableObject<Env> {
   }
 
   /** Idempotently applies a queued EventSub message and repairs subscriptions. */
-  processEventSubMessage(
-    input: z.input<typeof TwitchEventSubDelivery>,
-  ): Promise<void> {
-    const delivery = TwitchEventSubDelivery.parse(input);
+  processEventSubMessage(delivery: TwitchEventSubDelivery): Promise<void> {
     const existing = this.eventSubProcessing.get(delivery.messageId);
     if (existing !== undefined) return existing;
 
@@ -453,8 +436,10 @@ export class TwitchSubscription extends DurableObject<Env> {
 
   /** Removes a revoked local subscription so reconciliation recreates it. */
   async revokeEventSub(subscriptionId: string): Promise<void> {
-    const validatedSubscriptionId =
-      TwitchEventSubSubscriptionId.parse(subscriptionId);
+    const validatedSubscriptionId = requireNonBlank(
+      subscriptionId,
+      'Twitch EventSub subscription ID',
+    );
     await this.db
       .delete(eventSubSubscriptions)
       .where(eq(eventSubSubscriptions.subscriptionId, validatedSubscriptionId));
@@ -482,8 +467,8 @@ export class TwitchSubscription extends DurableObject<Env> {
     if (subscriberCount === undefined) {
       throw new Error('Failed to count Twitch subscribers');
     }
-    const desiredSubscriptions: readonly DesiredEventSubSubscription[] =
-      subscriberCount.value === 0 ? [] : DESIRED_EVENTSUB_SUBSCRIPTIONS;
+    const desiredSubscriptions: readonly EventSubSubscriptionDefinition[] =
+      subscriberCount.value === 0 ? [] : TWITCH_EVENTSUB_SUBSCRIPTIONS;
     const client = new TwitchApiClient(this.env);
     const callback = new URL(
       `/twitch/eventsub/${broadcaster.id}`,
@@ -519,8 +504,11 @@ export class TwitchSubscription extends DurableObject<Env> {
         type: desired.type,
         version: desired.version,
         condition: { broadcaster_user_id: broadcaster.id },
-        callback,
-        secret: this.env.TWITCH_EVENTSUB_SECRET,
+        transport: {
+          method: 'webhook',
+          callback,
+          secret: this.env.TWITCH_EVENTSUB_SECRET,
+        },
       });
       await this.db
         .insert(eventSubSubscriptions)
@@ -538,7 +526,7 @@ export class TwitchSubscription extends DurableObject<Env> {
   }
 
   private async processEventSubMessageNow(
-    delivery: TwitchEventSubDeliveryType,
+    delivery: TwitchEventSubDelivery,
   ): Promise<void> {
     const [processed] = await this.db
       .select({ messageId: processedEventSubMessages.messageId })
@@ -585,10 +573,7 @@ export class TwitchSubscription extends DurableObject<Env> {
   }
 
   private async recordIncomingEventSubSubscription(
-    delivery: Exclude<
-      TwitchEventSubDeliveryType,
-      { kind: 'twitch-revocation' }
-    >,
+    delivery: Exclude<TwitchEventSubDelivery, { kind: 'twitch-revocation' }>,
   ): Promise<void> {
     await this.db
       .insert(eventSubSubscriptions)
@@ -616,14 +601,17 @@ export class TwitchSubscription extends DurableObject<Env> {
       `/twitch/eventsub/${broadcaster.id}`,
       this.env.PUBLIC_BASE_URL,
     ).toString();
-    for (const desired of DESIRED_EVENTSUB_SUBSCRIPTIONS) {
+    for (const desired of TWITCH_EVENTSUB_SUBSCRIPTIONS) {
       if (rows.some((row) => row.type === desired.type)) continue;
       const created = await client.createEventSubSubscription({
         type: desired.type,
         version: desired.version,
         condition: { broadcaster_user_id: broadcaster.id },
-        callback,
-        secret: this.env.TWITCH_EVENTSUB_SECRET,
+        transport: {
+          method: 'webhook',
+          callback,
+          secret: this.env.TWITCH_EVENTSUB_SECRET,
+        },
       });
       await this.db
         .insert(eventSubSubscriptions)
@@ -648,9 +636,7 @@ export class TwitchSubscription extends DurableObject<Env> {
     await this.reconcile();
   }
 
-  private async requireBroadcaster(
-    broadcasterId: TwitchBroadcasterId,
-  ): Promise<TwitchUser> {
+  private async requireBroadcaster(broadcasterId: string): Promise<TwitchUser> {
     const broadcaster = await this.getBroadcaster();
     if (broadcaster === undefined) {
       throw new Error('Twitch broadcaster has not been registered');
@@ -660,7 +646,7 @@ export class TwitchSubscription extends DurableObject<Env> {
         `Twitch broadcaster ${broadcasterId} does not match ${broadcaster.id}`,
       );
     }
-    return TwitchUser.parse(broadcaster);
+    return broadcaster;
   }
 
   private async queueStreamUpdates(
@@ -759,7 +745,7 @@ export class TwitchSubscription extends DurableObject<Env> {
 }
 
 function eventSubTypeForDelivery(
-  delivery: Exclude<TwitchEventSubDeliveryType, { kind: 'twitch-revocation' }>,
+  delivery: Exclude<TwitchEventSubDelivery, { kind: 'twitch-revocation' }>,
 ): string {
   switch (delivery.kind) {
     case 'twitch-channel-update':
@@ -776,12 +762,9 @@ async function getRemoteSubscription(
   id: string,
 ): Promise<TwitchEventSubSubscription | undefined> {
   try {
-    return await client.getEventSubSubscriptionById(
-      TwitchEventSubSubscriptionId.parse(id),
-    );
+    return await client.getEventSubSubscription(id);
   } catch (error) {
-    if (error instanceof TwitchApiError && error.status === 404)
-      return undefined;
+    if (isTwitchApiErrorStatus(error, 404)) return undefined;
     throw error;
   }
 }
@@ -791,17 +774,15 @@ async function deleteRemoteSubscription(
   id: string,
 ): Promise<void> {
   try {
-    await client.deleteEventSubSubscription(
-      TwitchEventSubSubscriptionId.parse(id),
-    );
+    await client.deleteEventSubSubscription(id);
   } catch (error) {
-    if (!(error instanceof TwitchApiError) || error.status !== 404) throw error;
+    if (!isTwitchApiErrorStatus(error, 404)) throw error;
   }
 }
 
 function isDesiredSubscription(
   subscription: TwitchEventSubSubscription | undefined,
-  desired: DesiredEventSubSubscription,
+  desired: EventSubSubscriptionDefinition,
   broadcasterId: string,
   callback: string,
 ): boolean {
@@ -813,4 +794,23 @@ function isDesiredSubscription(
     subscription.transport.callback === callback &&
     ACTIVE_EVENTSUB_STATUSES.has(subscription.status)
   );
+}
+
+function isTwitchApiErrorStatus(error: unknown, status: number): boolean {
+  return error instanceof Error && 'status' in error && error.status === status;
+}
+
+function requireNonBlank(value: string, name: string): string {
+  if (value.trim() === '') {
+    throw new Error(`${name} must not be blank`);
+  }
+  return value;
+}
+
+function parseIsoDate(value: string, name: string): Date {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`${name} must be an ISO timestamp`);
+  }
+  return date;
 }

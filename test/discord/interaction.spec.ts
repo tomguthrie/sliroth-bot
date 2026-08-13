@@ -404,6 +404,33 @@ describe('Discord interactions', () => {
     });
   });
 
+  it('reports a Twitch channel that cannot be resolved', async () => {
+    const requests = mockTwitchApi(TWITCH_ADD_BROADCASTER_ID, 'missing', false);
+    const ctx = createExecutionContext();
+
+    const response = await handleDiscordInteraction(
+      await createSignedRequest(createTwitchAddInteraction('missing')),
+      env,
+      ctx,
+    );
+    expect(await deferredInteractionBody(response)).toEqual({
+      type: 5,
+      flags: 64,
+    });
+    await waitOnExecutionContext(ctx);
+
+    const editRequest = requests.find(
+      (request) =>
+        request.method === 'PATCH' &&
+        request.url.includes('/messages/@original'),
+    );
+    expect(await editRequest?.json()).toEqual({
+      content:
+        'That Twitch channel could not be resolved. Try its login, numeric broadcaster ID, or full channel URL.',
+      allowed_mentions: { parse: [] },
+    });
+  });
+
   it('lists Twitch subscriptions with the current channel first', async () => {
     const requests = mockTwitchApi(TWITCH_LIST_BROADCASTER_ID, 'sliroth');
     const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(
@@ -632,7 +659,11 @@ function createTwitchRemoveInteraction() {
   };
 }
 
-function mockTwitchApi(broadcasterId: string, login: string): Request[] {
+function mockTwitchApi(
+  broadcasterId: string,
+  login: string,
+  found = true,
+): Request[] {
   const requests: Request[] = [];
   const subscriptions = new Map<string, Record<string, unknown>>();
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -644,15 +675,17 @@ function mockTwitchApi(broadcasterId: string, login: string): Request[] {
     }
     if (request.url.startsWith('https://api.twitch.tv/helix/users')) {
       return Response.json({
-        data: [
-          {
-            id: broadcasterId,
-            login,
-            display_name: 'Sliroth',
-            profile_image_url: 'https://example.com/profile.png',
-            offline_image_url: 'https://example.com/offline.png',
-          },
-        ],
+        data: found
+          ? [
+              {
+                id: broadcasterId,
+                login,
+                display_name: 'Sliroth',
+                profile_image_url: 'https://example.com/profile.png',
+                offline_image_url: 'https://example.com/offline.png',
+              },
+            ]
+          : [],
       });
     }
     if (
@@ -681,7 +714,7 @@ function mockTwitchApi(broadcasterId: string, login: string): Request[] {
         return Response.json({ data: [subscription] });
       }
       if (request.method === 'GET') {
-        const id = new URL(request.url).searchParams.get('subscription_id');
+        const id = new URL(request.url).searchParams.get('id');
         const subscription = id === null ? undefined : subscriptions.get(id);
         return Response.json({ data: subscription ? [subscription] : [] });
       }

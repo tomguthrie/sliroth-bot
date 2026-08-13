@@ -1,67 +1,159 @@
-import { describe, expect, it, vi } from 'vitest';
+import { env } from 'cloudflare:workers';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { resolveTwitchChannel } from '../../src/twitch/channel';
-import type { TwitchApiClient, TwitchUser } from '../../src/twitch/client';
-import { TwitchBroadcasterId, TwitchLogin } from '../../src/twitch/data';
+import {
+  isTwitchChannelId,
+  isTwitchChannelLogin,
+  parseTwitchChannelLogin,
+  resolveTwitchChannel,
+} from '../../src/twitch/channel';
 
-const USER: TwitchUser = {
-  id: TwitchBroadcasterId.parse('123'),
-  login: TwitchLogin.parse('sliroth'),
-  displayName: 'Sliroth',
-  profileImageUrl: 'https://example.com/profile.png',
-  offlineImageUrl: 'https://example.com/offline.png',
-};
+const { getUserById, getUserByLogin } = vi.hoisted(() => ({
+  getUserById: vi.fn(),
+  getUserByLogin: vi.fn(),
+}));
 
-function client() {
-  return {
-    getUserById: vi.fn().mockResolvedValue(USER),
-    getUserByLogin: vi.fn().mockResolvedValue(USER),
-  } satisfies Pick<TwitchApiClient, 'getUserById' | 'getUserByLogin'>;
-}
+vi.mock('../../src/twitch/client', () => ({
+  TwitchApiClient: class {
+    getUserById = getUserById;
+    getUserByLogin = getUserByLogin;
+  },
+}));
+
+describe('isTwitchChannelId', () => {
+  it('accepts numeric broadcaster IDs', () => {
+    expect(isTwitchChannelId('123')).toBe(true);
+    expect(isTwitchChannelId('987654321')).toBe(true);
+  });
+
+  it('rejects non-numeric values', () => {
+    expect(isTwitchChannelId('sliroth')).toBe(false);
+    expect(isTwitchChannelId('123abc')).toBe(false);
+    expect(isTwitchChannelId('')).toBe(false);
+    expect(isTwitchChannelId(' 123 ')).toBe(false);
+  });
+});
+
+describe('isTwitchChannelLogin', () => {
+  it('accepts valid Twitch logins', () => {
+    expect(isTwitchChannelLogin('sliroth')).toBe(true);
+    expect(isTwitchChannelLogin('some_user')).toBe(true);
+    expect(isTwitchChannelLogin('User123')).toBe(true);
+  });
+
+  it('rejects invalid Twitch logins', () => {
+    expect(isTwitchChannelLogin('abc')).toBe(false);
+    expect(isTwitchChannelLogin('this-login')).toBe(false);
+    expect(isTwitchChannelLogin('has space')).toBe(false);
+    expect(isTwitchChannelLogin('')).toBe(false);
+    expect(isTwitchChannelLogin('a'.repeat(26))).toBe(false);
+  });
+});
+
+describe('parseTwitchChannelName', () => {
+  it('returns a bare Twitch login unchanged', () => {
+    expect(parseTwitchChannelLogin('sliroth')).toBe('sliroth');
+  });
+
+  it('extracts the login from a Twitch channel URL', () => {
+    expect(parseTwitchChannelLogin('https://twitch.tv/sliroth')).toBe(
+      'sliroth',
+    );
+  });
+
+  it('accepts www Twitch URLs', () => {
+    expect(parseTwitchChannelLogin('https://www.twitch.tv/sliroth')).toBe(
+      'sliroth',
+    );
+  });
+
+  it('accepts a trailing slash', () => {
+    expect(parseTwitchChannelLogin('https://twitch.tv/sliroth/')).toBe(
+      'sliroth',
+    );
+  });
+
+  it('accepts http Twitch URLs', () => {
+    expect(parseTwitchChannelLogin('http://twitch.tv/sliroth')).toBe('sliroth');
+  });
+
+  it('rejects non-Twitch URLs', () => {
+    expect(
+      parseTwitchChannelLogin('https://example.com/sliroth'),
+    ).toBeUndefined();
+  });
+
+  it('rejects non-channel Twitch URLs', () => {
+    expect(
+      parseTwitchChannelLogin('https://twitch.tv/directory/category'),
+    ).toBeUndefined();
+  });
+
+  it('rejects invalid input', () => {
+    expect(parseTwitchChannelLogin('not a channel')).toBeUndefined();
+  });
+});
 
 describe('resolveTwitchChannel', () => {
-  it('resolves a numeric broadcaster ID', async () => {
-    const twitch = client();
-
-    await expect(resolveTwitchChannel('123', twitch)).resolves.toBe(USER);
-    expect(twitch.getUserById).toHaveBeenCalledWith('123');
-    expect(twitch.getUserByLogin).not.toHaveBeenCalled();
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it.each([
-    'sliroth',
-    '@sliroth',
-    'https://twitch.tv/sliroth',
-    'https://www.twitch.tv/sliroth/videos',
-    'https://m.twitch.tv/sliroth/about',
-  ])('resolves a Twitch login input: %s', async (input) => {
-    const twitch = client();
+  it('resolves numeric input by broadcaster ID', async () => {
+    const user = {
+      id: '123',
+      login: 'sliroth',
+    };
 
-    await expect(resolveTwitchChannel(input, twitch)).resolves.toBe(USER);
-    expect(twitch.getUserByLogin).toHaveBeenCalledWith('sliroth');
+    getUserById.mockResolvedValue(user);
+
+    await expect(resolveTwitchChannel('123', env)).resolves.toBe(user);
+
+    expect(getUserById).toHaveBeenCalledWith('123');
+    expect(getUserByLogin).not.toHaveBeenCalled();
   });
 
-  it.each([
-    '',
-    'not a login',
-    'https://example.com/sliroth',
-    'http://twitch.tv/sliroth',
-    'https://twitch.tv/directory',
-    'https://twitch.tv/',
-  ])('rejects an unsupported channel input: %s', async (input) => {
-    const twitch = client();
+  it('resolves a login by login name', async () => {
+    const user = {
+      id: '123',
+      login: 'sliroth',
+    };
 
-    await expect(resolveTwitchChannel(input, twitch)).rejects.toThrow();
-    expect(twitch.getUserById).not.toHaveBeenCalled();
-    expect(twitch.getUserByLogin).not.toHaveBeenCalled();
+    getUserByLogin.mockResolvedValue(user);
+
+    await expect(resolveTwitchChannel('sliroth', env)).resolves.toBe(user);
+
+    expect(getUserByLogin).toHaveBeenCalledWith('sliroth');
+    expect(getUserById).not.toHaveBeenCalled();
   });
 
-  it('reports a Twitch channel that does not exist', async () => {
-    const twitch = client();
-    twitch.getUserByLogin.mockResolvedValue(undefined);
+  it('resolves a Twitch URL by extracted login', async () => {
+    const user = {
+      id: '123',
+      login: 'sliroth',
+    };
 
-    await expect(resolveTwitchChannel('missing', twitch)).rejects.toThrow(
-      'was not found',
-    );
+    getUserByLogin.mockResolvedValue(user);
+
+    await expect(
+      resolveTwitchChannel('https://twitch.tv/sliroth', env),
+    ).resolves.toBe(user);
+
+    expect(getUserByLogin).toHaveBeenCalledWith('sliroth');
+  });
+
+  it('returns undefined when the channel cannot be parsed', async () => {
+    await expect(
+      resolveTwitchChannel('not a twitch channel', env),
+    ).resolves.toBeUndefined();
+
+    expect(getUserById).not.toHaveBeenCalled();
+    expect(getUserByLogin).not.toHaveBeenCalled();
+  });
+
+  it('returns undefined when Twitch does not find the channel', async () => {
+    getUserByLogin.mockResolvedValue(undefined);
+
+    await expect(resolveTwitchChannel('sliroth', env)).resolves.toBeUndefined();
   });
 });

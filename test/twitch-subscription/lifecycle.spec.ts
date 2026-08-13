@@ -74,12 +74,11 @@ describe('Twitch stream lifecycle', () => {
       });
 
       await instance.streamOnline({
-        id: '9001',
-        broadcaster_user_id: BROADCASTER_ID,
-        broadcaster_user_login: 'sliroth',
-        broadcaster_user_name: 'Sliroth',
-        type: 'live',
-        started_at: '2026-06-05T17:28:00.000Z',
+        streamId: '9001',
+        broadcasterId: BROADCASTER_ID,
+        broadcasterLogin: 'sliroth',
+        broadcasterName: 'Sliroth',
+        startedAt: '2026-06-05T17:28:00.000Z',
       });
 
       expect(batches).toHaveLength(1);
@@ -173,10 +172,10 @@ describe('Twitch stream lifecycle', () => {
 
       await instance.streamOffline(
         {
-          id: '9001',
-          broadcaster_user_id: BROADCASTER_ID,
-          broadcaster_user_login: 'sliroth',
-          broadcaster_user_name: 'Sliroth',
+          streamId: '9001',
+          broadcasterId: BROADCASTER_ID,
+          broadcasterLogin: 'sliroth',
+          broadcasterName: 'Sliroth',
         },
         '2026-06-05T23:51:08.000Z',
       );
@@ -322,14 +321,14 @@ function createMockTwitchStream(
 
 function channelUpdateEvent() {
   return {
-    broadcaster_user_id: BROADCASTER_ID,
-    broadcaster_user_login: 'sliroth',
-    broadcaster_user_name: 'Sliroth',
+    broadcasterId: BROADCASTER_ID,
+    broadcasterLogin: 'sliroth',
+    broadcasterName: 'Sliroth',
     title: 'Building a Discord bot',
     language: 'en',
-    category_id: '84',
-    category_name: 'Science & Technology',
-    content_classification_labels: [],
+    gameId: '84',
+    gameName: 'Science & Technology',
+    contentClassificationLabels: [],
   };
 }
 
@@ -371,10 +370,14 @@ function mockTwitchApi(getStream: () => MockTwitchStream | undefined): void {
               user_login: 'sliroth',
               user_name: 'Sliroth',
               title: 'Summer Game Fest 2026 | !discord !youtube',
+              description: '',
               created_at: '2026-06-05T17:28:00.000Z',
               published_at: '2026-06-05T17:28:00.000Z',
               url: 'https://twitch.tv/videos/1234567890',
               thumbnail_url: 'https://static.example.com/vod.jpg',
+              viewable: 'public',
+              view_count: 10,
+              language: 'en',
               type: 'archive',
               duration: '6h23m8s',
             },

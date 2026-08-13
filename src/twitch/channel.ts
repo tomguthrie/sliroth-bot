@@ -1,72 +1,57 @@
-import * as z from 'zod';
+import { TwitchApiClient, TwitchUser } from './client';
 
-import type { TwitchApiClient, TwitchUser } from './client';
-import { TwitchBroadcasterId, TwitchLogin } from './data';
+/** Returns whether the input is a numeric Twitch broadcaster ID. */
+export function isTwitchChannelId(input: string): boolean {
+  return /^\d+$/.test(input);
+}
 
-const TwitchChannelUrl = z
-  .url({
-    protocol: /^https$/,
-    hostname: /^(?:www\.|m\.)?twitch\.tv$/i,
-  })
-  .transform((value) => new URL(value).pathname)
-  .pipe(z.string().regex(/^\/[^/]+(?:\/|$)/))
-  .transform((pathname) => pathname.replace(/^\/([^/]+).*$/, '$1'))
-  .pipe(TwitchLogin);
+/** Returns whether the input is a valid Twitch login name. */
+export function isTwitchChannelLogin(input: string): boolean {
+  return /^[a-zA-Z0-9_]{4,25}$/.test(input);
+}
 
-const TwitchChannelReference = z
-  .string()
-  .trim()
-  .min(1)
-  .pipe(
-    z.union([
-      TwitchBroadcasterId.transform(
-        (value): { type: 'id'; value: TwitchBroadcasterId } => ({
-          type: 'id',
-          value,
-        }),
-      ),
-      TwitchChannelUrl.transform(
-        (value): { type: 'login'; value: TwitchLogin } => ({
-          type: 'login',
-          value,
-        }),
-      ),
-      TwitchLogin.transform((value): { type: 'login'; value: TwitchLogin } => ({
-        type: 'login',
-        value,
-      })),
-    ]),
-  );
+/**
+ * Parses a Twitch channel name from either a bare login name or a Twitch channel URL.
+ *
+ * @param input Twitch login or channel URL.
+ * @returns The channel login, or `undefined` if the input is not a supported
+ * Twitch channel reference.
+ */
+export function parseTwitchChannelLogin(input: string): string | undefined {
+  if (isTwitchChannelLogin(input)) {
+    return input;
+  }
 
-export class TwitchChannelResolutionError extends Error {}
+  const match =
+    /^https?:\/\/(?:www\.)?twitch\.tv\/([a-zA-Z0-9_]{4,25})\/?$/.exec(input);
 
-/** Resolves a Twitch login, numeric broadcaster ID, or channel URL. */
+  return match?.[1];
+}
+
+/**
+ * Resolves a Twitch broadcaster ID, login name, or channel URL to a Twitch user.
+ *
+ * @param input Twitch broadcaster ID, login name, or channel URL.
+ * @param env Cloudflare Worker bindings used to access the Twitch API.
+ * @returns The matching Twitch user, or `undefined` if the input is invalid or
+ * no matching user exists.
+ * @throws If the Twitch API request fails or returns an invalid response.
+ */
 export async function resolveTwitchChannel(
   input: string,
-  client: Pick<TwitchApiClient, 'getUserById' | 'getUserByLogin'>,
-): Promise<TwitchUser> {
-  const reference = TwitchChannelReference.safeParse(input);
-  if (!reference.success) {
-    throw new TwitchChannelResolutionError('Invalid Twitch channel', {
-      cause: reference.error,
-    });
+  env: Env,
+): Promise<TwitchUser | undefined> {
+  const client = new TwitchApiClient(env);
+
+  if (isTwitchChannelId(input)) {
+    return client.getUserById(input);
   }
-  let user: TwitchUser | undefined;
-  try {
-    user =
-      reference.data.type === 'id'
-        ? await client.getUserById(reference.data.value)
-        : await client.getUserByLogin(reference.data.value);
-  } catch (error) {
-    throw new TwitchChannelResolutionError(
-      'Twitch channel could not be loaded',
-      {
-        cause: error,
-      },
-    );
+
+  const login = parseTwitchChannelLogin(input);
+
+  if (login !== undefined) {
+    return client.getUserByLogin(login);
   }
-  if (user === undefined) {
-    throw new TwitchChannelResolutionError('Twitch channel was not found');
-  }
-  return user;
+
+  return undefined;
 }

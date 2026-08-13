@@ -13,9 +13,8 @@ import {
   deliverSubscriptionEventBatch,
   type TwitchVodLookupDelivery,
 } from '../../src/queue/subscription-event';
-import { TwitchBroadcasterId, TwitchStreamId } from '../../src/twitch/data';
 
-const STREAM_ID = TwitchStreamId.parse('9001');
+const STREAM_ID = '9001';
 
 beforeEach(async () => {
   await env.TOKEN_STORE.delete('twitch');
@@ -63,9 +62,7 @@ async function consumeMissingVod(attempts: number): Promise<{
   queueResult: QueueResult;
   retryDelaySeconds: number | undefined;
 }> {
-  const broadcasterId = TwitchBroadcasterId.parse(
-    `12345678901234567${attempts}`,
-  );
+  const broadcasterId = `12345678901234567${attempts}`;
   const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId);
   await runInDurableObject(subscription, async (_instance, state) => {
     const database = drizzle(state.storage);
