@@ -2,6 +2,8 @@ import * as z from 'zod';
 
 import { getAccessToken } from './auth';
 
+type QueryParams = Record<string, string | number | boolean | undefined>;
+
 class TwitchApiError extends Error {
   constructor(
     message: string,
@@ -183,12 +185,21 @@ export class TwitchApiClient {
 
   private async fetch(
     path: string,
+    query?: QueryParams,
     init?: RequestInit,
     retryOnUnauthorized = true,
   ): Promise<Response> {
     const accessToken = await this.getAccessToken();
 
-    const response = await fetch(`https://api.twitch.tv/helix/${path}`, {
+    const url = new URL(path, 'https://api.twitch.tv/helix/');
+
+    for (const [key, value] of Object.entries(query ?? {})) {
+      if (value !== undefined) {
+        url.searchParams.set(key, String(value));
+      }
+    }
+
+    const response = await fetch(url, {
       ...init,
       headers: {
         'Client-ID': this.env.TWITCH_CLIENT_ID,
@@ -200,7 +211,7 @@ export class TwitchApiClient {
     if (response.status === 401 && retryOnUnauthorized) {
       this.accessToken = undefined;
 
-      return this.fetch(path, init, false);
+      return this.fetch(path, query, init, false);
     }
 
     if (!response.ok) {
@@ -240,9 +251,10 @@ export class TwitchApiClient {
   private async request<T extends z.ZodType>(
     path: string,
     schema: T,
+    query?: QueryParams,
     init?: RequestInit,
   ): Promise<z.output<T>[]> {
-    const response = await this.fetch(path, init);
+    const response = await this.fetch(path, query, init);
 
     return z
       .object({
@@ -254,13 +266,18 @@ export class TwitchApiClient {
   private async requestOne<T extends z.ZodType>(
     path: string,
     schema: T,
+    query?: QueryParams,
   ): Promise<z.output<T> | undefined> {
-    const [result] = await this.request(path, schema);
+    const [result] = await this.request(path, schema, query);
     return result;
   }
 
-  private async requestEmpty(path: string, init?: RequestInit): Promise<void> {
-    await this.fetch(path, init);
+  private async requestEmpty(
+    path: string,
+    query?: QueryParams,
+    init?: RequestInit,
+  ): Promise<void> {
+    await this.fetch(path, query, init);
   }
 
   /**
@@ -270,10 +287,9 @@ export class TwitchApiClient {
    * @returns The matching user, or `undefined` if no user exists with that ID.
    */
   async getUserById(userId: string): Promise<TwitchUser | undefined> {
-    return this.requestOne(
-      `users?id=${encodeURIComponent(userId)}`,
-      TwitchUser,
-    );
+    return this.requestOne('users', TwitchUser, {
+      id: userId,
+    });
   }
 
   /**
@@ -283,10 +299,9 @@ export class TwitchApiClient {
    * @returns The matching user, or `undefined` if no user exists with that login.
    */
   async getUserByLogin(login: string): Promise<TwitchUser | undefined> {
-    return this.requestOne(
-      `users?login=${encodeURIComponent(login)}`,
-      TwitchUser,
-    );
+    return this.requestOne('users', TwitchUser, {
+      login,
+    });
   }
 
   /**
@@ -296,10 +311,9 @@ export class TwitchApiClient {
    * @returns The live stream, or `undefined` if the broadcaster is offline.
    */
   async getStream(broadcasterId: string): Promise<TwitchStream | undefined> {
-    return this.requestOne(
-      `streams?user_id=${encodeURIComponent(broadcasterId)}`,
-      TwitchStream,
-    );
+    return this.requestOne('streams', TwitchStream, {
+      user_id: broadcasterId,
+    });
   }
 
   /**
@@ -309,10 +323,9 @@ export class TwitchApiClient {
    * @returns The matching game, or `undefined` if no game exists with that ID.
    */
   async getGame(gameId: string): Promise<TwitchGame | undefined> {
-    return this.requestOne(
-      `games?id=${encodeURIComponent(gameId)}`,
-      TwitchGame,
-    );
+    return this.requestOne('games', TwitchGame, {
+      id: gameId,
+    });
   }
 
   /**
@@ -323,10 +336,11 @@ export class TwitchApiClient {
    * @returns Archive videos, or an empty array if the broadcaster has no VODs.
    */
   async getVideos(broadcasterId: string, first = 20): Promise<TwitchVideo[]> {
-    return this.request(
-      `videos?user_id=${encodeURIComponent(broadcasterId)}&type=archive&first=${first}`,
-      TwitchVideo,
-    );
+    return this.request('videos', TwitchVideo, {
+      user_id: broadcasterId,
+      type: 'archive',
+      first,
+    });
   }
 
   /**
@@ -342,6 +356,7 @@ export class TwitchApiClient {
     const [result] = await this.request(
       'eventsub/subscriptions',
       TwitchEventSubSubscription,
+      undefined,
       {
         method: 'POST',
         headers: {
@@ -368,8 +383,11 @@ export class TwitchApiClient {
     subscriptionId: string,
   ): Promise<TwitchEventSubSubscription | undefined> {
     return this.requestOne(
-      `eventsub/subscriptions?id=${encodeURIComponent(subscriptionId)}`,
+      'eventsub/subscriptions',
       TwitchEventSubSubscription,
+      {
+        id: subscriptionId,
+      },
     );
   }
 
@@ -380,7 +398,10 @@ export class TwitchApiClient {
    */
   async deleteEventSubSubscription(subscriptionId: string): Promise<void> {
     await this.requestEmpty(
-      `eventsub/subscriptions?id=${encodeURIComponent(subscriptionId)}`,
+      'eventsub/subscriptions',
+      {
+        id: subscriptionId,
+      },
       {
         method: 'DELETE',
       },
