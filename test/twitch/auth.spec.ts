@@ -1,10 +1,12 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 
 import { getAccessToken, refreshAccessToken } from '../../src/twitch/auth';
 
 const ACCESS_TOKEN_KEY = 'twitch';
 const ACCESS_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
+let tokenRequestLogger: MockInstance;
 
 function requestUrl(input: RequestInfo | URL | undefined): string | undefined {
   if (input instanceof Request) return input.url;
@@ -21,6 +23,9 @@ function tokenResponse(accessToken: string, expiresIn = 3_600): Response {
 
 beforeEach(async () => {
   await env.TOKEN_STORE.delete(ACCESS_TOKEN_KEY);
+  tokenRequestLogger = vi
+    .spyOn(console, 'info')
+    .mockImplementation(() => undefined);
 });
 
 afterEach(() => {
@@ -34,6 +39,7 @@ describe('getAccessToken', () => {
 
     await expect(getAccessToken(env)).resolves.toBe('cached-token');
     expect(fetcher).not.toHaveBeenCalled();
+    expect(tokenRequestLogger).not.toHaveBeenCalled();
   });
 
   it('requests and caches an access token until 80% of its expiry', async () => {
@@ -54,6 +60,10 @@ describe('getAccessToken', () => {
     expect(key?.expiration).toBeLessThanOrEqual(before + 2_881);
 
     expect(fetcher).toHaveBeenCalledOnce();
+    expect(tokenRequestLogger).toHaveBeenCalledOnce();
+    expect(tokenRequestLogger).toHaveBeenCalledWith({
+      event: 'twitch_token_requested',
+    });
     const [input, init] = fetcher.mock.calls[0] ?? [];
     expect(requestUrl(input)).toBe(ACCESS_TOKEN_URL);
     expect(init?.method).toBe('POST');
@@ -65,6 +75,27 @@ describe('getAccessToken', () => {
     ).toBe(
       `client_id=${env.TWITCH_CLIENT_ID}&client_secret=${env.TWITCH_CLIENT_SECRET}&grant_type=client_credentials`,
     );
+  });
+
+  it('requests a token when the cache read fails', async () => {
+    vi.spyOn(env.TOKEN_STORE, 'get').mockRejectedValueOnce(
+      new Error('KV read failed'),
+    );
+    const fetcher = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(tokenResponse('new-token'));
+
+    await expect(getAccessToken(env)).resolves.toBe('new-token');
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it('returns a fetched token when the cache write fails', async () => {
+    vi.spyOn(env.TOKEN_STORE, 'put').mockRejectedValueOnce(
+      new Error('KV write failed'),
+    );
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(tokenResponse('new-token'));
+
+    await expect(getAccessToken(env)).resolves.toBe('new-token');
   });
 
   it('rejects an unsuccessful token request without caching a value', async () => {
@@ -111,6 +142,18 @@ describe('refreshAccessToken', () => {
     await expect(env.TOKEN_STORE.get(ACCESS_TOKEN_KEY)).resolves.toBe(
       'replacement-token',
     );
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it('requests a replacement when cache eviction fails', async () => {
+    vi.spyOn(env.TOKEN_STORE, 'delete').mockRejectedValueOnce(
+      new Error('KV delete failed'),
+    );
+    const fetcher = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(tokenResponse('replacement-token'));
+
+    await expect(refreshAccessToken(env)).resolves.toBe('replacement-token');
     expect(fetcher).toHaveBeenCalledOnce();
   });
 
