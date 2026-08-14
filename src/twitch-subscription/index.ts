@@ -1,7 +1,7 @@
 import * as z from 'zod';
 
 import { DiscordSnowflake } from '../discord/snowflake';
-import { TwitchBroadcasterId } from '../twitch/data';
+import { isTwitchBroadcasterId } from '../twitch';
 
 const NonBlankString = z.string().refine((value) => value.trim() !== '');
 
@@ -16,7 +16,7 @@ export type TwitchSubscriptionMetadata = z.infer<
 
 export interface GuildTwitchSubscription {
   discordChannelId: DiscordSnowflake;
-  twitchBroadcasterId: TwitchBroadcasterId;
+  twitchBroadcasterId: string;
   twitchBroadcasterLogin: string;
   twitchBroadcasterDisplayName: string;
 }
@@ -65,19 +65,18 @@ export async function listGuildTwitchSubscriptions(
 export async function listChannelTwitchSubscriptions(
   index: KVNamespace,
   channelId: string,
-): Promise<TwitchBroadcasterId[]> {
+): Promise<string[]> {
   DiscordSnowflake.parse(channelId);
   const prefix = `channel:${channelId}:twitch:`;
   const page = await index.list({ prefix });
 
   return page.keys.flatMap((key) => {
     const broadcasterId = key.name.slice(prefix.length);
-    const result = TwitchBroadcasterId.safeParse(broadcasterId);
-    if (!result.success) {
+    if (!isTwitchBroadcasterId(broadcasterId)) {
       logInvalidIndexKey(key.name);
       return [];
     }
-    return [result.data];
+    return [broadcasterId];
   });
 }
 
@@ -95,13 +94,11 @@ function parseGuildTwitchSubscriptionKey(
 
   const discordChannelId = suffix.slice(0, separatorOffset);
   const twitchBroadcasterId = suffix.slice(separatorOffset + separator.length);
-  const parsedBroadcasterId =
-    TwitchBroadcasterId.safeParse(twitchBroadcasterId);
   const parsedDiscordChannelId = DiscordSnowflake.safeParse(discordChannelId);
   const parsedMetadata = TwitchSubscriptionMetadata.safeParse(metadata);
   if (
     !parsedDiscordChannelId.success ||
-    !parsedBroadcasterId.success ||
+    !isTwitchBroadcasterId(twitchBroadcasterId) ||
     !parsedMetadata.success
   ) {
     return undefined;
@@ -109,7 +106,7 @@ function parseGuildTwitchSubscriptionKey(
 
   return {
     discordChannelId: parsedDiscordChannelId.data,
-    twitchBroadcasterId: parsedBroadcasterId.data,
+    twitchBroadcasterId,
     twitchBroadcasterLogin: parsedMetadata.data.login,
     twitchBroadcasterDisplayName: parsedMetadata.data.displayName,
   };
