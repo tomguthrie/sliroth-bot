@@ -28,7 +28,7 @@ type AccessToken = z.infer<typeof AccessToken>;
  */
 export async function getAccessToken(env: Env): Promise<string> {
   const cached = await loadCachedAccessToken(env);
-  if (cached !== null) {
+  if (cached !== null && /^[A-Za-z0-9._~+/-]+=*$/.test(cached)) {
     return cached;
   }
 
