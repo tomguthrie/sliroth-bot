@@ -7,7 +7,8 @@ export function isTwitchBroadcasterId(input: string): boolean {
 
 /** Returns whether the input is a valid Twitch login name. */
 export function isTwitchChannelLogin(input: string): boolean {
-  return /^[a-zA-Z0-9_]{4,25}$/.test(input);
+  // Twitch allows logins as short as 3 characters for legacy accounts (e.g. "xqc").
+  return /^[a-zA-Z0-9_]{3,25}$/.test(input);
 }
 
 /**
@@ -23,7 +24,7 @@ export function parseTwitchChannelLogin(input: string): string | undefined {
   }
 
   const match =
-    /^https?:\/\/(?:www\.)?twitch\.tv\/([a-zA-Z0-9_]{4,25})\/?$/.exec(input);
+    /^https?:\/\/(?:www\.)?twitch\.tv\/([a-zA-Z0-9_]{3,25})\/?$/.exec(input);
 
   return match?.[1];
 }

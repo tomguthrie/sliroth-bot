@@ -39,10 +39,11 @@ describe('isTwitchChannelLogin', () => {
     expect(isTwitchChannelLogin('sliroth')).toBe(true);
     expect(isTwitchChannelLogin('some_user')).toBe(true);
     expect(isTwitchChannelLogin('User123')).toBe(true);
+    expect(isTwitchChannelLogin('xqc')).toBe(true);
   });
 
   it('rejects invalid Twitch logins', () => {
-    expect(isTwitchChannelLogin('abc')).toBe(false);
+    expect(isTwitchChannelLogin('ab')).toBe(false);
     expect(isTwitchChannelLogin('this-login')).toBe(false);
     expect(isTwitchChannelLogin('has space')).toBe(false);
     expect(isTwitchChannelLogin('')).toBe(false);
