@@ -1,77 +1,34 @@
-import * as z from 'zod';
-
 import { toLoggableError } from '../log';
-import {
-  TwitchBroadcasterId,
-  TwitchEventSubSubscriptionId,
-  TwitchStreamId,
-  TwitchTimestamp,
-} from '../twitch/data';
-import {
-  TwitchChannelUpdateEvent,
-  TwitchStreamOfflineEvent,
-  TwitchStreamOnlineEvent,
-} from '../twitch/event-sub/events';
-import { YouTubeChannelId } from '../youtube/data';
-import { YouTubeVideoNotification } from '../youtube/notification';
+import type {
+  EventSubNotification,
+  EventSubRevocation,
+} from '../twitch/eventsub';
+import type { YouTubeChannelId } from '../youtube/data';
+import type { YouTubeVideoNotification } from '../youtube/notification';
 
 export const SUBSCRIPTION_EVENTS_QUEUE = 'subscription-events';
 
-export const EventSubMessageId = z.string().min(1).brand<'EventSubMessageId'>();
-export type EventSubMessageId = z.infer<typeof EventSubMessageId>;
+export interface TwitchEventSubDelivery {
+  kind: 'twitch-eventsub';
+  messageId: string;
+  timestamp: string;
+  message: EventSubNotification | EventSubRevocation;
+}
 
-const TwitchEventSubDeliveryBase = z.object({
-  messageId: EventSubMessageId,
-  broadcasterId: TwitchBroadcasterId,
-  subscriptionId: TwitchEventSubSubscriptionId,
-});
+export interface TwitchVodLookupDelivery {
+  kind: 'twitch-vod-lookup';
+  broadcasterId: string;
+  streamId: string;
+}
 
-export const TwitchEventSubDelivery = z.discriminatedUnion('kind', [
-  TwitchEventSubDeliveryBase.extend({
-    kind: z.literal('twitch-channel-update'),
-    event: TwitchChannelUpdateEvent,
-  }),
-  TwitchEventSubDeliveryBase.extend({
-    kind: z.literal('twitch-stream-online'),
-    event: TwitchStreamOnlineEvent,
-  }),
-  TwitchEventSubDeliveryBase.extend({
-    kind: z.literal('twitch-stream-offline'),
-    event: TwitchStreamOfflineEvent,
-    timestamp: TwitchTimestamp,
-  }),
-  TwitchEventSubDeliveryBase.extend({
-    kind: z.literal('twitch-revocation'),
-  }),
-]);
+export interface YouTubeVideoDelivery {
+  kind: 'youtube-video';
+  channelId: YouTubeChannelId;
+  notification: YouTubeVideoNotification;
+}
 
-export type TwitchEventSubDelivery = z.infer<typeof TwitchEventSubDelivery>;
-
-export const TwitchVodLookupDelivery = z.object({
-  kind: z.literal('twitch-vod-lookup'),
-  broadcasterId: TwitchBroadcasterId,
-  streamId: TwitchStreamId,
-});
-
-export type TwitchVodLookupDelivery = z.infer<typeof TwitchVodLookupDelivery>;
-
-export const YouTubeVideoDelivery = z.object({
-  kind: z.literal('youtube-video'),
-  channelId: YouTubeChannelId,
-  notification: YouTubeVideoNotification,
-});
-
-export type YouTubeVideoDelivery = z.infer<typeof YouTubeVideoDelivery>;
-
-export const SubscriptionEventDelivery = z.discriminatedUnion('kind', [
-  ...TwitchEventSubDelivery.options,
-  TwitchVodLookupDelivery,
-  YouTubeVideoDelivery,
-]);
-
-export type SubscriptionEventDelivery = z.infer<
-  typeof SubscriptionEventDelivery
->;
+export type SubscriptionEventDelivery =
+  TwitchEventSubDelivery | TwitchVodLookupDelivery | YouTubeVideoDelivery;
 
 /** Processes durable subscription events with per-message retry decisions. */
 export async function deliverSubscriptionEventBatch(
@@ -112,7 +69,7 @@ export async function deliverSubscriptionEventBatch(
         }
       } else {
         await env.TWITCH_SUBSCRIPTIONS.getByName(
-          delivery.broadcasterId,
+          delivery.message.subscription.broadcasterId,
         ).processEventSubMessage(delivery);
       }
       console.info({

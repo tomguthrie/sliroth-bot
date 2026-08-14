@@ -1,87 +1,65 @@
 import * as z from 'zod';
 
-import { getValidToken, TWITCH_TOKEN_KEY } from './auth';
-import type { TwitchAccessToken } from './auth';
-import {
-  TwitchBroadcasterId,
-  TwitchEventSubSubscriptionId,
-  TwitchGameId,
-  TwitchLogin,
-  TwitchStreamId,
-  TwitchTimestamp,
-  TwitchVideoId,
-} from './data';
+import { getAccessToken, refreshAccessToken } from './auth';
 
-export const TWITCH_API_BASE_URL = 'https://api.twitch.tv/helix/';
+type QueryParams = Record<string, string | number | boolean | undefined>;
 
-const NonBlankString = z.string().trim().min(1);
-
-export interface CreateTwitchEventSubSubscription {
-  type: string;
-  version: string;
-  condition: Record<string, string>;
-  callback: string;
-  secret: string;
-}
-
-/** Describes a non-success response from Helix. */
-export class TwitchApiError extends Error {
+class TwitchApiError extends Error {
   constructor(
     message: string,
-    readonly status?: number,
+    readonly status: number,
     readonly retryAtMs?: number,
-    options?: ErrorOptions,
   ) {
-    super(message, options);
+    super(message);
+    this.name = 'TwitchApiError';
   }
 }
 
-export const TwitchUser = z.object({
-  id: TwitchBroadcasterId,
-  login: TwitchLogin,
-  displayName: z.string().trim().min(1),
-  profileImageUrl: z.string(),
-  offlineImageUrl: z.string(),
-});
+/** Returns whether an unknown value is a Twitch API error with this status. */
+export function isTwitchApiErrorStatus(
+  error: unknown,
+  status: number,
+): boolean {
+  return error instanceof TwitchApiError && error.status === status;
+}
 
-export type TwitchUser = z.infer<typeof TwitchUser>;
-
-const TwitchUserResponse = z
+const TwitchUser = z
   .object({
-    id: TwitchBroadcasterId,
-    login: TwitchLogin,
-    display_name: NonBlankString,
-    profile_image_url: z.string(),
-    offline_image_url: z.string(),
-  })
-  .transform(
-    ({ id, login, display_name, profile_image_url, offline_image_url }) => ({
-      id,
-      login,
-      displayName: display_name,
-      profileImageUrl: profile_image_url,
-      offlineImageUrl: offline_image_url,
-    }),
-  );
-
-export const TwitchStream = z
-  .object({
-    id: TwitchStreamId,
-    user_id: TwitchBroadcasterId,
-    user_login: TwitchLogin,
-    user_name: NonBlankString,
-    game_id: z.union([z.literal(''), TwitchGameId]),
-    game_name: z.string(),
-    title: z.string(),
-    viewer_count: z.number(),
-    started_at: TwitchTimestamp,
-    thumbnail_url: z.string(),
+    id: z.string(),
+    login: z.string(),
+    display_name: z.string(),
+    profile_image_url: z.url(),
+    offline_image_url: z.union([z.url(), z.literal('')]),
   })
   .transform((data) => ({
     id: data.id,
-    userId: data.user_id,
-    userLogin: data.user_login,
-    userName: data.user_name,
+    login: data.login,
+    displayName: data.display_name,
+    profileImageUrl: data.profile_image_url,
+    offlineImageUrl: data.offline_image_url,
+  }));
+
+/** A Twitch user returned by the Helix API. */
+export type TwitchUser = z.infer<typeof TwitchUser>;
+
+const TwitchStream = z
+  .object({
+    id: z.string(),
+    user_id: z.string(),
+    user_login: z.string(),
+    user_name: z.string(),
+    game_id: z.string(),
+    game_name: z.string(),
+    title: z.string(),
+    viewer_count: z.number().int(),
+    started_at: z.iso.datetime().transform((str) => new Date(str)),
+    thumbnail_url: z.url(),
+  })
+  .transform((data) => ({
+    id: data.id,
+    broadcasterId: data.user_id,
+    broadcasterLogin: data.user_login,
+    broadcasterName: data.user_name,
     gameId: data.game_id,
     gameName: data.game_name,
     title: data.title,
@@ -90,69 +68,91 @@ export const TwitchStream = z
     thumbnailUrl: data.thumbnail_url,
   }));
 
+/** A live Twitch stream returned by the Helix API. */
 export type TwitchStream = z.infer<typeof TwitchStream>;
 
-export const TwitchGame = z
+const TwitchGame = z
   .object({
-    id: TwitchGameId,
-    name: NonBlankString,
-    box_art_url: z.string(),
+    id: z.string(),
+    name: z.string(),
+    box_art_url: z.url(),
   })
-  .transform(({ id, name, box_art_url: boxArtUrl }) => ({
-    id,
-    name,
-    boxArtUrl,
+  .transform((data) => ({
+    id: data.id,
+    name: data.name,
+    boxArtUrl: data.box_art_url,
   }));
 
+/** A Twitch game or category returned by the Helix API. */
 export type TwitchGame = z.infer<typeof TwitchGame>;
 
-export const TwitchVod = z
+export const TwitchVideo = z
   .object({
-    id: TwitchVideoId,
-    stream_id: z.union([z.literal(''), TwitchStreamId]).nullable(),
-    user_id: TwitchBroadcasterId,
-    user_login: TwitchLogin,
-    user_name: NonBlankString,
+    id: z.string(),
+    stream_id: z.string(),
+    user_id: z.string(),
+    user_login: z.string(),
+    user_name: z.string(),
     title: z.string(),
-    created_at: TwitchTimestamp,
-    published_at: TwitchTimestamp,
-    url: z.string(),
-    thumbnail_url: z.string(),
+    description: z.string(),
+    created_at: z.iso.datetime().transform((str) => new Date(str)),
+    published_at: z.iso.datetime().transform((str) => new Date(str)),
+    url: z.url(),
+    thumbnail_url: z.url(),
+    viewable: z.enum(['public', 'private', 'unlisted']),
+    view_count: z.number().int(),
+    language: z.string(),
     type: z.enum(['archive', 'highlight', 'upload']),
     duration: z.string(),
   })
   .transform((data) => ({
     id: data.id,
-    ...(data.stream_id === null || data.stream_id === ''
-      ? {}
-      : { streamId: data.stream_id }),
-    userId: data.user_id,
-    userLogin: data.user_login,
-    userName: data.user_name,
+    streamId: data.stream_id,
+    broadcasterId: data.user_id,
+    broadcasterLogin: data.user_login,
+    broadcasterName: data.user_name,
     title: data.title,
+    description: data.description,
     createdAt: data.created_at,
     publishedAt: data.published_at,
     url: data.url,
     thumbnailUrl: data.thumbnail_url,
+    viewable: data.viewable,
+    viewCount: data.view_count,
+    language: data.language,
     type: data.type,
     duration: data.duration,
   }));
 
-export type TwitchVod = z.infer<typeof TwitchVod>;
+/** A Twitch video (VOD) returned by the Helix API. */
+export type TwitchVideo = z.infer<typeof TwitchVideo>;
 
-export const TwitchEventSubSubscription = z
+const CreateEventSubSubscription = z.object({
+  type: z.string(),
+  version: z.string(),
+  condition: z.record(z.string(), z.string()),
+  transport: z.object({
+    method: z.literal('webhook'),
+    callback: z.url(),
+    secret: z.string().min(10).max(100),
+  }),
+});
+
+type CreateEventSubSubscription = z.input<typeof CreateEventSubSubscription>;
+
+const TwitchEventSubSubscription = z
   .object({
-    id: TwitchEventSubSubscriptionId,
-    status: NonBlankString,
-    type: NonBlankString,
-    version: NonBlankString,
+    id: z.string(),
+    status: z.string(),
+    type: z.string(),
+    version: z.string(),
     condition: z.record(z.string(), z.string()),
-    created_at: TwitchTimestamp,
     transport: z.object({
-      method: z.string(),
-      callback: z.string().optional(),
+      method: z.literal('webhook'),
+      callback: z.url(),
     }),
-    cost: z.number(),
+    created_at: z.iso.datetime().transform((value) => new Date(value)),
+    cost: z.number().int().nonnegative(),
   })
   .transform((data) => ({
     id: data.id,
@@ -160,193 +160,273 @@ export const TwitchEventSubSubscription = z
     type: data.type,
     version: data.version,
     condition: data.condition,
+    transport: {
+      method: data.transport.method,
+      callback: data.transport.callback,
+    },
     createdAt: data.created_at,
-    transport: data.transport,
     cost: data.cost,
   }));
 
-export type TwitchEventSubSubscription = z.infer<
-  typeof TwitchEventSubSubscription
->;
+type TwitchEventSubSubscription = z.output<typeof TwitchEventSubSubscription>;
 
-const TwitchApiErrorResponse = z.object({ message: z.string().optional() });
-
-/** A typed client for the Twitch Helix endpoints used by the integration. */
+/**
+ * Client for authenticated requests to the Twitch Helix API.
+ *
+ * @throws {TwitchApiError} When Twitch returns an unsuccessful HTTP response.
+ * @throws {z.ZodError} When Twitch returns a response that does not match the
+ * expected schema.
+ */
 export class TwitchApiClient {
-  private token: Promise<TwitchAccessToken> | undefined;
+  private accessToken: Promise<string> | undefined;
 
-  constructor(
-    private readonly env: Env,
-    private readonly getToken: typeof getValidToken = getValidToken,
-  ) {}
+  /**
+   * Creates a Twitch API client using the supplied Cloudflare Worker bindings.
+   *
+   * @param env Worker bindings containing Twitch credentials and token storage.
+   */
+  constructor(private readonly env: Env) {}
 
-  async getUserById(id: TwitchBroadcasterId): Promise<TwitchUser | undefined> {
-    const response = await this.request('users', { id });
-    const data = await parseTwitchApiResponse(response, TwitchUserResponse);
-    return data[0];
-  }
+  private async getAccessToken(): Promise<string> {
+    const accessToken = (this.accessToken ??= getAccessToken(this.env));
 
-  async getUserByLogin(login: TwitchLogin): Promise<TwitchUser | undefined> {
-    const response = await this.request('users', { login });
-    const data = await parseTwitchApiResponse(response, TwitchUserResponse);
-    return data[0];
-  }
+    try {
+      return await accessToken;
+    } catch (error) {
+      if (this.accessToken === accessToken) {
+        this.accessToken = undefined;
+      }
 
-  async getStreamByUserId(
-    userId: TwitchBroadcasterId,
-  ): Promise<TwitchStream | undefined> {
-    const response = await this.request('streams', { user_id: userId });
-    const data = await parseTwitchApiResponse(response, TwitchStream);
-    return data[0];
-  }
-
-  async getGameById(id: TwitchGameId): Promise<TwitchGame | undefined> {
-    const response = await this.request('games', { id });
-    const data = await parseTwitchApiResponse(response, TwitchGame);
-    return data[0];
-  }
-
-  async getArchiveVideosByUserId(
-    userId: TwitchBroadcasterId,
-    first = 20,
-  ): Promise<TwitchVod[]> {
-    const pageSize = parseTwitchPageSize(first);
-    const response = await this.request('videos', {
-      user_id: userId,
-      type: 'archive',
-      first: String(pageSize),
-    });
-    return parseTwitchApiResponse(response, TwitchVod);
-  }
-
-  async createEventSubSubscription(
-    subscription: CreateTwitchEventSubSubscription,
-  ): Promise<TwitchEventSubSubscription> {
-    const response = await this.request('eventsub/subscriptions', undefined, {
-      method: 'POST',
-      body: JSON.stringify({
-        type: subscription.type,
-        version: subscription.version,
-        condition: subscription.condition,
-        transport: {
-          method: 'webhook',
-          callback: subscription.callback,
-          secret: subscription.secret,
-        },
-      }),
-    });
-    const data = await parseTwitchApiResponse(
-      response,
-      TwitchEventSubSubscription,
-    );
-    const created = data[0];
-    if (created === undefined) {
-      throw new TwitchApiError(
-        'Twitch EventSub create response did not contain a subscription',
-      );
+      throw error;
     }
-    return created;
   }
 
-  async getEventSubSubscriptionById(
-    id: TwitchEventSubSubscriptionId,
-  ): Promise<TwitchEventSubSubscription | undefined> {
-    const response = await this.request('eventsub/subscriptions', {
-      subscription_id: id,
-    });
-    const data = await parseTwitchApiResponse(
-      response,
-      TwitchEventSubSubscription,
-    );
-    return data[0];
-  }
-
-  async deleteEventSubSubscription(
-    id: TwitchEventSubSubscriptionId,
-  ): Promise<void> {
-    await this.request('eventsub/subscriptions', { id }, { method: 'DELETE' });
-  }
-
-  private async request(
+  private async fetch(
     path: string,
-    query?: Record<string, string>,
+    query?: QueryParams,
     init?: RequestInit,
+    retryOnUnauthorized = true,
   ): Promise<Response> {
-    const url = new URL(path, TWITCH_API_BASE_URL);
-    for (const [name, value] of Object.entries(query ?? {})) {
-      url.searchParams.set(name, value);
+    const accessToken = await this.getAccessToken();
+
+    const url = new URL(path, 'https://api.twitch.tv/helix/');
+
+    for (const [key, value] of Object.entries(query ?? {})) {
+      if (value !== undefined) {
+        url.searchParams.set(key, String(value));
+      }
     }
 
-    let token = await this.readToken();
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const headers = new Headers(init?.headers);
-      headers.set('authorization', `Bearer ${token}`);
-      headers.set('client-id', this.env.TWITCH_CLIENT_ID);
-      if (init?.body !== undefined) {
-        headers.set('content-type', 'application/json');
-      }
-      const response = await fetch(url, { ...init, headers });
-      if (response.status === 401 && attempt === 0) {
-        await cancelBody(response);
-        await this.env.TOKEN_STORE.delete(TWITCH_TOKEN_KEY);
-        this.token = undefined;
-        token = await this.readToken();
-        continue;
-      }
-      if (!response.ok) {
-        throw await createApiError(response);
-      }
-      return response;
+    const response = await fetch(url, {
+      ...init,
+      headers: {
+        'Client-ID': this.env.TWITCH_CLIENT_ID,
+        Authorization: `Bearer ${accessToken}`,
+        ...init?.headers,
+      },
+    });
+
+    if (response.status === 401 && retryOnUnauthorized) {
+      if (response.body !== null) await response.body.cancel();
+      this.accessToken = refreshAccessToken(this.env);
+
+      return this.fetch(path, query, init, false);
     }
 
-    throw new TwitchApiError('Twitch API authentication failed', 401);
+    if (!response.ok) {
+      throw await this.createApiError(response);
+    }
+
+    return response;
   }
 
-  private readToken(): Promise<TwitchAccessToken> {
-    this.token ??= this.getToken(this.env);
-    return this.token;
+  private async createApiError(response: Response): Promise<TwitchApiError> {
+    let message = response.statusText;
+
+    try {
+      const body = z
+        .object({
+          message: z.string(),
+        })
+        .parse(await response.json());
+
+      message = body.message;
+    } catch {
+      // Keep statusText if Twitch didn't return the expected JSON error shape.
+    }
+
+    const reset = response.headers.get('ratelimit-reset');
+
+    const retryAtMs =
+      reset !== null && /^\d+$/.test(reset) ? Number(reset) * 1000 : undefined;
+
+    return new TwitchApiError(
+      `Twitch API returned HTTP ${response.status}: ${message}`,
+      response.status,
+      retryAtMs,
+    );
   }
-}
 
-function parseTwitchPageSize(value: number): number {
-  if (!Number.isInteger(value) || value < 1 || value > 100) {
-    throw new RangeError('Twitch page size must be an integer from 1 to 100');
+  private async request<T extends z.ZodType>(
+    path: string,
+    schema: T,
+    query?: QueryParams,
+    init?: RequestInit,
+  ): Promise<z.output<T>[]> {
+    const response = await this.fetch(path, query, init);
+
+    return z
+      .object({
+        data: z.array(schema),
+      })
+      .parse(await response.json()).data;
   }
-  return value;
-}
 
-async function createApiError(response: Response): Promise<TwitchApiError> {
-  let detail: string;
-  try {
-    const result = TwitchApiErrorResponse.safeParse(await response.json());
-    detail =
-      result.success && result.data.message !== undefined
-        ? `: ${result.data.message}`
-        : '';
-  } catch {
-    detail = '';
+  private async requestOne<T extends z.ZodType>(
+    path: string,
+    schema: T,
+    query?: QueryParams,
+  ): Promise<z.output<T> | undefined> {
+    const [result] = await this.request(path, schema, query);
+    return result;
   }
-  const reset = response.headers.get('ratelimit-reset');
-  const resetSeconds = reset === null ? Number.NaN : Number(reset);
-  const retryAtMs =
-    response.status === 429 && Number.isFinite(resetSeconds)
-      ? resetSeconds * 1000
-      : undefined;
-  return new TwitchApiError(
-    `Twitch API returned HTTP ${response.status}${detail}`,
-    response.status,
-    retryAtMs,
-  );
-}
 
-async function parseTwitchApiResponse<T extends z.ZodType>(
-  response: Response,
-  dataSchema: T,
-): Promise<z.output<T>[]> {
-  const schema = z.object({ data: z.array(dataSchema) });
-  return schema.parse(await response.json()).data;
-}
+  private async requestEmpty(
+    path: string,
+    query?: QueryParams,
+    init?: RequestInit,
+  ): Promise<void> {
+    await this.fetch(path, query, init);
+  }
 
-async function cancelBody(response: Response): Promise<void> {
-  if (response.body !== null) await response.body.cancel();
+  /**
+   * Gets a Twitch user by broadcaster ID.
+   *
+   * @param userId Twitch user ID to look up.
+   * @returns The matching user, or `undefined` if no user exists with that ID.
+   */
+  async getUserById(userId: string): Promise<TwitchUser | undefined> {
+    return this.requestOne('users', TwitchUser, {
+      id: userId,
+    });
+  }
+
+  /**
+   * Gets a Twitch user by login name.
+   *
+   * @param login Twitch login name to look up.
+   * @returns The matching user, or `undefined` if no user exists with that login.
+   */
+  async getUserByLogin(login: string): Promise<TwitchUser | undefined> {
+    return this.requestOne('users', TwitchUser, {
+      login,
+    });
+  }
+
+  /**
+   * Gets the current live stream for a broadcaster.
+   *
+   * @param broadcasterId Twitch user ID of the broadcaster.
+   * @returns The live stream, or `undefined` if the broadcaster is offline.
+   */
+  async getStream(broadcasterId: string): Promise<TwitchStream | undefined> {
+    return this.requestOne('streams', TwitchStream, {
+      user_id: broadcasterId,
+    });
+  }
+
+  /**
+   * Gets a Twitch game or category by ID.
+   *
+   * @param gameId Twitch game or category ID.
+   * @returns The matching game, or `undefined` if no game exists with that ID.
+   */
+  async getGame(gameId: string): Promise<TwitchGame | undefined> {
+    return this.requestOne('games', TwitchGame, {
+      id: gameId,
+    });
+  }
+
+  /**
+   * Gets the most recent archive videos (VODs) for a broadcaster.
+   *
+   * @param broadcasterId Twitch user ID of the broadcaster.
+   * @param first Maximum number of videos to return (default: 20).
+   * @returns Archive videos, or an empty array if the broadcaster has no VODs.
+   */
+  async getVideos(broadcasterId: string, first = 20): Promise<TwitchVideo[]> {
+    if (!Number.isInteger(first) || first < 1 || first > 100) {
+      throw new RangeError('Twitch page size must be an integer from 1 to 100');
+    }
+    return this.request('videos', TwitchVideo, {
+      user_id: broadcasterId,
+      type: 'archive',
+      first,
+    });
+  }
+
+  /**
+   * Creates a webhook EventSub subscription.
+   *
+   * @param subscription Subscription type, condition, and webhook transport.
+   * @returns The subscription created by Twitch.
+   * @throws {Error} If Twitch accepts the request but returns no subscription.
+   */
+  async createEventSubSubscription(
+    subscription: CreateEventSubSubscription,
+  ): Promise<TwitchEventSubSubscription> {
+    const [result] = await this.request(
+      'eventsub/subscriptions',
+      TwitchEventSubSubscription,
+      undefined,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(subscription),
+      },
+    );
+
+    if (!result) {
+      throw new Error('Twitch did not return an EventSub subscription');
+    }
+
+    return result;
+  }
+
+  /**
+   * Gets an EventSub subscription by ID.
+   *
+   * @param subscriptionId EventSub subscription ID.
+   * @returns The matching subscription, or `undefined` if none is returned.
+   */
+  async getEventSubSubscription(
+    subscriptionId: string,
+  ): Promise<TwitchEventSubSubscription | undefined> {
+    return this.requestOne(
+      'eventsub/subscriptions',
+      TwitchEventSubSubscription,
+      {
+        subscription_id: subscriptionId,
+      },
+    );
+  }
+
+  /**
+   * Deletes an EventSub subscription.
+   *
+   * @param subscriptionId EventSub subscription ID to delete.
+   */
+  async deleteEventSubSubscription(subscriptionId: string): Promise<void> {
+    await this.requestEmpty(
+      'eventsub/subscriptions',
+      {
+        id: subscriptionId,
+      },
+      {
+        method: 'DELETE',
+      },
+    );
+  }
 }

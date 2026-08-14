@@ -6,11 +6,7 @@ import {
   listGuildTwitchSubscriptions,
 } from '../../../twitch-subscription/index';
 import { toLoggableError } from '../../../log';
-import {
-  resolveTwitchChannel,
-  TwitchChannelResolutionError,
-} from '../../../twitch/channel';
-import { TwitchApiClient } from '../../../twitch/client';
+import { resolveTwitchChannel } from '../../../twitch';
 import { escapeDiscordMarkdown } from '../../markdown';
 import {
   describeDiscordMention,
@@ -267,10 +263,15 @@ async function completeTwitchAdd(
   ping: DiscordMentionTarget | undefined,
 ): Promise<void> {
   try {
-    const broadcaster = await resolveTwitchChannel(
-      options.twitch,
-      new TwitchApiClient(env),
-    );
+    const broadcaster = await resolveTwitchChannel(options.twitch, env);
+    if (broadcaster === undefined) {
+      await editInteractionResponse(
+        applicationId,
+        token,
+        'That Twitch channel could not be resolved. Try its login, numeric broadcaster ID, or full channel URL.',
+      );
+      return;
+    }
     await env.TWITCH_SUBSCRIPTIONS.getByName(broadcaster.id).addSubscriber(
       broadcaster,
       {
@@ -290,13 +291,11 @@ async function completeTwitchAdd(
     );
   } catch (error) {
     logInteractionFailure(error);
-    const content =
-      error instanceof TwitchChannelResolutionError
-        ? 'That Twitch channel could not be resolved. Try its login, numeric broadcaster ID, or full channel URL.'
-        : 'The Twitch notification could not be added. Please try again.';
-    await editInteractionResponse(applicationId, token, content).catch(
-      logInteractionFailure,
-    );
+    await editInteractionResponse(
+      applicationId,
+      token,
+      'The Twitch notification could not be added. Please try again.',
+    ).catch(logInteractionFailure);
   }
 }
 

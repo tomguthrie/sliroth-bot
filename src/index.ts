@@ -6,7 +6,7 @@ import {
   handleYouTubeWebSubIntent,
   handleYouTubeWebSubNotification,
 } from './youtube/websub-handler';
-import { handleTwitchEventSub } from './twitch/event-sub/handler';
+import { handleTwitchEventSub } from './twitch-subscription/eventsub-handler';
 
 export { YouTubeSubscription } from './youtube-subscription/durable-object';
 export { TwitchSubscription } from './twitch-subscription/durable-object';
