@@ -227,6 +227,7 @@ export class TwitchApiClient {
     });
 
     if (response.status === 401 && retryOnUnauthorized) {
+      if (response.body !== null) await response.body.cancel();
       this.accessToken = refreshAccessToken(this.env);
 
       return this.fetch(path, query, init, false);
