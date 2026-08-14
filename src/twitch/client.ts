@@ -354,6 +354,9 @@ export class TwitchApiClient {
    * @returns Archive videos, or an empty array if the broadcaster has no VODs.
    */
   async getVideos(broadcasterId: string, first = 20): Promise<TwitchVideo[]> {
+    if (!Number.isInteger(first) || first < 1 || first > 100) {
+      throw new RangeError('Twitch page size must be an integer from 1 to 100');
+    }
     return this.request('videos', TwitchVideo, {
       user_id: broadcasterId,
       type: 'archive',
