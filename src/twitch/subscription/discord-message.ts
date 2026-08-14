@@ -11,8 +11,8 @@ import {
 import type {
   DiscordCreateMessageDelivery,
   DiscordEditMessageDelivery,
-} from '../../queue/discord-message';
-import { DISCORD_RECEIPT_TWITCH_STREAM } from '../../queue/discord-message';
+} from '../../discord/queue';
+import { TWITCH_STREAM_MESSAGE_RECEIPT } from './message-receipt';
 
 const TWITCH_COLOR = 0x9146ff;
 const DEFAULT_LIVE_MESSAGE = 'is live now!';
@@ -41,8 +41,8 @@ export async function createTwitchLiveDelivery(
     operation: 'create',
     guildId: subscriber.guildId,
     channelId: subscriber.channelId,
-    receiptTarget: {
-      type: DISCORD_RECEIPT_TWITCH_STREAM,
+    receipt: {
+      type: TWITCH_STREAM_MESSAGE_RECEIPT,
       broadcasterId: broadcaster.id,
       streamId: stream.id,
     },

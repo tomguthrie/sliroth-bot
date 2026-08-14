@@ -10,7 +10,7 @@ import { subscribers, videos } from '../../db/youtube-subscription/schema';
 import { DiscordMentionTarget } from '../../discord/message';
 import { DiscordSnowflake } from '../../discord/snowflake';
 import { toLoggableError } from '../../log';
-import { enqueueDiscordMessages } from '../../queue/discord-message';
+import { enqueueDiscordMessages } from '../../discord/queue';
 import type { YouTubeVideoDelivery } from './queue';
 import { isYouTubeChannelId } from '../channel';
 import { parseYouTubeVideoNotifications } from '../notification';

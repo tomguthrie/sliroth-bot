@@ -4,8 +4,7 @@ import {
   createDiscordMessageNonce,
   type DiscordMessage,
 } from '../../discord/message';
-import type { DiscordMessageDelivery } from '../../queue/discord-message';
-import { DISCORD_RECEIPT_IGNORE } from '../../queue/discord-message';
+import type { DiscordMessageDelivery } from '../../discord/queue';
 import type { YouTubeVideoNotification } from '../notification';
 
 const DEFAULT_MESSAGE = 'A new video has been uploaded!';
@@ -38,7 +37,6 @@ export async function createYouTubeDelivery(
 
   return {
     operation: 'create',
-    receiptTarget: { type: DISCORD_RECEIPT_IGNORE },
     guildId: subscriber.guildId,
     channelId: subscriber.channelId,
     message,

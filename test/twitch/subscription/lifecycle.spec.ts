@@ -9,8 +9,8 @@ import {
   twitchSubscribers,
 } from '../../../src/db/twitch-subscription/schema';
 import { DiscordSnowflake } from '../../../src/discord';
-import type { DiscordMessageDelivery } from '../../../src/queue/discord-message';
-import { DISCORD_RECEIPT_TWITCH_STREAM } from '../../../src/queue/discord-message';
+import type { DiscordMessageDelivery } from '../../../src/discord/queue';
+import { TWITCH_STREAM_MESSAGE_RECEIPT } from '../../../src/twitch/subscription/message-receipt';
 
 const BROADCASTER_ID = '123456789012345678';
 const GUILD_ID = '234567890123456789';
@@ -85,8 +85,8 @@ describe('Twitch stream lifecycle', () => {
       expect(batches[0]?.[0]).toMatchObject({
         operation: 'create',
         channelId: CHANNEL_ID,
-        receiptTarget: {
-          type: DISCORD_RECEIPT_TWITCH_STREAM,
+        receipt: {
+          type: TWITCH_STREAM_MESSAGE_RECEIPT,
           broadcasterId: BROADCASTER_ID,
           streamId: '9001',
         },
@@ -205,7 +205,10 @@ describe('Twitch stream lifecycle', () => {
         { delaySeconds: 30 },
       );
 
-      await expect(instance.enrichStreamVod('9001')).resolves.toBe('updated');
+      await instance.recordStreamVod(
+        '9001',
+        'https://twitch.tv/videos/1234567890',
+      );
 
       expect(batches).toHaveLength(4);
       expect(batches[3]?.[0]).toMatchObject({
