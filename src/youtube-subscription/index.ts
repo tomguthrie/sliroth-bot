@@ -1,6 +1,6 @@
 import * as z from 'zod';
 
-import { DiscordSnowflake } from '../discord/snowflake';
+import { DiscordSnowflake } from '../discord';
 import { isYouTubeChannelId } from '../youtube';
 
 const NonBlankString = z.string().refine((value) => value.trim() !== '');

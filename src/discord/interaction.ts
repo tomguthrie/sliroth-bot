@@ -4,10 +4,16 @@ import {
   verifyKey,
 } from 'discord-interactions';
 
-import { handleYouTubeCommand, YOUTUBE_COMMAND_NAME } from './command/youtube';
-import { handleTwitchCommand, TWITCH_COMMAND_NAME } from './command/twitch';
-import { DiscordInteraction } from './data';
-import { createEphemeralInteractionResponse } from './response';
+import { handleTwitchCommand, TWITCH_COMMAND_NAME } from './commands/twitch';
+import {
+  DiscordInteraction,
+  unsupportedInteractionResponse,
+} from './commands/shared';
+import { handleYouTubeCommand, YOUTUBE_COMMAND_NAME } from './commands/youtube';
+
+const PING_INTERACTION_TYPE: number = InteractionType.PING;
+const APPLICATION_COMMAND_INTERACTION_TYPE: number =
+  InteractionType.APPLICATION_COMMAND;
 
 /** Authenticates and dispatches Discord interaction webhooks. */
 export async function handleDiscordInteraction(
@@ -26,17 +32,15 @@ export async function handleDiscordInteraction(
     return new Response('Invalid request signature', { status: 401 });
   }
 
-  const interaction = await parseJson(body);
-  if (interaction === undefined || typeof interaction.type !== 'number') {
+  const interaction = parseInteraction(body);
+  if (interaction === undefined) {
     return new Response('Bad Request', { status: 400 });
   }
-  if (interaction.type === Number(InteractionType.PING)) {
+  if (interaction.type === PING_INTERACTION_TYPE) {
     return Response.json({ type: InteractionResponseType.PONG });
   }
-  if (interaction.type !== Number(InteractionType.APPLICATION_COMMAND)) {
-    return createEphemeralInteractionResponse(
-      'This interaction is not supported.',
-    );
+  if (interaction.type !== APPLICATION_COMMAND_INTERACTION_TYPE) {
+    return unsupportedInteractionResponse();
   }
 
   if (interaction.data?.name === YOUTUBE_COMMAND_NAME) {
@@ -45,17 +49,13 @@ export async function handleDiscordInteraction(
   if (interaction.data?.name === TWITCH_COMMAND_NAME) {
     return handleTwitchCommand(interaction, env, ctx);
   }
-  return createEphemeralInteractionResponse(
-    'This interaction is not supported.',
-  );
+  return unsupportedInteractionResponse();
 }
 
-async function parseJson(
-  bytes: Uint8Array,
-): Promise<DiscordInteraction | undefined> {
+function parseInteraction(bytes: Uint8Array) {
   try {
     const result = DiscordInteraction.safeParse(
-      await new Response(bytes).json(),
+      JSON.parse(new TextDecoder().decode(bytes)),
     );
     return result.success ? result.data : undefined;
   } catch {

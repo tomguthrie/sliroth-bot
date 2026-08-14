@@ -4,7 +4,7 @@ import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { describe, expect, it } from 'vitest';
 
 import { streamMessages } from '../../src/db/twitch-subscription/schema';
-import { DiscordSnowflake } from '../../src/discord/snowflake';
+import { DiscordSnowflake } from '../../src/discord';
 import { recordTwitchStreamMessageReceipt } from '../../src/twitch-subscription/message-receipt';
 
 const BROADCASTER_ID = '123456789012345678';
