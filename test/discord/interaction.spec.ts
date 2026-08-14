@@ -714,7 +714,7 @@ function mockTwitchApi(
         return Response.json({ data: [subscription] });
       }
       if (request.method === 'GET') {
-        const id = new URL(request.url).searchParams.get('id');
+        const id = new URL(request.url).searchParams.get('subscription_id');
         const subscription = id === null ? undefined : subscriptions.get(id);
         return Response.json({ data: subscription ? [subscription] : [] });
       }
