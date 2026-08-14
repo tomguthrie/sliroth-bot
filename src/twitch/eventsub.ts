@@ -257,13 +257,7 @@ export async function verifyEventSubRequest(
     return false;
   }
 
-  let difference = 0;
-
-  for (let index = 0; index < actual.length; index++) {
-    difference |= actual[index]! ^ expectedBytes[index]!;
-  }
-
-  return difference === 0;
+  return crypto.subtle.timingSafeEqual(actual, expectedBytes);
 }
 
 export type EventSubMessageType =
