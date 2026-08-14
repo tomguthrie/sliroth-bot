@@ -73,7 +73,7 @@ const TwitchBroadcaster = z.object({
   login: z.string().min(1),
   displayName: z.string().trim().min(1),
   profileImageUrl: z.url(),
-  offlineImageUrl: z.url(),
+  offlineImageUrl: z.union([z.url(), z.literal('')]),
 });
 
 type TwitchEventSubSubscription = NonNullable<

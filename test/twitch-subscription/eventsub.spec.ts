@@ -49,7 +49,7 @@ describe('TwitchSubscription EventSub reconciliation', () => {
       ),
     ).rejects.toThrow();
   });
-  it('creates desired subscriptions and deletes them with the last subscriber', async () => {
+  it('accepts a broadcaster without an offline banner', async () => {
     const requests: {
       method: string;
       url: string;
@@ -108,7 +108,7 @@ describe('TwitchSubscription EventSub reconciliation', () => {
         login: 'sliroth',
         displayName: 'Sliroth',
         profileImageUrl: 'https://example.com/profile.png',
-        offlineImageUrl: 'https://example.com/offline.png',
+        offlineImageUrl: '',
       },
       { guildId: GUILD_ID, channelId: CHANNEL_ID },
     );

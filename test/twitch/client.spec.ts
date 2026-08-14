@@ -81,6 +81,19 @@ describe('TwitchApiClient GET methods', () => {
     expect(headers.get('client-id')).toBe(env.TWITCH_CLIENT_ID);
   });
 
+  it('accepts a user without an offline banner', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json({ data: [{ ...USER, offline_image_url: '' }] }),
+    );
+
+    await expect(
+      new TwitchApiClient(env).getUserById(BROADCASTER_ID),
+    ).resolves.toMatchObject({
+      id: BROADCASTER_ID,
+      offlineImageUrl: '',
+    });
+  });
+
   it('gets a complete user by login and returns undefined for no match', async () => {
     const fetcher = vi
       .spyOn(globalThis, 'fetch')

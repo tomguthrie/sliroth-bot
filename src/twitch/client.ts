@@ -29,7 +29,7 @@ const TwitchUser = z
     login: z.string(),
     display_name: z.string(),
     profile_image_url: z.url(),
-    offline_image_url: z.url(),
+    offline_image_url: z.union([z.url(), z.literal('')]),
   })
   .transform((data) => ({
     id: data.id,
