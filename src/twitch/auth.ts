@@ -4,8 +4,8 @@ const ACCESS_TOKEN_KEY = 'twitch';
 
 const AccessToken = z
   .object({
-    access_token: z.string(),
-    expires_in: z.number(),
+    access_token: z.string().regex(/^[A-Za-z0-9._~+/-]+=*$/),
+    expires_in: z.int().min(75),
   })
   .transform((data) => ({
     accessToken: data.access_token,
