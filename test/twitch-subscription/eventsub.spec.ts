@@ -201,6 +201,18 @@ describe('Twitch EventSub webhook', () => {
     ).toBe(403);
   });
 
+  it('rejects a correctly signed message with a timestamp more than 60 seconds in the future', async () => {
+    const body = eventBody();
+    const futureTimestamp = new Date(Date.now() + 61_000).toISOString();
+    const future = await signedRequest('future-id', body, {
+      timestamp: futureTimestamp,
+    });
+    expect(
+      (await handleTwitchEventSub(future, env, createExecutionContext()))
+        .status,
+    ).toBe(403);
+  });
+
   it('rejects a signed payload with an invalid shape', async () => {
     const request = await signedRequest(
       'invalid-payload-id',
