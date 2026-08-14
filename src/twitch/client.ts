@@ -394,7 +394,7 @@ export class TwitchApiClient {
       'eventsub/subscriptions',
       TwitchEventSubSubscription,
       {
-        id: subscriptionId,
+        subscription_id: subscriptionId,
       },
     );
   }

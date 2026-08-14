@@ -461,7 +461,7 @@ describe('TwitchApiClient EventSub methods', () => {
     });
 
     expect(requestUrl(fetcher.mock.calls[0]?.[0])).toBe(
-      'https://api.twitch.tv/helix/eventsub/subscriptions?id=sub-123',
+      'https://api.twitch.tv/helix/eventsub/subscriptions?subscription_id=sub-123',
     );
   });
 
