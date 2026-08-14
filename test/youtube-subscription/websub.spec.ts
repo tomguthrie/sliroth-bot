@@ -12,9 +12,12 @@ import {
 } from 'vitest';
 
 import { subscribers } from '../../src/db/youtube-subscription/schema';
-import { YouTubeChannelId } from '../../src/youtube/data';
 import { createYouTubeTopicUrl } from '../../src/youtube/websub';
 import type { YouTubeSubscription } from '../../src/youtube-subscription/durable-object';
+import {
+  handleYouTubeWebSubIntent,
+  handleYouTubeWebSubNotification,
+} from '../../src/youtube-subscription/websub-handler';
 
 const GUILD_ID = '123456789012345678';
 const CHANNEL_ID = '234567890123456789';
@@ -183,9 +186,7 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
     await expect(
       subscription.confirmWebSubIntent(
         'subscribe',
-        createYouTubeTopicUrl(
-          YouTubeChannelId.parse('UCaaaaaaaaaaaaaaaaaaaaaa'),
-        ),
+        createYouTubeTopicUrl('UCaaaaaaaaaaaaaaaaaaaaaa'),
         1000,
       ),
     ).resolves.toBe(false);
@@ -216,10 +217,252 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
   });
 });
 
-function randomYouTubeChannelId(): YouTubeChannelId {
-  return YouTubeChannelId.parse(
-    `UC${crypto.randomUUID().replaceAll('-', '').slice(0, 22)}`,
+describe('YouTube WebSub webhook', () => {
+  it('verifies and answers a subscription challenge', async () => {
+    const youtubeChannelId = randomYouTubeChannelId();
+    await env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId).addSubscriber({
+      guildId: GUILD_ID,
+      channelId: CHANNEL_ID,
+      channelTitle: CHANNEL_TITLE,
+    });
+    const query = new URLSearchParams({
+      'hub.mode': 'subscribe',
+      'hub.topic': createYouTubeTopicUrl(youtubeChannelId),
+      'hub.challenge': 'challenge-123',
+      'hub.lease_seconds': '1000',
+    });
+
+    const response = await handleYouTubeWebSubIntent(
+      webSubRequest(youtubeChannelId, `?${query.toString()}`),
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe(
+      'application/octet-stream',
+    );
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(new TextDecoder().decode(await response.arrayBuffer())).toBe(
+      'challenge-123',
+    );
+  });
+
+  it('accepts a matching denial and clears pending state', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const youtubeChannelId = randomYouTubeChannelId();
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
+    await subscription.addSubscriber({
+      guildId: GUILD_ID,
+      channelId: CHANNEL_ID,
+      channelTitle: CHANNEL_TITLE,
+    });
+    const query = new URLSearchParams({
+      'hub.mode': 'denied',
+      'hub.topic': createYouTubeTopicUrl(youtubeChannelId),
+      'hub.reason': 'Topic unavailable',
+    });
+
+    const response = await handleYouTubeWebSubIntent(
+      webSubRequest(youtubeChannelId, `?${query.toString()}`),
+      env,
+    );
+
+    expect(response.status).toBe(204);
+    await expect(readWebSubState(subscription)).resolves.toEqual({
+      alarm: null,
+      secret: undefined,
+      status: undefined,
+    });
+  });
+
+  it('answers an unsubscribe challenge without requiring a lease', async () => {
+    const youtubeChannelId = randomYouTubeChannelId();
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
+    await subscription.addSubscriber({
+      guildId: GUILD_ID,
+      channelId: CHANNEL_ID,
+      channelTitle: CHANNEL_TITLE,
+    });
+    await subscription.removeSubscriber(CHANNEL_ID);
+    const query = new URLSearchParams({
+      'hub.mode': 'unsubscribe',
+      'hub.topic': createYouTubeTopicUrl(youtubeChannelId),
+      'hub.challenge': 'unsubscribe-challenge',
+    });
+
+    const response = await handleYouTubeWebSubIntent(
+      webSubRequest(youtubeChannelId, `?${query.toString()}`),
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    expect(new TextDecoder().decode(await response.arrayBuffer())).toBe(
+      'unsubscribe-challenge',
+    );
+    await expect(readWebSubState(subscription)).resolves.toEqual({
+      alarm: null,
+      secret: undefined,
+      status: undefined,
+    });
+  });
+
+  it.each([
+    ['invalid channel ID', 'not-a-channel', ''],
+    ['missing topic', randomYouTubeChannelId(), '?hub.mode=subscribe'],
+    [
+      'unsupported mode',
+      randomYouTubeChannelId(),
+      '?hub.mode=unsupported&hub.topic=topic&hub.challenge=challenge',
+    ],
+    [
+      'invalid challenge',
+      randomYouTubeChannelId(),
+      '?hub.mode=subscribe&hub.topic=topic&hub.challenge=contains+a+space&hub.lease_seconds=1000',
+    ],
+    [
+      'oversized challenge',
+      randomYouTubeChannelId(),
+      `?hub.mode=subscribe&hub.topic=topic&hub.challenge=${'a'.repeat(2049)}&hub.lease_seconds=1000`,
+    ],
+    [
+      'invalid lease',
+      randomYouTubeChannelId(),
+      '?hub.mode=subscribe&hub.topic=topic&hub.challenge=challenge&hub.lease_seconds=0',
+    ],
+  ])('rejects an intent with %s', async (_case, channelId, suffix) => {
+    const response = await handleYouTubeWebSubIntent(
+      webSubRequest(channelId, suffix),
+      env,
+    );
+
+    expect(response.status).toBe(channelId === 'not-a-channel' ? 404 : 400);
+  });
+
+  it('authenticates and queues a notification', async () => {
+    const youtubeChannelId = randomYouTubeChannelId();
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
+    await subscription.addSubscriber({
+      guildId: GUILD_ID,
+      channelId: CHANNEL_ID,
+      channelTitle: CHANNEL_TITLE,
+    });
+    const queuedDeliveries: unknown[] = [];
+    const secret = await runInDurableObject(
+      subscription,
+      async (instance, state) => {
+        Object.defineProperty(instance, 'env', {
+          configurable: true,
+          value: {
+            SUBSCRIPTION_EVENTS: {
+              sendBatch(
+                messages: Iterable<MessageSendRequest<unknown>>,
+              ): Promise<void> {
+                queuedDeliveries.push(
+                  ...Array.from(messages, ({ body }) => body),
+                );
+                return Promise.resolve();
+              },
+            },
+          },
+        });
+        return state.storage.get<string>(WEBSUB_SECRET_KEY);
+      },
+    );
+    if (secret === undefined) throw new Error('Missing WebSub secret');
+
+    const body = createNotification(youtubeChannelId);
+    const response = await handleYouTubeWebSubNotification(
+      webSubRequest(youtubeChannelId, '', {
+        method: 'POST',
+        headers: { 'x-hub-signature': await createSignature(body, secret) },
+        body,
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(204);
+    expect(queuedDeliveries).toEqual([
+      {
+        kind: 'youtube-video',
+        channelId: youtubeChannelId,
+        notification: {
+          videoId: 'video-id',
+          channelId: youtubeChannelId,
+          title: 'A YouTube video',
+          publishedAt: '2026-08-08T12:00:00Z',
+        },
+      },
+    ]);
+  });
+
+  it('rejects a notification with an invalid signature', async () => {
+    const youtubeChannelId = randomYouTubeChannelId();
+    await env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId).addSubscriber({
+      guildId: GUILD_ID,
+      channelId: CHANNEL_ID,
+      channelTitle: CHANNEL_TITLE,
+    });
+
+    const response = await handleYouTubeWebSubNotification(
+      webSubRequest(youtubeChannelId, '', {
+        method: 'POST',
+        headers: { 'x-hub-signature': `sha1=${'00'.repeat(20)}` },
+        body: createNotification(youtubeChannelId),
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(401);
+  });
+});
+
+function randomYouTubeChannelId(): string {
+  return `UC${crypto.randomUUID().replaceAll('-', '').slice(0, 22)}`;
+}
+
+function webSubRequest(channelId: string, suffix: string, init?: RequestInit) {
+  const request = new Request(
+    `https://example.com/youtube/websub/${channelId}${suffix}`,
+    init,
   );
+  return Object.assign(request, {
+    route: '/youtube/websub/:channelId',
+    params: { channelId },
+    query: {},
+  });
+}
+
+function createNotification(channelId: string): string {
+  return `
+    <feed xmlns:yt="http://www.youtube.com/xml/schemas/2015"
+          xmlns="http://www.w3.org/2005/Atom">
+      <entry>
+        <yt:videoId>video-id</yt:videoId>
+        <yt:channelId>${channelId}</yt:channelId>
+        <title>A YouTube video</title>
+        <published>2026-08-08T12:00:00Z</published>
+      </entry>
+    </feed>
+  `;
+}
+
+async function createSignature(body: string, secret: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-1' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    new TextEncoder().encode(body),
+  );
+  const hex = Array.from(new Uint8Array(signature), (byte) =>
+    byte.toString(16).padStart(2, '0'),
+  ).join('');
+  return `sha1=${hex}`;
 }
 
 async function readHubRequest(

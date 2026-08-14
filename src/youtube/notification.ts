@@ -1,30 +1,27 @@
 import { parse } from 'txml/txml';
 import * as z from 'zod';
 
-import { YouTubeChannelId, YouTubeTimestamp, YouTubeVideoId } from './data';
-
 const XML_PARSE_OPTIONS = {
   decodeEntities: true,
   selfClosingTags: [],
   simplify: true,
 };
 
-const UnknownRecord = z.record(z.string(), z.unknown());
 export const YouTubeVideoNotification = z.object({
-  videoId: YouTubeVideoId,
-  channelId: YouTubeChannelId,
+  videoId: z.string().trim().min(1),
+  channelId: z.string().regex(/^UC[A-Za-z0-9_-]{22}$/),
   title: z.string().trim().min(1),
-  publishedAt: YouTubeTimestamp,
+  publishedAt: z.iso.datetime({ offset: true }),
 });
 
 export type YouTubeVideoNotification = z.infer<typeof YouTubeVideoNotification>;
 
 const YouTubeAtomEntry = z
   .object({
-    'yt:videoId': z.string().trim().min(1).pipe(YouTubeVideoId),
-    'yt:channelId': z.string().trim().min(1).pipe(YouTubeChannelId),
-    title: z.string().trim().min(1),
-    published: z.string().trim().min(1).pipe(YouTubeTimestamp),
+    'yt:videoId': z.string(),
+    'yt:channelId': z.string(),
+    title: z.string(),
+    published: z.string(),
   })
   .transform(
     ({
@@ -38,31 +35,23 @@ const YouTubeAtomEntry = z
       title,
       publishedAt,
     }),
-  );
-const YouTubeAtomEntries = z.array(YouTubeAtomEntry);
+  )
+  .pipe(YouTubeVideoNotification);
+const YouTubeAtomFeed = z.object({
+  feed: z.object({
+    entry: z.union([YouTubeAtomEntry, z.array(YouTubeAtomEntry)]).optional(),
+  }),
+});
 
 export function parseYouTubeVideoNotifications(
   xml: string,
 ): YouTubeVideoNotification[] {
-  const documentResult = UnknownRecord.safeParse(parse(xml, XML_PARSE_OPTIONS));
-  if (!documentResult.success) {
-    throw new Error('YouTube notification must contain an XML document');
-  }
-
-  const feed = documentResult.data.feed;
-
-  const feedResult = UnknownRecord.safeParse(feed);
-  if (!feedResult.success) {
-    throw new Error('YouTube notification must contain an Atom feed');
-  }
-
-  const entryValue = feedResult.data.entry;
+  const entryValue = YouTubeAtomFeed.parse(parse(xml, XML_PARSE_OPTIONS)).feed
+    .entry;
 
   if (entryValue === undefined) {
     return [];
   }
 
-  const entries = Array.isArray(entryValue) ? entryValue : [entryValue];
-
-  return YouTubeAtomEntries.parse(entries);
+  return Array.isArray(entryValue) ? entryValue : [entryValue];
 }

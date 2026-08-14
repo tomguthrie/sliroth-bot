@@ -3,8 +3,7 @@ import type {
   EventSubNotification,
   EventSubRevocation,
 } from '../twitch/eventsub';
-import type { YouTubeChannelId } from '../youtube/data';
-import type { YouTubeVideoNotification } from '../youtube/notification';
+import type { YouTubeVideoNotification } from '../youtube';
 
 export const SUBSCRIPTION_EVENTS_QUEUE = 'subscription-events';
 
@@ -23,7 +22,7 @@ export interface TwitchVodLookupDelivery {
 
 export interface YouTubeVideoDelivery {
   kind: 'youtube-video';
-  channelId: YouTubeChannelId;
+  channelId: string;
   notification: YouTubeVideoNotification;
 }
 

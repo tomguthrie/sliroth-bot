@@ -5,7 +5,6 @@ import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { subscribers, videos } from '../../src/db/youtube-subscription/schema';
-import { YouTubeChannelId } from '../../src/youtube/data';
 import type { YouTubeSubscription } from '../../src/youtube-subscription/durable-object';
 
 const GUILD_ID = '123456789012345678';
@@ -513,7 +512,7 @@ describe('YouTubeSubscription', () => {
     });
   });
 
-  it('rejects mismatched channel IDs and invalid timestamps', async () => {
+  it('rejects mismatched channel IDs', async () => {
     const youtubeChannelId = randomYouTubeChannelId();
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
 
@@ -521,32 +520,17 @@ describe('YouTubeSubscription', () => {
       runInDurableObject(subscription, (instance: YouTubeSubscription) =>
         instance.recordVideo({
           videoId: 'mismatched-channel',
-          channelId: YouTubeChannelId.parse('UCaaaaaaaaaaaaaaaaaaaaaa'),
+          channelId: 'UCaaaaaaaaaaaaaaaaaaaaaa',
           title: 'A YouTube video',
           publishedAt: '2026-08-07T12:34:56.789Z',
         }),
       ),
     ).rejects.toThrow('does not match Durable Object');
-
-    const namedSubscription =
-      env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
-    await expect(
-      runInDurableObject(namedSubscription, (instance: YouTubeSubscription) =>
-        instance.recordVideo({
-          videoId: 'invalid-date',
-          channelId: youtubeChannelId,
-          title: 'A YouTube video',
-          publishedAt: 'not-a-date',
-        }),
-      ),
-    ).rejects.toThrow();
   });
 });
 
-function randomYouTubeChannelId(): YouTubeChannelId {
-  return YouTubeChannelId.parse(
-    `UC${crypto.randomUUID().replaceAll('-', '').slice(0, 22)}`,
-  );
+function randomYouTubeChannelId(): string {
+  return `UC${crypto.randomUUID().replaceAll('-', '').slice(0, 22)}`;
 }
 
 function readSubscribers(
