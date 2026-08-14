@@ -5,8 +5,8 @@ import {
 } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { handleYouTubeCommand } from '../../src/discord/commands/youtube';
-import type { DiscordInteraction } from '../../src/discord/commands/shared';
+import type { DiscordInteraction } from '../../src/discord/interaction';
+import { youtubeDiscordCommand } from '../../src/youtube/discord-command';
 
 const mocks = vi.hoisted(() => ({
   resolveYouTubeChannel: vi.fn(),
@@ -14,11 +14,11 @@ const mocks = vi.hoisted(() => ({
   listGuildYouTubeSubscriptions: vi.fn(),
 }));
 
-vi.mock('../../src/youtube', () => ({
+vi.mock('../../src/youtube/channel', () => ({
   resolveYouTubeChannel: mocks.resolveYouTubeChannel,
 }));
 
-vi.mock('../../src/youtube-subscription', () => ({
+vi.mock('../../src/youtube/subscription/index', () => ({
   listChannelYouTubeSubscriptions: mocks.listChannelYouTubeSubscriptions,
   listGuildYouTubeSubscriptions: mocks.listGuildYouTubeSubscriptions,
 }));
@@ -29,6 +29,7 @@ const CHANNEL_ID = '345678901234567890';
 const OTHER_CHANNEL_ID = '456789012345678901';
 const ROLE_ID = '567890123456789012';
 const YOUTUBE_CHANNEL_ID = 'UC_x5XG1OV2P6uZZ5FSM9Ttw';
+const handleYouTubeCommand = youtubeDiscordCommand.handle;
 
 beforeEach(() => {
   vi.clearAllMocks();

@@ -8,7 +8,8 @@ export type {
   EditDiscordMessageOptions,
   SendDiscordMessageOptions,
 } from './client';
-export { handleDiscordInteraction } from './interaction';
+export { createDiscordInteractionHandler } from './interaction';
+export type { DiscordCommandHandler } from './interaction';
 export {
   createDiscordMentionPayload,
   createDiscordMessageNonce,

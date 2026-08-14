@@ -11,13 +11,13 @@ import {
   vi,
 } from 'vitest';
 
-import { subscribers } from '../../src/db/youtube-subscription/schema';
-import { createYouTubeTopicUrl } from '../../src/youtube/websub';
-import type { YouTubeSubscription } from '../../src/youtube-subscription/durable-object';
+import { subscribers } from '../../../src/db/youtube-subscription/schema';
+import { createYouTubeTopicUrl } from '../../../src/youtube/websub';
+import type { YouTubeSubscription } from '../../../src/youtube/subscription/durable-object';
 import {
   handleYouTubeWebSubIntent,
   handleYouTubeWebSubNotification,
-} from '../../src/youtube-subscription/websub-handler';
+} from '../../../src/youtube/subscription/websub-handler';
 
 const GUILD_ID = '123456789012345678';
 const CHANNEL_ID = '234567890123456789';

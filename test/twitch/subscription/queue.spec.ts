@@ -8,11 +8,12 @@ import {
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { broadcasters, streams } from '../../src/db/twitch-subscription/schema';
 import {
-  deliverSubscriptionEventBatch,
-  type TwitchVodLookupDelivery,
-} from '../../src/queue/subscription-event';
+  broadcasters,
+  streams,
+} from '../../../src/db/twitch-subscription/schema';
+import { deliverSubscriptionEventBatch } from '../../../src/queue/subscription-event';
+import type { TwitchVodLookupDelivery } from '../../../src/twitch/subscription/queue';
 
 const STREAM_ID = '9001';
 
@@ -21,7 +22,7 @@ beforeEach(async () => {
   vi.restoreAllMocks();
 });
 
-describe('subscription event Queue consumer', () => {
+describe('Twitch subscription Queue processing', () => {
   it.each([
     [1, 60],
     [2, 120],

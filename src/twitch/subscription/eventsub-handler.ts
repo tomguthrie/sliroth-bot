@@ -4,8 +4,8 @@ import {
   getEventSubMessageType,
   parseEventSubMessage,
   verifyEventSubRequest,
-} from '../twitch/eventsub';
-import type { TwitchEventSubDelivery } from '../queue/subscription-event';
+} from '../eventsub';
+import type { TwitchEventSubDelivery } from './queue';
 
 const MAX_MESSAGE_AGE_MS = 10 * 60 * 1000;
 const MAX_FUTURE_SKEW_MS = 60 * 1000;

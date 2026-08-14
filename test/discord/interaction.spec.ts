@@ -1,8 +1,11 @@
 import { env } from 'cloudflare:workers';
 import { createExecutionContext } from 'cloudflare:test';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { handleDiscordInteraction } from '../../src/discord';
+import {
+  createDiscordInteractionHandler,
+  type DiscordCommandHandler,
+} from '../../src/discord';
 
 const PRIVATE_KEY_SEED =
   '9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60';
@@ -10,6 +13,7 @@ const PRIVATE_KEY_PREFIX = '302e020100300506032b657004220420';
 
 describe('Discord interaction boundary', () => {
   it('responds to an authenticated ping', async () => {
+    const handleDiscordInteraction = createHandler();
     const response = await handleDiscordInteraction(
       await createSignedRequest({ type: 1 }),
       env,
@@ -21,6 +25,7 @@ describe('Discord interaction boundary', () => {
   });
 
   it('rejects a request without a valid signature', async () => {
+    const handleDiscordInteraction = createHandler();
     const response = await handleDiscordInteraction(
       new Request('https://example.com/discord/interactions', {
         method: 'POST',
@@ -38,6 +43,7 @@ describe('Discord interaction boundary', () => {
   });
 
   it('rejects malformed authenticated JSON', async () => {
+    const handleDiscordInteraction = createHandler();
     const response = await handleDiscordInteraction(
       await createSignedRequestFromText('{"type":'),
       env,
@@ -48,6 +54,7 @@ describe('Discord interaction boundary', () => {
   });
 
   it('rejects an invalid authenticated envelope', async () => {
+    const handleDiscordInteraction = createHandler();
     const response = await handleDiscordInteraction(
       await createSignedRequest({
         ...createListInteraction(),
@@ -60,28 +67,56 @@ describe('Discord interaction boundary', () => {
     expect(response.status).toBe(400);
   });
 
-  it('dispatches a valid YouTube list command', async () => {
+  it('dispatches a registered application command', async () => {
+    const commandHandler = vi.fn<DiscordCommandHandler['handle']>(() =>
+      Promise.resolve(new Response('handled', { status: 202 })),
+    );
+    const handleDiscordInteraction = createHandler(commandHandler);
+    const ctx = createExecutionContext();
     const response = await handleDiscordInteraction(
       await createSignedRequest(createListInteraction()),
       env,
+      ctx,
+    );
+
+    expect(response.status).toBe(202);
+    await expect(response.text()).resolves.toBe('handled');
+    expect(commandHandler).toHaveBeenCalledOnce();
+    expect(commandHandler.mock.calls[0]?.[0].data?.name).toBe('youtube');
+    expect(commandHandler.mock.calls[0]?.[1]).toBe(env);
+    expect(commandHandler.mock.calls[0]?.[2]).toBe(ctx);
+  });
+
+  it('rejects duplicate command registrations', () => {
+    const command: DiscordCommandHandler = {
+      name: 'youtube',
+      handle: () => Promise.resolve(new Response()),
+    };
+
+    expect(() => createDiscordInteractionHandler([command, command])).toThrow(
+      'Duplicate Discord command: youtube',
+    );
+  });
+
+  it('responds ephemerally to an unregistered application command', async () => {
+    const handleDiscordInteraction = createHandler();
+    const interaction = createListInteraction();
+    interaction.data.name = 'unknown';
+
+    const response = await handleDiscordInteraction(
+      await createSignedRequest(interaction),
+      env,
       createExecutionContext(),
     );
-    const body = await response.json<{
-      type: number;
-      data: { content: string; flags: number; allowed_mentions: unknown };
-    }>();
 
-    expect(body).toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       type: 4,
-      data: {
-        content: 'No YouTube notifications are configured for this server.',
-        flags: 64,
-        allowed_mentions: { parse: [] },
-      },
+      data: { content: 'This interaction is not supported.', flags: 64 },
     });
   });
 
   it('responds ephemerally to unsupported authenticated interactions', async () => {
+    const handleDiscordInteraction = createHandler();
     const response = await handleDiscordInteraction(
       await createSignedRequest({ type: 3 }),
       env,
@@ -94,6 +129,13 @@ describe('Discord interaction boundary', () => {
     });
   });
 });
+
+function createHandler(
+  handle: DiscordCommandHandler['handle'] = () =>
+    Promise.resolve(new Response()),
+) {
+  return createDiscordInteractionHandler([{ name: 'youtube', handle }]);
+}
 
 function createListInteraction() {
   return {
