@@ -31,6 +31,27 @@ export async function getAccessToken(env: Env): Promise<string> {
     return cached;
   }
 
+  return fetchAndCacheAccessToken(env);
+}
+
+/**
+ * Replaces a rejected cached Twitch access token.
+ *
+ * Deletes the cached value before requesting a replacement and bypasses the
+ * cache read because Workers KV changes are eventually consistent.
+ *
+ * @param env Cloudflare Worker bindings containing Twitch credentials and the
+ * token store.
+ * @returns A replacement Twitch application access token.
+ * @throws If Twitch rejects the token request or returns an invalid response.
+ */
+export async function refreshAccessToken(env: Env): Promise<string> {
+  await env.TOKEN_STORE.delete(ACCESS_TOKEN_KEY);
+
+  return fetchAndCacheAccessToken(env);
+}
+
+async function fetchAndCacheAccessToken(env: Env): Promise<string> {
   const token = await fetchAccessToken(env);
 
   await env.TOKEN_STORE.put(ACCESS_TOKEN_KEY, token.accessToken, {

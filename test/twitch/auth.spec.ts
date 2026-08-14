@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getAccessToken } from '../../src/twitch/auth';
+import { getAccessToken, refreshAccessToken } from '../../src/twitch/auth';
 
 const ACCESS_TOKEN_KEY = 'twitch';
 const ACCESS_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
@@ -96,6 +96,36 @@ describe('getAccessToken', () => {
     );
 
     await expect(getAccessToken(env)).rejects.toThrow();
+    await expect(env.TOKEN_STORE.get(ACCESS_TOKEN_KEY)).resolves.toBeNull();
+  });
+});
+
+describe('refreshAccessToken', () => {
+  it('replaces a cached access token without reading it again', async () => {
+    await env.TOKEN_STORE.put(ACCESS_TOKEN_KEY, 'rejected-token');
+    const fetcher = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(tokenResponse('replacement-token'));
+
+    await expect(refreshAccessToken(env)).resolves.toBe('replacement-token');
+    await expect(env.TOKEN_STORE.get(ACCESS_TOKEN_KEY)).resolves.toBe(
+      'replacement-token',
+    );
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it('leaves no rejected token cached when replacement fails', async () => {
+    await env.TOKEN_STORE.put(ACCESS_TOKEN_KEY, 'rejected-token');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, {
+        status: 401,
+        statusText: 'Unauthorized',
+      }),
+    );
+
+    await expect(refreshAccessToken(env)).rejects.toThrow(
+      'Failed to fetch access token: 401 Unauthorized',
+    );
     await expect(env.TOKEN_STORE.get(ACCESS_TOKEN_KEY)).resolves.toBeNull();
   });
 });

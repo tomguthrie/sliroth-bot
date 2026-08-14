@@ -2,11 +2,12 @@ import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as z from 'zod';
 
-import { getAccessToken } from '../../src/twitch/auth';
+import { getAccessToken, refreshAccessToken } from '../../src/twitch/auth';
 import { TwitchApiClient } from '../../src/twitch/client';
 
 vi.mock('../../src/twitch/auth', () => ({
   getAccessToken: vi.fn(),
+  refreshAccessToken: vi.fn(),
 }));
 
 const BROADCASTER_ID = '123';
@@ -49,6 +50,7 @@ function requestUrl(input: RequestInfo | URL | undefined): string | undefined {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getAccessToken).mockResolvedValue('access-token');
+  vi.mocked(refreshAccessToken).mockResolvedValue('fresh-token');
 });
 
 afterEach(() => {
@@ -192,9 +194,7 @@ describe('TwitchApiClient GET methods', () => {
   });
 
   it('refreshes its token and retries once after a 401', async () => {
-    vi.mocked(getAccessToken)
-      .mockResolvedValueOnce('expired-token')
-      .mockResolvedValueOnce('fresh-token');
+    vi.mocked(getAccessToken).mockResolvedValueOnce('expired-token');
     const fetcher = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(new Response(null, { status: 401 }))
@@ -204,16 +204,16 @@ describe('TwitchApiClient GET methods', () => {
     await expect(client.getUserById('123')).resolves.toMatchObject({
       id: '123',
     });
-    expect(getAccessToken).toHaveBeenCalledTimes(2);
+    expect(getAccessToken).toHaveBeenCalledOnce();
+    expect(refreshAccessToken).toHaveBeenCalledOnce();
+    expect(refreshAccessToken).toHaveBeenCalledWith(env);
     expect(
       new Headers(fetcher.mock.calls[1]?.[1]?.headers).get('authorization'),
     ).toBe('Bearer fresh-token');
   });
 
   it('does not retry more than once after repeated 401 responses', async () => {
-    vi.mocked(getAccessToken)
-      .mockResolvedValueOnce('expired-token')
-      .mockResolvedValueOnce('fresh-token');
+    vi.mocked(getAccessToken).mockResolvedValueOnce('expired-token');
 
     const fetcher = vi
       .spyOn(globalThis, 'fetch')
@@ -227,7 +227,35 @@ describe('TwitchApiClient GET methods', () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(getAccessToken).toHaveBeenCalledOnce();
+    expect(refreshAccessToken).toHaveBeenCalledOnce();
+  });
+
+  it('can request another token after a refresh fails', async () => {
+    vi.mocked(getAccessToken)
+      .mockResolvedValueOnce('expired-token')
+      .mockResolvedValueOnce('recovered-token');
+    vi.mocked(refreshAccessToken).mockRejectedValueOnce(
+      new Error('Failed to refresh token'),
+    );
+    const fetcher = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(Response.json({ data: [USER] }));
+    const client = new TwitchApiClient(env);
+
+    await expect(client.getUserById('123')).rejects.toThrow(
+      'Failed to refresh token',
+    );
+    await expect(client.getUserById('123')).resolves.toMatchObject({
+      id: '123',
+    });
+
     expect(getAccessToken).toHaveBeenCalledTimes(2);
+    expect(refreshAccessToken).toHaveBeenCalledOnce();
+    expect(
+      new Headers(fetcher.mock.calls[1]?.[1]?.headers).get('authorization'),
+    ).toBe('Bearer recovered-token');
   });
 
   it('falls back to HTTP status text when Twitch error JSON is malformed', async () => {

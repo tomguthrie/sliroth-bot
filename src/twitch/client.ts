@@ -1,6 +1,6 @@
 import * as z from 'zod';
 
-import { getAccessToken } from './auth';
+import { getAccessToken, refreshAccessToken } from './auth';
 
 type QueryParams = Record<string, string | number | boolean | undefined>;
 
@@ -188,7 +188,17 @@ export class TwitchApiClient {
   constructor(private readonly env: Env) {}
 
   private async getAccessToken(): Promise<string> {
-    return (this.accessToken ??= getAccessToken(this.env));
+    const accessToken = (this.accessToken ??= getAccessToken(this.env));
+
+    try {
+      return await accessToken;
+    } catch (error) {
+      if (this.accessToken === accessToken) {
+        this.accessToken = undefined;
+      }
+
+      throw error;
+    }
   }
 
   private async fetch(
@@ -217,7 +227,7 @@ export class TwitchApiClient {
     });
 
     if (response.status === 401 && retryOnUnauthorized) {
-      this.accessToken = undefined;
+      this.accessToken = refreshAccessToken(this.env);
 
       return this.fetch(path, query, init, false);
     }
