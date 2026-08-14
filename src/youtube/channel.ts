@@ -1,15 +1,15 @@
-import { XMLParser } from 'fast-xml-parser';
+import { parse } from 'txml/txml';
 import * as z from 'zod';
 
 import { YouTubeChannelId, YouTubeHandle } from './data';
 
 const YOUTUBE_CHANNEL_FEED_URL = 'https://www.youtube.com/feeds/videos.xml';
 
-const parser = new XMLParser({
-  removeNSPrefix: true,
-  parseTagValue: false,
-  trimValues: true,
-});
+const XML_PARSE_OPTIONS = {
+  decodeEntities: true,
+  selfClosingTags: [],
+  simplify: true,
+};
 
 const UnknownRecord = z.record(z.string(), z.unknown());
 const YouTubeChannelFeed = z.object({
@@ -89,7 +89,7 @@ export async function fetchYouTubeChannelTitle(
   }
 
   const documentResult = UnknownRecord.safeParse(
-    parser.parse(await response.text()),
+    parse(await response.text(), XML_PARSE_OPTIONS),
   );
   const feedResult = UnknownRecord.safeParse(
     documentResult.success ? documentResult.data.feed : undefined,
