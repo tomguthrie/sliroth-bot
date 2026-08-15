@@ -1,21 +1,22 @@
-import {
-  createExecutionContext,
-  createMessageBatch,
-  env,
-  getQueueResult,
-  runInDurableObject,
-} from 'cloudflare:test';
+import { env, runInDurableObject } from 'cloudflare:test';
+import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { streams } from '../../../src/db/twitch-subscription/schema';
+import type { QueueMessageContext } from '../../../src/queue/message';
 import {
-  broadcasters,
-  streams,
-} from '../../../src/db/twitch-subscription/schema';
-import { deliverSubscriptionEventBatch } from '../../../src/queue/subscription-event';
-import type { TwitchVodLookupDelivery } from '../../../src/twitch/subscription/queue';
+  processTwitchSubscriptionEvent,
+  type TwitchVodLookupDelivery,
+} from '../../../src/twitch/subscription/queue';
 
+const BROADCASTER_ID = '123456789012345678';
 const STREAM_ID = '9001';
+const DELIVERY: TwitchVodLookupDelivery = {
+  kind: 'twitch-vod-lookup',
+  broadcasterId: BROADCASTER_ID,
+  streamId: STREAM_ID,
+};
 
 beforeEach(async () => {
   await env.TOKEN_STORE.delete('twitch');
@@ -28,27 +29,33 @@ describe('Twitch subscription Queue processing', () => {
     [2, 120],
     [3, 240],
     [4, 480],
-  ])('defers missing Twitch VODs on attempt %i', async (attempts, delay) => {
-    mockMissingVod();
-    const { queueResult, retryDelaySeconds } =
-      await consumeMissingVod(attempts);
+  ])('defers missing Twitch VODs on attempt %i', async (attempt, delay) => {
+    mockTwitchVideos([]);
+    const getByName = vi.spyOn(env.TWITCH_SUBSCRIPTIONS, 'getByName');
 
-    expect(queueResult.explicitAcks).toEqual([]);
-    expect(queueResult.retryMessages).toEqual([{ msgId: `vod-${attempts}` }]);
-    expect(retryDelaySeconds).toBe(delay);
+    const result = await processTwitchSubscriptionEvent(
+      DELIVERY,
+      env,
+      createContext(attempt),
+    );
+
+    expect(result).toEqual({ action: 'retry', delaySeconds: delay });
+    expect(getByName).not.toHaveBeenCalled();
   });
 
-  it('acknowledges a missing Twitch VOD after retry delays are exhausted', async () => {
-    mockMissingVod();
+  it('acknowledges a missing Twitch VOD after retries are exhausted', async () => {
+    mockTwitchVideos([]);
     const warning = vi
       .spyOn(console, 'warn')
       .mockImplementation(() => undefined);
 
-    const { queueResult, retryDelaySeconds } = await consumeMissingVod(5);
+    const result = await processTwitchSubscriptionEvent(
+      DELIVERY,
+      env,
+      createContext(5),
+    );
 
-    expect(queueResult.explicitAcks).toEqual(['vod-5']);
-    expect(queueResult.retryMessages).toEqual([]);
-    expect(retryDelaySeconds).toBeUndefined();
+    expect(result).toEqual({ action: 'ack' });
     expect(warning).toHaveBeenCalledWith(
       expect.objectContaining({
         event: 'twitch_vod_lookup_exhausted',
@@ -57,68 +64,55 @@ describe('Twitch subscription Queue processing', () => {
       }),
     );
   });
+
+  it('records a discovered VOD in the broadcaster object', async () => {
+    const vodUrl = 'https://twitch.tv/videos/1234567890';
+    mockTwitchVideos([createTwitchVideo(vodUrl)]);
+    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(BROADCASTER_ID);
+    await runInDurableObject(subscription, async (_instance, state) => {
+      await drizzle(state.storage)
+        .insert(streams)
+        .values({
+          id: STREAM_ID,
+          title: 'Finished stream',
+          gameName: 'Special Events',
+          viewerCount: 3,
+          previewImageUrl: 'https://example.com/preview.jpg',
+          startedAt: new Date('2026-08-11T18:00:00Z'),
+          endedAt: new Date('2026-08-11T19:00:00Z'),
+        });
+    });
+
+    const result = await processTwitchSubscriptionEvent(
+      DELIVERY,
+      env,
+      createContext(1),
+    );
+
+    expect(result).toEqual({ action: 'ack' });
+    const [stored] = await runInDurableObject(
+      subscription,
+      async (_instance, state) =>
+        drizzle(state.storage)
+          .select()
+          .from(streams)
+          .where(eq(streams.id, STREAM_ID)),
+    );
+    expect(stored?.vodUrl).toBe(vodUrl);
+  });
 });
 
-async function consumeMissingVod(attempts: number): Promise<{
-  queueResult: QueueResult;
-  retryDelaySeconds: number | undefined;
-}> {
-  const broadcasterId = `12345678901234567${attempts}`;
-  const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId);
-  await runInDurableObject(subscription, async (_instance, state) => {
-    const database = drizzle(state.storage);
-    await database.insert(broadcasters).values({
-      id: broadcasterId,
-      login: 'sliroth',
-      displayName: 'Sliroth',
-      profileImageUrl: 'https://example.com/profile.png',
-      offlineImageUrl: 'https://example.com/offline.png',
-    });
-    await database.insert(streams).values({
-      id: STREAM_ID,
-      title: 'Finished stream',
-      gameName: 'Special Events',
-      viewerCount: 3,
-      previewImageUrl: 'https://example.com/preview.jpg',
-      startedAt: new Date('2026-08-11T18:00:00Z'),
-      endedAt: new Date('2026-08-11T19:00:00Z'),
-    });
-  });
-  const delivery: TwitchVodLookupDelivery = {
-    kind: 'twitch-vod-lookup',
-    broadcasterId,
-    streamId: STREAM_ID,
-  };
-  const batch = createMessageBatch<TwitchVodLookupDelivery>(
-    'subscription-events',
-    [
-      {
-        id: `vod-${attempts}`,
-        timestamp: new Date('2026-08-11T19:00:00Z'),
-        attempts,
-        body: delivery,
-      },
-    ],
-  );
-  const [queuedMessage] = batch.messages;
-  if (queuedMessage === undefined) {
-    throw new Error('Cloudflare did not create the Queue test message');
-  }
-  const retry = vi.spyOn(queuedMessage, 'retry');
-  const ctx = createExecutionContext();
-
-  await deliverSubscriptionEventBatch(batch, env);
-  const result: unknown = await getQueueResult(batch, ctx);
-  if (!isQueueResult(result)) {
-    throw new Error('Cloudflare returned an invalid Queue test result');
-  }
+function createContext(attempt: number): QueueMessageContext {
   return {
-    queueResult: result,
-    retryDelaySeconds: retry.mock.calls[0]?.[0]?.delaySeconds,
+    queue: 'subscription-events',
+    messageId: `vod-${attempt}`,
+    attempt,
+    enqueuedAt: new Date('2026-08-11T19:00:00Z'),
+    startedAt: Date.now(),
   };
 }
 
-function mockMissingVod(): void {
+function mockTwitchVideos(videos: readonly Record<string, unknown>[]): void {
   vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
     const request = new Request(input, init);
     if (new URL(request.url).hostname === 'id.twitch.tv') {
@@ -126,23 +120,27 @@ function mockMissingVod(): void {
         Response.json({ access_token: 'token', expires_in: 3600 }),
       );
     }
-    return Promise.resolve(Response.json({ data: [] }));
+    return Promise.resolve(Response.json({ data: videos }));
   });
 }
 
-interface QueueResult {
-  explicitAcks: string[];
-  retryMessages: { msgId: string; delaySeconds?: number }[];
-}
-
-function isQueueResult(value: unknown): value is QueueResult {
-  return (
-    isRecord(value) &&
-    Array.isArray(value.explicitAcks) &&
-    Array.isArray(value.retryMessages)
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+function createTwitchVideo(url: string): Record<string, unknown> {
+  return {
+    id: '1234567890',
+    stream_id: STREAM_ID,
+    user_id: BROADCASTER_ID,
+    user_login: 'sliroth',
+    user_name: 'Sliroth',
+    title: 'Finished stream',
+    description: '',
+    created_at: '2026-08-11T18:00:00Z',
+    published_at: '2026-08-11T18:00:00Z',
+    url,
+    thumbnail_url: 'https://example.com/thumbnail.jpg',
+    viewable: 'public',
+    view_count: 3,
+    language: 'en',
+    type: 'archive',
+    duration: '1h0m0s',
+  };
 }

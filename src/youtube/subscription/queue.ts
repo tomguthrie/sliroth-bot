@@ -1,3 +1,4 @@
+import type { QueueMessageProcessor } from '../../queue/message';
 import type { YouTubeVideoNotification } from '../notification';
 
 export interface YouTubeVideoDelivery {
@@ -7,11 +8,11 @@ export interface YouTubeVideoDelivery {
 }
 
 /** Records a queued YouTube notification in its channel subscription. */
-export async function processYouTubeSubscriptionEvent(
-  delivery: YouTubeVideoDelivery,
-  env: Env,
-): Promise<void> {
+export const processYouTubeSubscriptionEvent: QueueMessageProcessor<
+  YouTubeVideoDelivery
+> = async (delivery, env) => {
   await env.YOUTUBE_SUBSCRIPTIONS.getByName(delivery.channelId).recordVideo(
     delivery.notification,
   );
-}
+  return { action: 'ack' };
+};

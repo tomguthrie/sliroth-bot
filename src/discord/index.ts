@@ -16,4 +16,12 @@ export {
   DiscordMentionTarget,
 } from './message';
 export type { DiscordMessage } from './message';
+export { createDiscordMessageProcessor, enqueueDiscordMessages } from './queue';
+export type {
+  DiscordCreateMessageDelivery,
+  DiscordEditMessageDelivery,
+  DiscordMessageDelivery,
+  DiscordMessageReceiptHandler,
+  DiscordMessageReceiptTarget,
+} from './queue';
 export { DiscordSnowflake, isDiscordSnowflake } from './snowflake';

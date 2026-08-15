@@ -17,7 +17,7 @@ import {
 import type { DiscordMessageReceipt } from '../../discord/client';
 import { DiscordMentionTarget } from '../../discord/message';
 import { DiscordSnowflake } from '../../discord/snowflake';
-import { enqueueDiscordMessages } from '../../queue/discord-message';
+import { enqueueDiscordMessages } from '../../discord/queue';
 import {
   type TwitchEventSubDelivery,
   type TwitchVodLookupDelivery,
@@ -351,38 +351,32 @@ export class TwitchSubscription extends DurableObject<Env> {
     }
   }
 
-  /** Adds a published archive URL to an ended stream when Twitch exposes it. */
-  async enrichStreamVod(
+  /** Records a published archive URL for an ended stream. */
+  async recordStreamVod(
     streamIdValue: string,
-  ): Promise<'updated' | 'already-enriched' | 'not-found'> {
+    vodUrlValue: string,
+  ): Promise<void> {
     const streamId = requireNonBlank(streamIdValue, 'Twitch stream ID');
+    const vodUrl = z.url().parse(vodUrlValue);
     const [stream] = await this.db
       .select()
       .from(streams)
       .where(eq(streams.id, streamId))
       .limit(1);
     if (stream === undefined) {
-      return 'already-enriched';
+      return;
     }
     if (stream.endedAt === null) {
-      return 'already-enriched';
+      return;
     }
     if (stream.vodUrl !== null) {
       await this.queueStreamUpdates(stream.id);
-      return 'already-enriched';
+      return;
     }
-
-    const broadcaster = await this.getBroadcaster();
-    if (broadcaster === undefined) {
-      throw new Error('Twitch broadcaster has not been registered');
-    }
-    const vods = await new TwitchApiClient(this.env).getVideos(broadcaster.id);
-    const vod = vods.find((candidate) => candidate.streamId === stream.id);
-    if (vod === undefined) return 'not-found';
 
     const [updatedStream] = await this.db
       .update(streams)
-      .set({ vodUrl: vod.url, revision: stream.revision + 1 })
+      .set({ vodUrl, revision: stream.revision + 1 })
       .where(
         and(
           eq(streams.id, stream.id),
@@ -392,9 +386,8 @@ export class TwitchSubscription extends DurableObject<Env> {
         ),
       )
       .returning({ id: streams.id });
-    if (updatedStream === undefined) return 'already-enriched';
+    if (updatedStream === undefined) return;
     await this.queueStreamUpdates(updatedStream.id);
-    return 'updated';
   }
 
   /** Records Discord's create-message receipt for a queued live message. */
