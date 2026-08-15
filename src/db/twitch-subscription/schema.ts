@@ -7,7 +7,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 
-import type { DiscordMentionTarget } from '../../discord/message';
+import type { DiscordMentionTarget } from '../../discord';
 
 export const broadcasters = snakeCase.table(
   'broadcaster',

@@ -14,9 +14,11 @@ import {
   streams,
   twitchSubscribers,
 } from '../db/twitch-subscription/schema';
-import type { DiscordMessageReceipt } from '../discord/client';
-import { DiscordMentionTarget } from '../discord/message';
-import { DiscordSnowflake } from '../discord/snowflake';
+import {
+  DiscordMentionTarget,
+  type DiscordMessageReceipt,
+  DiscordSnowflake,
+} from '../discord';
 import { enqueueDiscordMessages } from '../queue/discord-message';
 import {
   type TwitchEventSubDelivery,
