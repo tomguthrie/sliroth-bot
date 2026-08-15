@@ -569,6 +569,12 @@ export class TwitchAnalyticsService {
           remote.transport.callback === callback &&
           sameRecord(remote.condition, condition)
         ) {
+          await this.repository.recordCapability(
+            `eventsub:${desired.key}`,
+            'active',
+            null,
+            now,
+          );
           continue;
         }
         if (remote !== undefined) {

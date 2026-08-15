@@ -8,6 +8,7 @@ import {
   analyticsAuthorization,
   analyticsPendingFinalizers,
   analyticsRuntime,
+  eventSubSubscriptions,
 } from '../../../src/db/twitch-subscription/schema';
 
 const CHANNEL_ID = '123456789012345678';
@@ -71,6 +72,102 @@ describe('Twitch analytics capture', () => {
       .bind(twitchMessageId)
       .first();
     expect(stored).toBeNull();
+  });
+
+  it('reuses lifecycle subscriptions already created for Discord notifications', async () => {
+    const subscription = await createActiveSubscription(null);
+    const callback = new URL(
+      `/twitch/eventsub/${CHANNEL_ID}`,
+      env.PUBLIC_BASE_URL,
+    ).toString();
+    const lifecycle = [
+      { type: 'channel.update', version: '2' },
+      { type: 'stream.online', version: '1' },
+      { type: 'stream.offline', version: '1' },
+    ];
+    await runInDurableObject(subscription, async (_instance, state) => {
+      const database = drizzle(state.storage);
+      await database.insert(eventSubSubscriptions).values(
+        lifecycle.map(({ type, version }) => ({
+          subscriptionKey: type,
+          type,
+          version,
+          conditionJson: JSON.stringify({ broadcaster_user_id: CHANNEL_ID }),
+          subscriptionId: `shared-${type}`,
+        })),
+      );
+    });
+    const createdTypes: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const request = new Request(input, init);
+      const url = new URL(request.url);
+      if (request.method === 'GET') {
+        const id = url.searchParams.get('subscription_id');
+        const desired = lifecycle.find(({ type }) => `shared-${type}` === id);
+        return Response.json({
+          data:
+            desired === undefined
+              ? []
+              : [
+                  {
+                    id,
+                    status: 'enabled',
+                    type: desired.type,
+                    version: desired.version,
+                    condition: { broadcaster_user_id: CHANNEL_ID },
+                    transport: { method: 'webhook', callback },
+                    created_at: '2026-08-15T00:00:00Z',
+                    cost: 0,
+                  },
+                ],
+        });
+      }
+      if (request.method === 'POST') {
+        const body = await request.json<{
+          type: string;
+          version: string;
+          condition: Record<string, string>;
+          transport: { method: string; callback: string };
+        }>();
+        createdTypes.push(body.type);
+        return Response.json({
+          data: [
+            {
+              id: `analytics-${createdTypes.length}`,
+              status: 'webhook_callback_verification_pending',
+              type: body.type,
+              version: body.version,
+              condition: body.condition,
+              transport: body.transport,
+              created_at: '2026-08-15T00:00:00Z',
+              cost: 0,
+            },
+          ],
+        });
+      }
+      throw new Error(`Unexpected request: ${request.method} ${request.url}`);
+    });
+
+    await subscription.processEventSubMessage({
+      kind: 'twitch-eventsub',
+      messageId: `revocation-${crypto.randomUUID()}`,
+      timestamp: new Date().toISOString(),
+      message: {
+        messageType: 'revocation',
+        subscription: {
+          id: 'untracked-revocation',
+          type: 'channel.cheer',
+          version: '1',
+          status: 'authorization_revoked',
+          broadcasterId: CHANNEL_ID,
+        },
+      },
+    });
+
+    expect(createdTypes).toHaveLength(8);
+    expect(createdTypes).not.toContain('channel.update');
+    expect(createdTypes).not.toContain('stream.online');
+    expect(createdTypes).not.toContain('stream.offline');
   });
 
   it('records metadata, chat activity, and channel point spending', async () => {

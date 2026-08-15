@@ -7,6 +7,7 @@ import * as z from 'zod';
 
 import migrations from '../../db/twitch-subscription/migrations/migrations.js';
 import {
+  analyticsRuntime,
   broadcasters,
   eventSubSubscriptions,
   processedEventSubMessages,
@@ -480,8 +481,18 @@ export class TwitchSubscription extends DurableObject<Env> {
     if (subscriberCount === undefined) {
       throw new Error('Failed to count Twitch subscribers');
     }
+    const [analytics] = await this.db
+      .select({ status: analyticsRuntime.status })
+      .from(analyticsRuntime)
+      .limit(1);
+    const analyticsConfigured =
+      broadcaster.id === this.env.TWITCH_ANALYTICS_CHANNEL_ID &&
+      analytics !== undefined &&
+      analytics.status !== 'inactive';
     const desiredSubscriptions: readonly EventSubSubscriptionDefinition[] =
-      subscriberCount.value === 0 ? [] : TWITCH_EVENTSUB_SUBSCRIPTIONS;
+      subscriberCount.value === 0 && !analyticsConfigured
+        ? []
+        : TWITCH_EVENTSUB_SUBSCRIPTIONS;
     const client = new TwitchApiClient(this.env);
     const callback = new URL(
       `/twitch/eventsub/${broadcaster.id}`,

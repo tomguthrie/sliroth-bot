@@ -6,6 +6,9 @@ import {
   TWITCH_EVENT_CHANNEL_RAID,
   TWITCH_EVENT_CHANNEL_SUBSCRIBE,
   TWITCH_EVENT_CHANNEL_SUBSCRIPTION_GIFT,
+  TWITCH_EVENT_CHANNEL_UPDATE,
+  TWITCH_EVENT_STREAM_OFFLINE,
+  TWITCH_EVENT_STREAM_ONLINE,
 } from '../eventsub';
 
 export interface AnalyticsEventSubSubscription {
@@ -22,6 +25,24 @@ const broadcasterCondition = (broadcasterId: string) => ({
 /** EventSub notifications used to build Twitch stream analytics. */
 export const TWITCH_ANALYTICS_EVENTSUB_SUBSCRIPTIONS: readonly AnalyticsEventSubSubscription[] =
   [
+    {
+      key: TWITCH_EVENT_CHANNEL_UPDATE,
+      type: TWITCH_EVENT_CHANNEL_UPDATE,
+      version: '2',
+      condition: broadcasterCondition,
+    },
+    {
+      key: TWITCH_EVENT_STREAM_ONLINE,
+      type: TWITCH_EVENT_STREAM_ONLINE,
+      version: '1',
+      condition: broadcasterCondition,
+    },
+    {
+      key: TWITCH_EVENT_STREAM_OFFLINE,
+      type: TWITCH_EVENT_STREAM_OFFLINE,
+      version: '1',
+      condition: broadcasterCondition,
+    },
     {
       key: 'analytics:follow',
       type: TWITCH_EVENT_CHANNEL_FOLLOW,

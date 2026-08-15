@@ -61,7 +61,7 @@ describe('Twitch analytics authorization', () => {
     const state = twitchAuthorization.searchParams.get('state');
     expect(state).not.toBeNull();
 
-    let eventSubNumber = 0;
+    const eventSubTypes: string[] = [];
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const request =
         input instanceof Request ? input : new Request(input, init);
@@ -112,11 +112,11 @@ describe('Twitch analytics authorization', () => {
         request.method === 'POST'
       ) {
         const body = EventSubRequest.parse(await request.json());
-        eventSubNumber += 1;
+        eventSubTypes.push(body.type);
         return Response.json({
           data: [
             {
-              id: `analytics-subscription-${eventSubNumber}`,
+              id: `analytics-subscription-${eventSubTypes.length}`,
               status: 'webhook_callback_verification_pending',
               type: body.type,
               version: body.version,
@@ -143,7 +143,19 @@ describe('Twitch analytics authorization', () => {
 
     expect(response.status).toBe(200);
     expect(await response.text()).toContain('Twitch analytics enabled');
-    expect(eventSubNumber).toBe(8);
+    expect(eventSubTypes).toEqual([
+      'channel.update',
+      'stream.online',
+      'stream.offline',
+      'channel.follow',
+      'channel.subscribe',
+      'channel.subscription.gift',
+      'channel.cheer',
+      'channel.channel_points_custom_reward_redemption.add',
+      'channel.chat.message',
+      'channel.raid',
+      'channel.raid',
+    ]);
     const channel = await env.TWITCH_ANALYTICS_DB.prepare(
       'SELECT channel_id, login FROM analytics_channels WHERE channel_id = ?',
     )

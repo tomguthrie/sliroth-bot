@@ -8,6 +8,7 @@ import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  analyticsRuntime,
   eventSubSubscriptions,
   processedEventSubMessages,
 } from '../../../src/db/twitch-subscription/schema';
@@ -153,6 +154,98 @@ describe('TwitchSubscription EventSub reconciliation', () => {
         createChannelTwitchSubscriptionKey(CHANNEL_ID, BROADCASTER_ID),
       ),
     ).resolves.toBeNull();
+  });
+
+  it('retains shared lifecycle subscriptions without Discord subscribers when analytics is configured', async () => {
+    const remoteSubscriptions = new Map<
+      string,
+      {
+        id: string;
+        status: string;
+        type: string;
+        version: string;
+        condition: Record<string, string>;
+        created_at: string;
+        transport: { method: string; callback: string };
+        cost: number;
+      }
+    >();
+    const requests: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const request = new Request(input, init);
+      const url = new URL(request.url);
+      if (url.pathname === '/oauth2/token') {
+        return Response.json({ access_token: 'token', expires_in: 3600 });
+      }
+      if (request.method === 'POST') {
+        const body = await request.json<{
+          type: string;
+          version: string;
+          condition: Record<string, string>;
+          transport: { method: string; callback: string };
+        }>();
+        const remote = {
+          id: `subscription-${body.type}`,
+          status: 'webhook_callback_verification_pending',
+          type: body.type,
+          version: body.version,
+          condition: body.condition,
+          created_at: '2026-08-15T00:00:00Z',
+          transport: body.transport,
+          cost: 0,
+        };
+        remoteSubscriptions.set(remote.id, remote);
+        requests.push(`POST:${body.type}`);
+        return Response.json({ data: [remote] });
+      }
+      if (request.method === 'GET') {
+        const remote = remoteSubscriptions.get(
+          url.searchParams.get('subscription_id') ?? '',
+        );
+        return Response.json({ data: remote === undefined ? [] : [remote] });
+      }
+      if (request.method === 'DELETE') {
+        requests.push(`DELETE:${url.searchParams.get('id') ?? ''}`);
+        return new Response(null, { status: 204 });
+      }
+      throw new Error(
+        `Unexpected Twitch request: ${request.method} ${request.url}`,
+      );
+    });
+
+    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(BROADCASTER_ID);
+    await subscription.addSubscriber(
+      {
+        id: BROADCASTER_ID,
+        login: 'sliroth',
+        displayName: 'Sliroth',
+        profileImageUrl: 'https://example.com/profile.png',
+        offlineImageUrl: '',
+      },
+      { guildId: GUILD_ID, channelId: CHANNEL_ID },
+    );
+    await runInDurableObject(subscription, async (_instance, state) => {
+      await drizzle(state.storage).insert(analyticsRuntime).values({
+        singleton: 1,
+        status: 'active',
+        enabledAt: new Date(),
+      });
+    });
+    requests.length = 0;
+
+    await expect(subscription.removeSubscriber(CHANNEL_ID)).resolves.toBe(true);
+
+    expect(requests).toEqual([]);
+    const stored = await runInDurableObject(
+      subscription,
+      async (_instance, state) =>
+        drizzle(state.storage).select().from(eventSubSubscriptions),
+    );
+    expect(stored.map((row) => row.type).sort()).toEqual([
+      'channel.update',
+      'stream.offline',
+      'stream.online',
+    ]);
   });
 });
 
