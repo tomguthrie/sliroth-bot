@@ -6,7 +6,7 @@ import {
 } from '../discord/message';
 import type { DiscordMessageDelivery } from '../queue/discord-message';
 import { DISCORD_RECEIPT_IGNORE } from '../queue/discord-message';
-import type { YouTubeVideoNotification } from '../youtube/notification';
+import type { YouTubeVideoNotification } from '../youtube';
 
 const DEFAULT_MESSAGE = 'A new video has been uploaded!';
 
