@@ -6,10 +6,10 @@ const DISCORD_SNOWFLAKE = /^[0-9]{17,20}$/;
 const applicationId = requireSnowflake('DISCORD_APPLICATION_ID');
 const botToken = requireEnvironmentVariable('DISCORD_BOT_TOKEN');
 const commands = await Promise.all(
-  ['youtube', 'twitch'].map(async (name) =>
+  ['youtube', 'twitch'].map(async (provider) =>
     JSON.parse(
       await readFile(
-        new URL(`../src/discord/commands/${name}.json`, import.meta.url),
+        new URL(`../src/${provider}/discord-command.json`, import.meta.url),
         'utf8',
       ),
     ),

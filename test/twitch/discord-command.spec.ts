@@ -5,8 +5,8 @@ import {
 } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { DiscordInteraction } from '../../src/discord/commands/shared';
-import { handleTwitchCommand } from '../../src/discord/commands/twitch';
+import type { DiscordInteraction } from '../../src/discord/interaction';
+import { twitchDiscordCommand } from '../../src/twitch/discord-command';
 
 const mocks = vi.hoisted(() => ({
   resolveTwitchChannel: vi.fn(),
@@ -14,11 +14,11 @@ const mocks = vi.hoisted(() => ({
   listGuildTwitchSubscriptions: vi.fn(),
 }));
 
-vi.mock('../../src/twitch', () => ({
+vi.mock('../../src/twitch/channel', () => ({
   resolveTwitchChannel: mocks.resolveTwitchChannel,
 }));
 
-vi.mock('../../src/twitch-subscription', () => ({
+vi.mock('../../src/twitch/subscription/index', () => ({
   listChannelTwitchSubscriptions: mocks.listChannelTwitchSubscriptions,
   listGuildTwitchSubscriptions: mocks.listGuildTwitchSubscriptions,
 }));
@@ -28,6 +28,7 @@ const GUILD_ID = '234567890123456789';
 const CHANNEL_ID = '345678901234567890';
 const OTHER_CHANNEL_ID = '456789012345678901';
 const BROADCASTER_ID = '567890123456789012';
+const handleTwitchCommand = twitchDiscordCommand.handle;
 
 beforeEach(() => {
   vi.clearAllMocks();

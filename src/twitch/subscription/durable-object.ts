@@ -5,7 +5,7 @@ import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
 import * as z from 'zod';
 
-import migrations from '../db/twitch-subscription/migrations/migrations.js';
+import migrations from '../../db/twitch-subscription/migrations/migrations.js';
 import {
   broadcasters,
   eventSubSubscriptions,
@@ -13,22 +13,20 @@ import {
   streamMessages,
   streams,
   twitchSubscribers,
-} from '../db/twitch-subscription/schema';
-import {
-  DiscordMentionTarget,
-  type DiscordMessageReceipt,
-  DiscordSnowflake,
-} from '../discord';
-import { enqueueDiscordMessages } from '../queue/discord-message';
+} from '../../db/twitch-subscription/schema';
+import type { DiscordMessageReceipt } from '../../discord/client';
+import { DiscordMentionTarget } from '../../discord/message';
+import { DiscordSnowflake } from '../../discord/snowflake';
+import { enqueueDiscordMessages } from '../../queue/discord-message';
 import {
   type TwitchEventSubDelivery,
   type TwitchVodLookupDelivery,
-} from '../queue/subscription-event';
+} from './queue';
 import {
   isTwitchApiErrorStatus,
   TwitchApiClient,
   type TwitchUser,
-} from '../twitch';
+} from '../client';
 import {
   TWITCH_EVENTSUB_SUBSCRIPTIONS,
   type ChannelUpdateEvent,
@@ -36,7 +34,7 @@ import {
   type EventSubSubscriptionDefinition,
   type StreamOfflineEvent,
   type StreamOnlineEvent,
-} from '../twitch/eventsub';
+} from '../eventsub';
 import {
   createTwitchLiveDelivery,
   createTwitchLiveUpdateDelivery,

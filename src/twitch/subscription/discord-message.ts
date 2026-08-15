@@ -2,17 +2,17 @@ import type {
   broadcasters,
   streams,
   twitchSubscribers,
-} from '../db/twitch-subscription/schema';
+} from '../../db/twitch-subscription/schema';
 import {
   createDiscordMentionPayload,
   createDiscordMessageNonce,
   type DiscordMessage,
-} from '../discord';
+} from '../../discord/message';
 import type {
   DiscordCreateMessageDelivery,
   DiscordEditMessageDelivery,
-} from '../queue/discord-message';
-import { DISCORD_RECEIPT_TWITCH_STREAM } from '../queue/discord-message';
+} from '../../queue/discord-message';
+import { DISCORD_RECEIPT_TWITCH_STREAM } from '../../queue/discord-message';
 
 const TWITCH_COLOR = 0x9146ff;
 const DEFAULT_LIVE_MESSAGE = 'is live now!';

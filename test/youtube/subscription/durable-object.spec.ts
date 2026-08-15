@@ -4,8 +4,11 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { subscribers, videos } from '../../src/db/youtube-subscription/schema';
-import type { YouTubeSubscription } from '../../src/youtube-subscription/durable-object';
+import {
+  subscribers,
+  videos,
+} from '../../../src/db/youtube-subscription/schema';
+import type { YouTubeSubscription } from '../../../src/youtube/subscription/durable-object';
 
 const GUILD_ID = '123456789012345678';
 const OTHER_GUILD_ID = '234567890123456789';
