@@ -1,7 +1,7 @@
 import type { IRequest } from 'itty-router';
 
-import { isYouTubeChannelId } from '../youtube';
-import type { WebSubMode } from '../youtube';
+import { isYouTubeChannelId } from '../channel';
+import type { WebSubMode } from '../websub';
 
 const MAX_WEBSUB_CHALLENGE_LENGTH = 2048;
 

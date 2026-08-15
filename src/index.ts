@@ -1,15 +1,21 @@
 import { AutoRouter, type IRequest } from 'itty-router';
 
-import { handleDiscordInteraction } from './discord';
+import { createDiscordInteractionHandler } from './discord';
 import { deliverQueueBatch, type WorkerQueueMessage } from './queue';
-import { handleTwitchEventSub } from './twitch-subscription/eventsub-handler';
+import { handleTwitchEventSub, twitchDiscordCommand } from './twitch';
 import {
   handleYouTubeWebSubIntent,
   handleYouTubeWebSubNotification,
-} from './youtube-subscription/websub-handler';
+  youtubeDiscordCommand,
+} from './youtube';
 
-export { YouTubeSubscription } from './youtube-subscription/durable-object';
-export { TwitchSubscription } from './twitch-subscription/durable-object';
+export { TwitchSubscription } from './twitch';
+export { YouTubeSubscription } from './youtube';
+
+const handleDiscordInteraction = createDiscordInteractionHandler([
+  twitchDiscordCommand,
+  youtubeDiscordCommand,
+]);
 
 const router = AutoRouter<IRequest, [Env, ExecutionContext], Response>();
 

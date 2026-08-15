@@ -7,10 +7,10 @@ import {
   streamMessages,
   streams,
   twitchSubscribers,
-} from '../../src/db/twitch-subscription/schema';
-import { DiscordSnowflake } from '../../src/discord';
-import type { DiscordMessageDelivery } from '../../src/queue/discord-message';
-import { DISCORD_RECEIPT_TWITCH_STREAM } from '../../src/queue/discord-message';
+} from '../../../src/db/twitch-subscription/schema';
+import { DiscordSnowflake } from '../../../src/discord';
+import type { DiscordMessageDelivery } from '../../../src/queue/discord-message';
+import { DISCORD_RECEIPT_TWITCH_STREAM } from '../../../src/queue/discord-message';
 
 const BROADCASTER_ID = '123456789012345678';
 const GUILD_ID = '234567890123456789';

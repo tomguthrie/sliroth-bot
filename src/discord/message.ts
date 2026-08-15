@@ -3,6 +3,7 @@ import * as z from 'zod';
 import { DiscordSnowflake } from './snowflake';
 
 const MAX_DISCORD_NONCE_LENGTH = 25;
+const MAX_MESSAGE_CONTENT_LENGTH = 2_000;
 
 /** A persisted notification mention selected through a Discord command. */
 export const DiscordMentionTarget = z.union([
@@ -40,6 +41,12 @@ export interface DiscordMentionPayload {
   allowedMentions?: DiscordMessage['allowedMentions'];
 }
 
+export interface NotificationListItem {
+  name: string;
+  channelId: string;
+  providerId: string;
+}
+
 /** Derives notification content and the matching Discord mention allowlist. */
 export function createDiscordMentionPayload(
   ping: DiscordMentionTarget | null,
@@ -73,4 +80,55 @@ export async function createDiscordMessageNonce(
   )
     .join('')
     .slice(0, MAX_DISCORD_NONCE_LENGTH);
+}
+
+/** Produces a stable, preview-free subscription list within Discord's limit. */
+export function createNotificationList(
+  heading: string,
+  items: readonly NotificationListItem[],
+  currentChannelId: string,
+): string {
+  const rows = [...items]
+    .sort((left, right) => {
+      const leftCurrent = left.channelId === currentChannelId;
+      const rightCurrent = right.channelId === currentChannelId;
+      if (leftCurrent !== rightCurrent) return leftCurrent ? -1 : 1;
+      return (
+        left.name.localeCompare(right.name, 'en', { sensitivity: 'base' }) ||
+        left.channelId.localeCompare(right.channelId) ||
+        left.providerId.localeCompare(right.providerId)
+      );
+    })
+    .map(
+      ({ name, channelId }) =>
+        `${escapeDiscordMarkdown(name)} → <#${channelId}>${channelId === currentChannelId ? '*' : ''}`,
+    );
+
+  const lines = [heading];
+  for (const [index, row] of rows.entries()) {
+    const omittedAfterRow = rows.length - index - 1;
+    const candidate = [
+      ...lines,
+      row,
+      ...(omittedAfterRow === 0 ? [] : [`…and ${omittedAfterRow} more.`]),
+    ].join('\n');
+    if (candidate.length > MAX_MESSAGE_CONTENT_LENGTH) {
+      lines.push(`…and ${rows.length - index} more.`);
+      break;
+    }
+    lines.push(row);
+  }
+  return lines.join('\n');
+}
+
+export function describeDiscordMention(
+  ping: DiscordMentionTarget | undefined,
+): string {
+  if (ping === undefined) return '';
+  if (ping === 'everyone' || ping === 'here') return ` and mention @${ping}`;
+  return ` and mention <@&${ping}>`;
+}
+
+export function escapeDiscordMarkdown(value: string): string {
+  return value.replaceAll(/([\\`*_{}[\]()<>#+\-.!|~])/g, '\\$1');
 }

@@ -1,12 +1,12 @@
-import type { subscribers } from '../db/youtube-subscription/schema';
+import type { subscribers } from '../../db/youtube-subscription/schema';
 import {
   createDiscordMentionPayload,
   createDiscordMessageNonce,
   type DiscordMessage,
-} from '../discord';
-import type { DiscordMessageDelivery } from '../queue/discord-message';
-import { DISCORD_RECEIPT_IGNORE } from '../queue/discord-message';
-import type { YouTubeVideoNotification } from '../youtube';
+} from '../../discord/message';
+import type { DiscordMessageDelivery } from '../../queue/discord-message';
+import { DISCORD_RECEIPT_IGNORE } from '../../queue/discord-message';
+import type { YouTubeVideoNotification } from '../notification';
 
 const DEFAULT_MESSAGE = 'A new video has been uploaded!';
 

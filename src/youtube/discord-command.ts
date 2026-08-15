@@ -1,47 +1,47 @@
 import * as z from 'zod';
 
-import { resolveTwitchChannel } from '../../twitch';
+import { DiscordSnowflake } from '../discord/snowflake';
 import {
-  listChannelTwitchSubscriptions,
-  listGuildTwitchSubscriptions,
-} from '../../twitch-subscription';
-import { DiscordSnowflake } from '../snowflake';
-import {
-  canPostInChannel,
   createDeferredResponse,
   createEphemeralResponse,
+  editInteractionResponse,
+  logCommandFailure,
+  unsupportedInteractionResponse,
+} from '../discord/interaction';
+import type {
+  DiscordCommandHandler,
+  DiscordInteraction,
+} from '../discord/interaction';
+import {
   createNotificationList,
   describeDiscordMention,
-  type DiscordCommandContext,
-  type DiscordInteraction,
-  editInteractionResponse,
-  EMBED_LINKS_PERMISSION,
   escapeDiscordMarkdown,
+} from '../discord/message';
+import {
+  canPostInChannel,
   getCommandContext,
-  hasDiscordPermission,
   isNotificationChannel,
-  logCommandFailure,
   resolveNotificationPing,
-  unsupportedInteractionResponse,
-} from './shared';
-import twitchCommand from './twitch.json';
+} from '../discord/permission';
+import type { DiscordCommandContext } from '../discord/permission';
+import { resolveYouTubeChannel } from './channel';
+import {
+  listChannelYouTubeSubscriptions,
+  listGuildYouTubeSubscriptions,
+} from './subscription/index';
+import youtubeCommand from './discord-command.json';
 
-export const TWITCH_COMMAND_NAME = twitchCommand.name;
+const YOUTUBE_COMMAND_NAME = youtubeCommand.name;
 
-const TwitchAddOption = z.discriminatedUnion('name', [
+const YouTubeAddOption = z.discriminatedUnion('name', [
   z.object({
     type: z.literal(3),
-    name: z.literal('twitch'),
+    name: z.literal('youtube'),
     value: z.string().trim().min(1),
   }),
   z.object({
     type: z.literal(3),
     name: z.literal('message'),
-    value: z.string().trim().min(1),
-  }),
-  z.object({
-    type: z.literal(3),
-    name: z.literal('offline'),
     value: z.string().trim().min(1),
   }),
   z.object({
@@ -56,8 +56,8 @@ const TwitchAddOption = z.discriminatedUnion('name', [
   }),
 ]);
 
-const TwitchAddOptions = z
-  .array(TwitchAddOption)
+const YouTubeAddOptions = z
+  .array(YouTubeAddOption)
   .superRefine((options, context) => {
     const names = new Set<string>();
     for (const option of options) {
@@ -77,42 +77,38 @@ const TwitchAddOptions = z
     }
   })
   .transform((options, context) => {
-    const twitchOption = options.find(({ name }) => name === 'twitch');
-    if (twitchOption === undefined) {
+    const youtubeOption = options.find(({ name }) => name === 'youtube');
+    if (youtubeOption === undefined) {
       context.addIssue({
         code: 'custom',
-        message: 'Twitch channel is required',
+        message: 'YouTube channel is required',
       });
       return z.NEVER;
     }
     const messageOption = options.find(({ name }) => name === 'message');
-    const offlineOption = options.find(({ name }) => name === 'offline');
     const pingOption = options.find(({ name }) => name === 'ping');
     const roleOption = options.find(({ name }) => name === 'role');
     const message =
       messageOption?.name === 'message' ? messageOption.value : undefined;
-    const offline =
-      offlineOption?.name === 'offline' ? offlineOption.value : undefined;
     const ping = pingOption?.name === 'ping' ? pingOption.value : undefined;
     const roleId = roleOption?.name === 'role' ? roleOption.value : undefined;
     return {
-      twitch: twitchOption.value,
+      youtube: youtubeOption.value,
       ...(message === undefined ? {} : { message }),
-      ...(offline === undefined ? {} : { offline }),
       ...(ping === undefined ? {} : { ping }),
       ...(roleId === undefined ? {} : { roleId }),
     };
   });
 
-const TwitchAddCommand = z
+const YouTubeAddCommand = z
   .object({
     type: z.literal(1),
     name: z.literal('add'),
-    options: TwitchAddOptions,
+    options: YouTubeAddOptions,
   })
   .transform(({ name, options }) => ({ name, options }));
 
-const TwitchListCommand = z
+const YouTubeListCommand = z
   .object({
     type: z.literal(1),
     name: z.literal('list'),
@@ -120,7 +116,7 @@ const TwitchListCommand = z
   })
   .transform(({ name }) => ({ name }));
 
-const TwitchRemoveCommand = z
+const YouTubeRemoveCommand = z
   .object({
     type: z.literal(1),
     name: z.literal('remove'),
@@ -128,22 +124,22 @@ const TwitchRemoveCommand = z
   })
   .transform(({ name }) => ({ name }));
 
-const TwitchCommand = z
+const YouTubeCommand = z
   .object({
-    name: z.literal(TWITCH_COMMAND_NAME),
+    name: z.literal(YOUTUBE_COMMAND_NAME),
     options: z.tuple([
-      z.union([TwitchAddCommand, TwitchListCommand, TwitchRemoveCommand]),
+      z.union([YouTubeAddCommand, YouTubeListCommand, YouTubeRemoveCommand]),
     ]),
   })
   .transform(({ options: [command] }) => command);
 
-/** Handles the authenticated `/twitch` application command. */
-export async function handleTwitchCommand(
+/** Handles the authenticated `/youtube` application command. */
+async function handleYouTubeCommand(
   interaction: DiscordInteraction,
   env: Env,
   ctx: ExecutionContext,
 ): Promise<Response> {
-  const parsed = TwitchCommand.safeParse(interaction.data);
+  const parsed = YouTubeCommand.safeParse(interaction.data);
   if (!parsed.success) return unsupportedInteractionResponse();
 
   const context = getCommandContext(interaction);
@@ -152,7 +148,7 @@ export async function handleTwitchCommand(
 
   switch (command.name) {
     case 'add': {
-      const permissionError = validateTwitchAdd(interaction);
+      const permissionError = validateYouTubeAdd(interaction);
       if (permissionError !== undefined) {
         return createEphemeralResponse(permissionError);
       }
@@ -164,151 +160,148 @@ export async function handleTwitchCommand(
       if ('error' in ping) return createEphemeralResponse(ping.error);
 
       ctx.waitUntil(
-        completeTwitchAdd(env, context, command.options, ping.ping),
+        completeYouTubeAdd(env, context, command.options, ping.ping),
       );
       return createDeferredResponse();
     }
     case 'remove':
-      ctx.waitUntil(completeTwitchRemove(env, context));
+      ctx.waitUntil(completeYouTubeRemove(env, context));
       return createDeferredResponse();
     case 'list':
-      return listTwitchSubscriptions(env, context);
+      return listYouTubeSubscriptions(env, context);
   }
 }
 
-function validateTwitchAdd(
+export const youtubeDiscordCommand: DiscordCommandHandler = {
+  name: YOUTUBE_COMMAND_NAME,
+  handle: handleYouTubeCommand,
+};
+
+function validateYouTubeAdd(
   interaction: DiscordInteraction,
 ): string | undefined {
   if (!isNotificationChannel(interaction)) {
-    return 'Twitch notifications can only be added in a text or announcement channel.';
+    return 'YouTube notifications can only be added in a text or announcement channel.';
   }
   if (!canPostInChannel(interaction.app_permissions)) {
     return 'I need View Channel and Send Messages permissions in this channel.';
   }
-  if (
-    !hasDiscordPermission(interaction.app_permissions, EMBED_LINKS_PERMISSION)
-  ) {
-    return 'I need Embed Links permission in this channel.';
-  }
   return undefined;
 }
 
-async function completeTwitchAdd(
+async function completeYouTubeAdd(
   env: Env,
   context: DiscordCommandContext,
-  options: z.infer<typeof TwitchAddOptions>,
+  options: z.infer<typeof YouTubeAddOptions>,
   ping: string | undefined,
 ): Promise<void> {
   try {
-    const broadcaster = await resolveTwitchChannel(options.twitch, env);
-    if (broadcaster === undefined) {
+    const channel = await resolveYouTubeChannel(options.youtube);
+    if (channel === undefined) {
       await editInteractionResponse(
         context.applicationId,
         context.token,
-        'That Twitch channel could not be resolved.',
+        'That YouTube channel could not be resolved.',
       );
       return;
     }
-    await env.TWITCH_SUBSCRIPTIONS.getByName(broadcaster.id).addSubscriber(
-      broadcaster,
-      {
-        guildId: context.guildId,
-        channelId: context.channelId,
-        message: options.message,
-        offline: options.offline,
-        ping,
-      },
-    );
+    await env.YOUTUBE_SUBSCRIPTIONS.getByName(channel.id).addSubscriber({
+      guildId: context.guildId,
+      channelId: context.channelId,
+      channelTitle: channel.title,
+      message: options.message,
+      ping,
+    });
     await editInteractionResponse(
       context.applicationId,
       context.token,
-      `Streams from **${escapeDiscordMarkdown(broadcaster.displayName)}** will be posted in <#${context.channelId}>${describeDiscordMention(ping)}.`,
+      `Uploads from **${escapeDiscordMarkdown(channel.title)}** will be posted in <#${context.channelId}>${describeDiscordMention(ping)}.`,
     );
   } catch (error) {
-    await reportTwitchFailure(
+    await reportYouTubeFailure(
       context,
       'add',
-      'The Twitch notification could not be added. Please try again.',
+      'The YouTube notification could not be added. Please try again.',
       error,
     );
   }
 }
 
-async function completeTwitchRemove(
+async function completeYouTubeRemove(
   env: Env,
   context: DiscordCommandContext,
 ): Promise<void> {
   try {
-    const broadcasterIds = await listChannelTwitchSubscriptions(
-      env.TWITCH_SUBSCRIPTIONS_INDEX,
+    const channelIds = await listChannelYouTubeSubscriptions(
+      env.YOUTUBE_SUBSCRIPTIONS_INDEX,
       context.channelId,
     );
     await Promise.all(
-      broadcasterIds.map((broadcasterId) =>
-        env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId).removeSubscriber(
+      channelIds.map((channelId) =>
+        env.YOUTUBE_SUBSCRIPTIONS.getByName(channelId).removeSubscriber(
           context.channelId,
         ),
       ),
     );
     const content =
-      broadcasterIds.length === 0
-        ? `No Twitch notifications were configured for <#${context.channelId}>.`
-        : `Removed ${broadcasterIds.length} Twitch notification${broadcasterIds.length === 1 ? '' : 's'} from <#${context.channelId}>.`;
+      channelIds.length === 0
+        ? `No YouTube notifications were configured for <#${context.channelId}>.`
+        : `Removed ${channelIds.length} YouTube notification${channelIds.length === 1 ? '' : 's'} from <#${context.channelId}>.`;
     await editInteractionResponse(
       context.applicationId,
       context.token,
       content,
     );
   } catch (error) {
-    await reportTwitchFailure(
+    await reportYouTubeFailure(
       context,
       'remove',
-      'The Twitch notifications could not be removed. Please try again.',
+      'The YouTube notifications could not be removed. Please try again.',
       error,
     );
   }
 }
 
-async function listTwitchSubscriptions(
+async function listYouTubeSubscriptions(
   env: Env,
   context: DiscordCommandContext,
 ): Promise<Response> {
   try {
-    const subscriptions = await listGuildTwitchSubscriptions(
-      env.TWITCH_SUBSCRIPTIONS_INDEX,
+    const subscriptions = await listGuildYouTubeSubscriptions(
+      env.YOUTUBE_SUBSCRIPTIONS_INDEX,
       context.guildId,
     );
     if (subscriptions.length === 0) {
       return createEphemeralResponse(
-        'No Twitch notifications are configured for this server.',
+        'No YouTube notifications are configured for this server.',
       );
     }
     return createEphemeralResponse(
       createNotificationList(
-        '**Twitch notifications in this server**',
+        '**YouTube notifications in this server**',
         subscriptions.map((subscription) => ({
-          name: subscription.twitchBroadcasterDisplayName,
+          name: subscription.youtubeChannelTitle,
           channelId: subscription.discordChannelId,
-          providerId: subscription.twitchBroadcasterId,
+          providerId: subscription.youtubeChannelId,
         })),
         context.channelId,
       ),
     );
   } catch (error) {
-    logCommandFailure('twitch', 'list', context, error);
+    logCommandFailure('youtube', 'list', context, error);
     return createEphemeralResponse(
-      'Twitch notifications could not be loaded. Please try again.',
+      'YouTube notifications could not be loaded. Please try again.',
     );
   }
 }
 
-async function reportTwitchFailure(
+async function reportYouTubeFailure(
   context: DiscordCommandContext,
   action: 'add' | 'remove',
   message: string,
   error: unknown,
 ): Promise<void> {
-  logCommandFailure('twitch', action, context, error);
+  logCommandFailure('youtube', action, context, error);
   try {
     await editInteractionResponse(
       context.applicationId,
@@ -316,6 +309,6 @@ async function reportTwitchFailure(
       message,
     );
   } catch (responseError) {
-    logCommandFailure('twitch', action, context, responseError);
+    logCommandFailure('youtube', action, context, responseError);
   }
 }

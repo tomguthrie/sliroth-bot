@@ -5,7 +5,7 @@ import {
   type DiscordMessage,
 } from '../discord';
 import { toLoggableError } from '../log';
-import { recordTwitchStreamMessageReceipt } from '../twitch-subscription/message-receipt';
+import { recordTwitchStreamMessageReceipt } from '../twitch/subscription/message-receipt';
 
 const MAX_QUEUE_RETRY_DELAY_SECONDS = 24 * 60 * 60;
 

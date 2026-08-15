@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { DiscordSnowflake } from '../../src/discord';
-import type { YouTubeVideoNotification } from '../../src/youtube';
-import { createYouTubeDelivery } from '../../src/youtube-subscription/discord-message';
+import { DiscordSnowflake } from '../../../src/discord';
+import type { YouTubeVideoNotification } from '../../../src/youtube';
+import { createYouTubeDelivery } from '../../../src/youtube/subscription/discord-message';
 
 const NOTIFICATION: YouTubeVideoNotification = {
   videoId: 'dQw4w9WgXcQ',

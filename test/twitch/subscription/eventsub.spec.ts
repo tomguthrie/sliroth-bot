@@ -10,13 +10,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   eventSubSubscriptions,
   processedEventSubMessages,
-} from '../../src/db/twitch-subscription/schema';
-import type { TwitchSubscription } from '../../src/twitch-subscription/durable-object';
-import { handleTwitchEventSub } from '../../src/twitch-subscription/eventsub-handler';
+} from '../../../src/db/twitch-subscription/schema';
+import type { TwitchSubscription } from '../../../src/twitch/subscription/durable-object';
+import { handleTwitchEventSub } from '../../../src/twitch/subscription/eventsub-handler';
 import {
   createChannelTwitchSubscriptionKey,
   createGuildTwitchSubscriptionKey,
-} from '../../src/twitch-subscription/index';
+} from '../../../src/twitch/subscription/index';
 
 const BROADCASTER_ID = '123456789012345678';
 const WEBHOOK_BROADCASTER_ID = '123456789012345679';
