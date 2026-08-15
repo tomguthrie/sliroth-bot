@@ -1,4 +1,6 @@
+import { sql } from 'drizzle-orm';
 import {
+  check,
   index,
   integer,
   primaryKey,
@@ -40,14 +42,95 @@ export const twitchSubscribers = snakeCase.table(
 export const eventSubSubscriptions = snakeCase.table(
   'eventsub_subscriptions',
   {
+    subscriptionKey: text().notNull(),
     type: text().notNull(),
+    version: text().notNull(),
+    conditionJson: text().notNull(),
     subscriptionId: text().notNull(),
   },
   (table) => [
-    primaryKey({ columns: [table.type] }),
+    primaryKey({ columns: [table.subscriptionKey] }),
+    index('eventsub_subscriptions_type_idx').on(table.type),
     uniqueIndex('eventsub_subscriptions_subscription_id_idx').on(
       table.subscriptionId,
     ),
+    check(
+      'eventsub_subscriptions_condition_json_check',
+      sql`json_valid(${table.conditionJson})`,
+    ),
+  ],
+);
+
+export const analyticsAuthorization = snakeCase.table(
+  'analytics_authorization',
+  {
+    singleton: integer().notNull(),
+    accessToken: text().notNull(),
+    refreshToken: text().notNull(),
+    scopesJson: text().notNull(),
+    authorizedAt: integer({ mode: 'timestamp_ms' }).notNull(),
+    validatedAt: integer({ mode: 'timestamp_ms' }).notNull(),
+    expiresAt: integer({ mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.singleton] }),
+    check(
+      'analytics_authorization_singleton_check',
+      sql`${table.singleton} = 1`,
+    ),
+    check(
+      'analytics_authorization_scopes_json_check',
+      sql`json_valid(${table.scopesJson})`,
+    ),
+  ],
+);
+
+export const analyticsRuntime = snakeCase.table(
+  'analytics_runtime',
+  {
+    singleton: integer().notNull(),
+    status: text()
+      .$type<'inactive' | 'active' | 'reauthorization_required'>()
+      .notNull(),
+    enabledAt: integer({ mode: 'timestamp_ms' }).notNull(),
+    activeStreamId: text(),
+    nextViewerSampleAt: integer({ mode: 'timestamp_ms' }),
+    nextAudienceSampleAt: integer({ mode: 'timestamp_ms' }),
+    nextTokenValidationAt: integer({ mode: 'timestamp_ms' }),
+    nextEventSubAuditAt: integer({ mode: 'timestamp_ms' }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.singleton] }),
+    check('analytics_runtime_singleton_check', sql`${table.singleton} = 1`),
+    check(
+      'analytics_runtime_status_check',
+      sql`${table.status} in ('inactive', 'active', 'reauthorization_required')`,
+    ),
+  ],
+);
+
+export const analyticsOauthStates = snakeCase.table(
+  'analytics_oauth_states',
+  {
+    stateHash: text().notNull(),
+    createdAt: integer({ mode: 'timestamp_ms' }).notNull(),
+    expiresAt: integer({ mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.stateHash] }),
+    index('analytics_oauth_states_expires_at_idx').on(table.expiresAt),
+  ],
+);
+
+export const analyticsPendingFinalizers = snakeCase.table(
+  'analytics_pending_finalizers',
+  {
+    streamId: text().notNull(),
+    finalizeAfter: integer({ mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.streamId] }),
+    index('analytics_pending_finalizers_due_idx').on(table.finalizeAfter),
   ],
 );
 

@@ -503,10 +503,25 @@ export class TwitchSubscription extends DurableObject<Env> {
       });
       await this.db
         .insert(eventSubSubscriptions)
-        .values({ type: desired.type, subscriptionId: created.id })
+        .values({
+          subscriptionKey: desired.type,
+          type: desired.type,
+          version: desired.version,
+          conditionJson: JSON.stringify({
+            broadcaster_user_id: broadcaster.id,
+          }),
+          subscriptionId: created.id,
+        })
         .onConflictDoUpdate({
-          target: eventSubSubscriptions.type,
-          set: { subscriptionId: created.id },
+          target: eventSubSubscriptions.subscriptionKey,
+          set: {
+            type: desired.type,
+            version: desired.version,
+            conditionJson: JSON.stringify({
+              broadcaster_user_id: broadcaster.id,
+            }),
+            subscriptionId: created.id,
+          },
         });
     }
 
@@ -571,12 +586,24 @@ export class TwitchSubscription extends DurableObject<Env> {
     await this.db
       .insert(eventSubSubscriptions)
       .values({
+        subscriptionKey: message.eventType,
         type: message.eventType,
+        version: message.subscription.version,
+        conditionJson: JSON.stringify({
+          broadcaster_user_id: message.subscription.broadcasterId,
+        }),
         subscriptionId: message.subscription.id,
       })
       .onConflictDoUpdate({
-        target: eventSubSubscriptions.type,
-        set: { subscriptionId: message.subscription.id },
+        target: eventSubSubscriptions.subscriptionKey,
+        set: {
+          type: message.eventType,
+          version: message.subscription.version,
+          conditionJson: JSON.stringify({
+            broadcaster_user_id: message.subscription.broadcasterId,
+          }),
+          subscriptionId: message.subscription.id,
+        },
       });
   }
 
@@ -608,10 +635,25 @@ export class TwitchSubscription extends DurableObject<Env> {
       });
       await this.db
         .insert(eventSubSubscriptions)
-        .values({ type: desired.type, subscriptionId: created.id })
+        .values({
+          subscriptionKey: desired.type,
+          type: desired.type,
+          version: desired.version,
+          conditionJson: JSON.stringify({
+            broadcaster_user_id: broadcaster.id,
+          }),
+          subscriptionId: created.id,
+        })
         .onConflictDoUpdate({
-          target: eventSubSubscriptions.type,
-          set: { subscriptionId: created.id },
+          target: eventSubSubscriptions.subscriptionKey,
+          set: {
+            type: desired.type,
+            version: desired.version,
+            conditionJson: JSON.stringify({
+              broadcaster_user_id: broadcaster.id,
+            }),
+            subscriptionId: created.id,
+          },
         });
     }
   }
