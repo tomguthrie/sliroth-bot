@@ -2,9 +2,11 @@ import { env, runInDurableObject } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as z from 'zod';
 
 import { streams } from '../../../src/db/twitch-subscription/schema';
 import type { QueueMessageContext } from '../../../src/queue/message';
+import { TwitchVideo } from '../../../src/twitch/client';
 import {
   processTwitchSubscriptionEvent,
   type TwitchVodLookupDelivery,
@@ -112,7 +114,9 @@ function createContext(attempt: number): QueueMessageContext {
   };
 }
 
-function mockTwitchVideos(videos: readonly Record<string, unknown>[]): void {
+type TwitchVideoWire = z.input<typeof TwitchVideo>;
+
+function mockTwitchVideos(videos: readonly TwitchVideoWire[]): void {
   vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
     const request = new Request(input, init);
     if (new URL(request.url).hostname === 'id.twitch.tv') {
@@ -124,7 +128,7 @@ function mockTwitchVideos(videos: readonly Record<string, unknown>[]): void {
   });
 }
 
-function createTwitchVideo(url: string): Record<string, unknown> {
+function createTwitchVideo(url: string): TwitchVideoWire {
   return {
     id: '1234567890',
     stream_id: STREAM_ID,

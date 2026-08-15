@@ -18,6 +18,7 @@ import type { DiscordMessageReceipt } from '../../discord/client';
 import { DiscordMentionTarget } from '../../discord/message';
 import { DiscordSnowflake } from '../../discord/snowflake';
 import { enqueueDiscordMessages } from '../../discord/queue';
+import { TwitchAnalyticsService } from '../analytics/service';
 import {
   type TwitchEventSubDelivery,
   type TwitchVodLookupDelivery,
@@ -83,6 +84,7 @@ type TwitchEventSubSubscription = NonNullable<
 /** Coordinates subscribers and EventSub state for one Twitch broadcaster. */
 export class TwitchSubscription extends DurableObject<Env> {
   private readonly db: DrizzleSqliteDODatabase;
+  private readonly analytics: TwitchAnalyticsService;
   private reconciliation: Promise<void> | undefined;
   private readonly eventSubProcessing = new Map<string, Promise<void>>();
 
@@ -90,11 +92,31 @@ export class TwitchSubscription extends DurableObject<Env> {
     super(ctx, env);
 
     this.db = drizzle(this.ctx.storage);
+    this.analytics = new TwitchAnalyticsService(this.ctx, env, this.db);
 
     void ctx.blockConcurrencyWhile(() => {
       migrate(this.db, migrations);
       return Promise.resolve();
     });
+  }
+
+  /** Creates a one-time Twitch authorization URL for analytics setup. */
+  beginAnalyticsAuthorization(redirectUri: string): Promise<string> {
+    return this.analytics.beginAuthorization(redirectUri);
+  }
+
+  /** Exchanges a Twitch authorization response and starts analytics capture. */
+  completeAnalyticsAuthorization(
+    code: string,
+    state: string,
+    redirectUri: string,
+  ): Promise<{ readonly login: string }> {
+    return this.analytics.completeAuthorization(code, state, redirectUri);
+  }
+
+  /** Runs the next analytics sampling and maintenance tasks. */
+  alarm(): Promise<void> {
+    return this.analytics.alarm();
   }
 
   /** Adds or updates a subscriber, then reconciles Twitch EventSub state. */
@@ -465,7 +487,9 @@ export class TwitchSubscription extends DurableObject<Env> {
       `/twitch/eventsub/${broadcaster.id}`,
       this.env.PUBLIC_BASE_URL,
     ).toString();
-    const rows = await this.db.select().from(eventSubSubscriptions);
+    const rows = (await this.db.select().from(eventSubSubscriptions)).filter(
+      (row) => !row.subscriptionKey.startsWith('analytics:'),
+    );
 
     for (const row of rows) {
       if (
@@ -544,18 +568,26 @@ export class TwitchSubscription extends DurableObject<Env> {
       const { message } = delivery;
       if (message.messageType === 'revocation') {
         await this.revokeEventSub(message.subscription.id);
+        await this.analytics.eventSubRevoked();
       } else {
-        switch (message.eventType) {
-          case 'channel.update':
-            await this.channelUpdate(message.event);
-            break;
-          case 'stream.online':
-            await this.streamOnline(message.event);
-            break;
-          case 'stream.offline':
-            await this.streamOffline(message.event, delivery.timestamp);
-            break;
+        if (
+          message.subscription.broadcasterId !==
+            this.env.TWITCH_ANALYTICS_CHANNEL_ID ||
+          (await this.getBroadcaster()) !== undefined
+        ) {
+          switch (message.eventType) {
+            case 'channel.update':
+              await this.channelUpdate(message.event);
+              break;
+            case 'stream.online':
+              await this.streamOnline(message.event);
+              break;
+            case 'stream.offline':
+              await this.streamOffline(message.event, delivery.timestamp);
+              break;
+          }
         }
+        await this.analytics.processEventSub(delivery);
       }
 
       const processedAt = new Date();
@@ -583,6 +615,23 @@ export class TwitchSubscription extends DurableObject<Env> {
   private async recordIncomingEventSubSubscription(
     message: EventSubNotification,
   ): Promise<void> {
+    const [existing] = await this.db
+      .select({ subscriptionKey: eventSubSubscriptions.subscriptionKey })
+      .from(eventSubSubscriptions)
+      .where(eq(eventSubSubscriptions.subscriptionId, message.subscription.id))
+      .limit(1);
+    if (existing !== undefined) {
+      await this.db
+        .update(eventSubSubscriptions)
+        .set({
+          type: message.eventType,
+          version: message.subscription.version,
+        })
+        .where(
+          eq(eventSubSubscriptions.subscriptionKey, existing.subscriptionKey),
+        );
+      return;
+    }
     await this.db
       .insert(eventSubSubscriptions)
       .values({
@@ -594,17 +643,7 @@ export class TwitchSubscription extends DurableObject<Env> {
         }),
         subscriptionId: message.subscription.id,
       })
-      .onConflictDoUpdate({
-        target: eventSubSubscriptions.subscriptionKey,
-        set: {
-          type: message.eventType,
-          version: message.subscription.version,
-          conditionJson: JSON.stringify({
-            broadcaster_user_id: message.subscription.broadcasterId,
-          }),
-          subscriptionId: message.subscription.id,
-        },
-      });
+      .onConflictDoNothing();
   }
 
   private async repairMissingEventSubSubscriptions(): Promise<void> {

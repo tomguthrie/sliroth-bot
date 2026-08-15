@@ -3,6 +3,15 @@ import * as z from 'zod';
 export const TWITCH_EVENT_CHANNEL_UPDATE = 'channel.update';
 export const TWITCH_EVENT_STREAM_ONLINE = 'stream.online';
 export const TWITCH_EVENT_STREAM_OFFLINE = 'stream.offline';
+export const TWITCH_EVENT_CHANNEL_FOLLOW = 'channel.follow';
+export const TWITCH_EVENT_CHANNEL_SUBSCRIBE = 'channel.subscribe';
+export const TWITCH_EVENT_CHANNEL_SUBSCRIPTION_GIFT =
+  'channel.subscription.gift';
+export const TWITCH_EVENT_CHANNEL_CHEER = 'channel.cheer';
+export const TWITCH_EVENT_CHANNEL_POINTS_REDEMPTION =
+  'channel.channel_points_custom_reward_redemption.add';
+export const TWITCH_EVENT_CHANNEL_RAID = 'channel.raid';
+export const TWITCH_EVENT_CHANNEL_CHAT_MESSAGE = 'channel.chat.message';
 
 /** EventSub subscriptions supported by this Twitch integration. */
 export const TWITCH_EVENTSUB_SUBSCRIPTIONS = [
@@ -78,18 +87,159 @@ const EventSubSubscription = z
     id: z.string(),
     type: z.string(),
     version: z.string(),
-    condition: z.object({
-      broadcaster_user_id: z.string(),
-    }),
+    condition: z.record(z.string(), z.string()),
   })
-  .transform((data) => ({
-    id: data.id,
-    type: data.type,
-    version: data.version,
-    broadcasterId: data.condition.broadcaster_user_id,
-  }));
+  .transform((data, context) => {
+    const broadcasterId =
+      data.condition.broadcaster_user_id ??
+      data.condition.to_broadcaster_user_id ??
+      data.condition.from_broadcaster_user_id;
+    if (broadcasterId === undefined) {
+      context.addIssue({
+        code: 'custom',
+        message: 'EventSub condition does not identify a broadcaster',
+      });
+      return z.NEVER;
+    }
+    return {
+      id: data.id,
+      type: data.type,
+      version: data.version,
+      broadcasterId,
+    };
+  });
 
 export type EventSubSubscription = z.output<typeof EventSubSubscription>;
+
+const EventUser = {
+  user_id: z.string(),
+  user_login: z.string(),
+  user_name: z.string(),
+};
+
+const ChannelFollowEvent = z
+  .object({
+    ...EventUser,
+    followed_at: z.iso.datetime(),
+  })
+  .transform((data) => ({
+    userId: data.user_id,
+    userLogin: data.user_login,
+    userName: data.user_name,
+    followedAt: data.followed_at,
+  }));
+
+const ChannelSubscribeEvent = z
+  .object({
+    ...EventUser,
+    tier: z.string(),
+    is_gift: z.boolean(),
+  })
+  .transform((data) => ({
+    userId: data.user_id,
+    userLogin: data.user_login,
+    userName: data.user_name,
+    tier: data.tier,
+    isGift: data.is_gift,
+  }));
+
+const ChannelSubscriptionGiftEvent = z
+  .object({
+    user_id: z.string().nullable(),
+    user_login: z.string().nullable(),
+    user_name: z.string().nullable(),
+    total: z.int().nonnegative(),
+    tier: z.string(),
+    is_anonymous: z.boolean(),
+  })
+  .transform((data) => ({
+    userId: data.user_id,
+    userLogin: data.user_login,
+    userName: data.user_name,
+    total: data.total,
+    tier: data.tier,
+    isAnonymous: data.is_anonymous,
+  }));
+
+const ChannelCheerEvent = z
+  .object({
+    user_id: z.string().nullable(),
+    user_login: z.string().nullable(),
+    user_name: z.string().nullable(),
+    is_anonymous: z.boolean(),
+    bits: z.int().nonnegative(),
+  })
+  .transform((data) => ({
+    userId: data.user_id,
+    userLogin: data.user_login,
+    userName: data.user_name,
+    isAnonymous: data.is_anonymous,
+    bits: data.bits,
+  }));
+
+const ChannelPointsRedemptionEvent = z
+  .object({
+    id: z.string(),
+    ...EventUser,
+    reward: z.object({
+      id: z.string(),
+      title: z.string(),
+      cost: z.int().nonnegative(),
+    }),
+    redeemed_at: z.iso.datetime(),
+  })
+  .transform((data) => ({
+    redemptionId: data.id,
+    userId: data.user_id,
+    userLogin: data.user_login,
+    userName: data.user_name,
+    rewardId: data.reward.id,
+    rewardTitle: data.reward.title,
+    cost: data.reward.cost,
+    redeemedAt: data.redeemed_at,
+  }));
+
+const ChannelRaidEvent = z
+  .object({
+    from_broadcaster_user_id: z.string(),
+    from_broadcaster_user_login: z.string(),
+    from_broadcaster_user_name: z.string(),
+    to_broadcaster_user_id: z.string(),
+    to_broadcaster_user_login: z.string(),
+    to_broadcaster_user_name: z.string(),
+    viewers: z.int().nonnegative(),
+  })
+  .transform((data) => ({
+    fromBroadcasterUserId: data.from_broadcaster_user_id,
+    fromBroadcasterUserLogin: data.from_broadcaster_user_login,
+    fromBroadcasterUserName: data.from_broadcaster_user_name,
+    toBroadcasterUserId: data.to_broadcaster_user_id,
+    toBroadcasterUserLogin: data.to_broadcaster_user_login,
+    toBroadcasterUserName: data.to_broadcaster_user_name,
+    viewers: data.viewers,
+  }));
+
+const ChannelChatMessageEvent = z
+  .object({
+    broadcaster_user_id: z.string(),
+    chatter_user_id: z.string(),
+    chatter_user_login: z.string(),
+    chatter_user_name: z.string(),
+    message_id: z.string(),
+    message_type: z.string(),
+    source_broadcaster_user_id: z.string().nullable().optional(),
+  })
+  .transform((data) => ({
+    broadcasterId: data.broadcaster_user_id,
+    chatterUserId: data.chatter_user_id,
+    chatterUserLogin: data.chatter_user_login,
+    chatterUserName: data.chatter_user_name,
+    messageId: data.message_id,
+    messageType: data.message_type,
+    ...(data.source_broadcaster_user_id === undefined
+      ? {}
+      : { sourceBroadcasterUserId: data.source_broadcaster_user_id }),
+  }));
 
 export type EventSubNotification =
   | {
@@ -109,6 +259,48 @@ export type EventSubNotification =
       eventType: typeof TWITCH_EVENT_STREAM_OFFLINE;
       subscription: EventSubSubscription;
       event: StreamOfflineEvent;
+    }
+  | {
+      messageType: 'notification';
+      eventType: typeof TWITCH_EVENT_CHANNEL_FOLLOW;
+      subscription: EventSubSubscription;
+      event: z.output<typeof ChannelFollowEvent>;
+    }
+  | {
+      messageType: 'notification';
+      eventType: typeof TWITCH_EVENT_CHANNEL_SUBSCRIBE;
+      subscription: EventSubSubscription;
+      event: z.output<typeof ChannelSubscribeEvent>;
+    }
+  | {
+      messageType: 'notification';
+      eventType: typeof TWITCH_EVENT_CHANNEL_SUBSCRIPTION_GIFT;
+      subscription: EventSubSubscription;
+      event: z.output<typeof ChannelSubscriptionGiftEvent>;
+    }
+  | {
+      messageType: 'notification';
+      eventType: typeof TWITCH_EVENT_CHANNEL_CHEER;
+      subscription: EventSubSubscription;
+      event: z.output<typeof ChannelCheerEvent>;
+    }
+  | {
+      messageType: 'notification';
+      eventType: typeof TWITCH_EVENT_CHANNEL_POINTS_REDEMPTION;
+      subscription: EventSubSubscription;
+      event: z.output<typeof ChannelPointsRedemptionEvent>;
+    }
+  | {
+      messageType: 'notification';
+      eventType: typeof TWITCH_EVENT_CHANNEL_RAID;
+      subscription: EventSubSubscription;
+      event: z.output<typeof ChannelRaidEvent>;
+    }
+  | {
+      messageType: 'notification';
+      eventType: typeof TWITCH_EVENT_CHANNEL_CHAT_MESSAGE;
+      subscription: EventSubSubscription;
+      event: z.output<typeof ChannelChatMessageEvent>;
     };
 
 export interface EventSubVerification {
@@ -164,6 +356,56 @@ function parseEventSubNotification(body: unknown): EventSubNotification {
         eventType: TWITCH_EVENT_STREAM_OFFLINE,
         subscription: envelope.subscription,
         event: StreamOfflineEvent.parse(envelope.event),
+      };
+
+    case TWITCH_EVENT_CHANNEL_FOLLOW:
+      return {
+        messageType: 'notification',
+        eventType: TWITCH_EVENT_CHANNEL_FOLLOW,
+        subscription: envelope.subscription,
+        event: ChannelFollowEvent.parse(envelope.event),
+      };
+    case TWITCH_EVENT_CHANNEL_SUBSCRIBE:
+      return {
+        messageType: 'notification',
+        eventType: TWITCH_EVENT_CHANNEL_SUBSCRIBE,
+        subscription: envelope.subscription,
+        event: ChannelSubscribeEvent.parse(envelope.event),
+      };
+    case TWITCH_EVENT_CHANNEL_SUBSCRIPTION_GIFT:
+      return {
+        messageType: 'notification',
+        eventType: TWITCH_EVENT_CHANNEL_SUBSCRIPTION_GIFT,
+        subscription: envelope.subscription,
+        event: ChannelSubscriptionGiftEvent.parse(envelope.event),
+      };
+    case TWITCH_EVENT_CHANNEL_CHEER:
+      return {
+        messageType: 'notification',
+        eventType: TWITCH_EVENT_CHANNEL_CHEER,
+        subscription: envelope.subscription,
+        event: ChannelCheerEvent.parse(envelope.event),
+      };
+    case TWITCH_EVENT_CHANNEL_POINTS_REDEMPTION:
+      return {
+        messageType: 'notification',
+        eventType: TWITCH_EVENT_CHANNEL_POINTS_REDEMPTION,
+        subscription: envelope.subscription,
+        event: ChannelPointsRedemptionEvent.parse(envelope.event),
+      };
+    case TWITCH_EVENT_CHANNEL_RAID:
+      return {
+        messageType: 'notification',
+        eventType: TWITCH_EVENT_CHANNEL_RAID,
+        subscription: envelope.subscription,
+        event: ChannelRaidEvent.parse(envelope.event),
+      };
+    case TWITCH_EVENT_CHANNEL_CHAT_MESSAGE:
+      return {
+        messageType: 'notification',
+        eventType: TWITCH_EVENT_CHANNEL_CHAT_MESSAGE,
+        subscription: envelope.subscription,
+        event: ChannelChatMessageEvent.parse(envelope.event),
       };
 
     default:
