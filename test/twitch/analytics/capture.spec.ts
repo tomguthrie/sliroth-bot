@@ -6,6 +6,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import migrationSql from '../../../src/db/twitch-analytics/migrations/20260815112814_damp_praxagora/migration.sql';
 import {
   analyticsAuthorization,
+  analyticsPendingFinalizers,
   analyticsRuntime,
 } from '../../../src/db/twitch-subscription/schema';
 
@@ -259,6 +260,89 @@ describe('Twitch analytics capture', () => {
     expect(scheduledAlarm).toBeNull();
   });
 
+  it('finalizes a completed stream while offline without polling Twitch', async () => {
+    const streamId = `stream-${crypto.randomUUID()}`;
+    const subscription = await createActiveSubscription(null);
+    const startedAt = Date.now() - 3 * 60 * 1000;
+    const endedAt = Date.now() - 60 * 1000;
+    await env.TWITCH_ANALYTICS_DB.prepare(
+      `INSERT INTO streams
+       (stream_id, channel_id, started_at, started_recorded_at, ended_at,
+        ended_recorded_at, status)
+       VALUES (?, ?, ?, ?, ?, ?, 'finalizing')`,
+    )
+      .bind(streamId, CHANNEL_ID, startedAt, startedAt, endedAt, endedAt)
+      .run();
+    await runInDurableObject(subscription, async (_instance, state) => {
+      const database = drizzle(state.storage);
+      await database.insert(analyticsPendingFinalizers).values({
+        streamId,
+        finalizeAfter: new Date(0),
+      });
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('Finalization must not fetch Twitch'));
+
+    await runInDurableObject(subscription, (instance) => instance.alarm());
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const stored = await env.TWITCH_ANALYTICS_DB.prepare(
+      'SELECT status, finalized_at FROM streams WHERE stream_id = ?',
+    )
+      .bind(streamId)
+      .first<{ status: string; finalized_at: number | null }>();
+    expect(stored?.status).toBe('finalized');
+    expect(stored?.finalized_at).not.toBeNull();
+    const pending = await runInDurableObject(
+      subscription,
+      async (_instance, state) => {
+        const database = drizzle(state.storage);
+        return database.select().from(analyticsPendingFinalizers);
+      },
+    );
+    expect(pending).toEqual([]);
+  });
+
+  it('still ends a stream when its final audience sample fails', async () => {
+    const streamId = `stream-${crypto.randomUUID()}`;
+    const subscription = await createActiveSubscription(streamId);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+      new Error('Twitch is temporarily unavailable'),
+    );
+
+    await subscription.processEventSubMessage({
+      kind: 'twitch-eventsub',
+      messageId: `offline-${crypto.randomUUID()}`,
+      timestamp: new Date().toISOString(),
+      message: {
+        messageType: 'notification',
+        eventType: 'stream.offline',
+        subscription: eventSubSubscription('stream.offline', '1'),
+        event: {
+          streamId,
+          broadcasterId: CHANNEL_ID,
+          broadcasterLogin: 'sliroth',
+          broadcasterName: 'Sliroth',
+        },
+      },
+    });
+
+    const stream = await env.TWITCH_ANALYTICS_DB.prepare(
+      'SELECT status, ended_at FROM streams WHERE stream_id = ?',
+    )
+      .bind(streamId)
+      .first<{ status: string; ended_at: number | null }>();
+    expect(stream?.status).toBe('finalizing');
+    expect(stream?.ended_at).not.toBeNull();
+    const scheduledAlarm = await runInDurableObject(
+      subscription,
+      (_instance, state) => state.storage.getAlarm(),
+    );
+    expect(scheduledAlarm).not.toBeNull();
+  });
+
   it('clears a persisted offline suspicion when the stream reappears', async () => {
     const streamId = `stream-${crypto.randomUUID()}`;
     const subscription = await createActiveSubscription(streamId);
@@ -337,7 +421,7 @@ describe('Twitch analytics capture', () => {
       subscription,
       (_instance, state) => state.storage.getAlarm(),
     );
-    expect(scheduledAlarm).toBeNull();
+    expect(scheduledAlarm).not.toBeNull();
   });
 });
 

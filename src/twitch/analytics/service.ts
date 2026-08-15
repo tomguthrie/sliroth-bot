@@ -1,4 +1,4 @@
-import { and, eq, lt } from 'drizzle-orm';
+import { and, asc, eq, lt, lte } from 'drizzle-orm';
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
 import {
   analyticsAuthorization,
@@ -21,6 +21,7 @@ import {
   TWITCH_ANALYTICS_EVENTSUB_SUBSCRIPTIONS,
   TWITCH_ANALYTICS_SCOPES,
 } from './eventsub';
+import { TwitchAnalyticsFinalizer } from './finalizer';
 import {
   createOAuthState,
   exchangeAuthorizationCode,
@@ -205,11 +206,19 @@ export class TwitchAnalyticsService {
         );
         break;
       case TWITCH_EVENT_STREAM_OFFLINE:
-        await this.sampleBoundary(
-          message.event.streamId,
-          occurredAt,
-          'stream_end',
-        );
+        try {
+          await this.sampleBoundary(
+            message.event.streamId,
+            occurredAt,
+            'stream_end',
+          );
+        } catch (error) {
+          console.warn({
+            event: 'twitch_analytics_stream_end_sample_failed',
+            streamId: message.event.streamId,
+            error: toLoggableError(error),
+          });
+        }
         await this.recordStreamOffline(message.event.streamId, occurredAt);
         break;
       case TWITCH_EVENT_CHANNEL_UPDATE:
@@ -251,7 +260,8 @@ export class TwitchAnalyticsService {
         error: toLoggableError(error),
       });
       const runtime = await this.getActiveRuntime();
-      if (runtime?.activeStreamId === null || runtime === undefined) {
+      const pendingFinalizer = await this.getNextPendingFinalizer();
+      if (runtime?.activeStreamId == null && pendingFinalizer === undefined) {
         await this.ctx.storage.deleteAlarm();
       } else {
         await this.ctx.storage.setAlarm(Date.now() + VIEWER_SAMPLE_INTERVAL_MS);
@@ -261,11 +271,19 @@ export class TwitchAnalyticsService {
 
   private async runAlarm(): Promise<void> {
     const now = new Date();
+    await this.finalizeDueStreams(now);
     await this.localDb
       .delete(analyticsOauthStates)
       .where(lt(analyticsOauthStates.expiresAt, now));
     let runtime = await this.getActiveRuntime();
-    if (runtime === undefined) return;
+    if (runtime === undefined) {
+      await this.scheduleNextAlarm(undefined, now);
+      return;
+    }
+    if (runtime.activeStreamId === null) {
+      await this.scheduleNextAlarm(runtime, now);
+      return;
+    }
 
     let authorization = await this.getAuthorization();
     if (authorization === undefined) {
@@ -487,21 +505,18 @@ export class TwitchAnalyticsService {
     recordedAt: Date = endedAt,
   ): Promise<void> {
     await this.repository.finishStream(streamId, endedAt, recordedAt);
+    const finalizeAfter = new Date(
+      recordedAt.getTime() + STREAM_FINALIZATION_DELAY_MS,
+    );
     await this.localDb
       .insert(analyticsPendingFinalizers)
       .values({
         streamId,
-        finalizeAfter: new Date(
-          recordedAt.getTime() + STREAM_FINALIZATION_DELAY_MS,
-        ),
+        finalizeAfter,
       })
       .onConflictDoUpdate({
         target: analyticsPendingFinalizers.streamId,
-        set: {
-          finalizeAfter: new Date(
-            recordedAt.getTime() + STREAM_FINALIZATION_DELAY_MS,
-          ),
-        },
+        set: { finalizeAfter },
       });
     await this.localDb
       .update(analyticsRuntime)
@@ -513,7 +528,7 @@ export class TwitchAnalyticsService {
         nextAudienceSampleAt: null,
       })
       .where(eq(analyticsRuntime.singleton, 1));
-    await this.ctx.storage.deleteAlarm();
+    await this.scheduleNextAlarm(await this.getActiveRuntime(), recordedAt);
   }
 
   private async getAudienceCounts(
@@ -682,23 +697,54 @@ export class TwitchAnalyticsService {
     return runtime;
   }
 
+  private async finalizeDueStreams(now: Date): Promise<void> {
+    const pending = await this.localDb
+      .select()
+      .from(analyticsPendingFinalizers)
+      .where(lte(analyticsPendingFinalizers.finalizeAfter, now))
+      .orderBy(asc(analyticsPendingFinalizers.finalizeAfter));
+    const finalizer = new TwitchAnalyticsFinalizer(this.env);
+    for (const job of pending) {
+      await finalizer.finalize(job.streamId, now);
+      await this.localDb
+        .delete(analyticsPendingFinalizers)
+        .where(eq(analyticsPendingFinalizers.streamId, job.streamId));
+    }
+  }
+
+  private async getNextPendingFinalizer() {
+    const [pending] = await this.localDb
+      .select()
+      .from(analyticsPendingFinalizers)
+      .orderBy(asc(analyticsPendingFinalizers.finalizeAfter))
+      .limit(1);
+    return pending;
+  }
+
   private async scheduleNextAlarm(
-    runtime: typeof analyticsRuntime.$inferSelect,
+    runtime: typeof analyticsRuntime.$inferSelect | undefined,
     now: Date,
   ): Promise<void> {
-    if (runtime.activeStreamId === null) {
+    const pendingFinalizer = await this.getNextPendingFinalizer();
+    const candidates = [pendingFinalizer?.finalizeAfter];
+    if (runtime?.activeStreamId !== null && runtime !== undefined) {
+      candidates.push(
+        runtime.nextViewerSampleAt ?? undefined,
+        runtime.nextAudienceSampleAt ?? undefined,
+        runtime.nextTokenValidationAt ?? undefined,
+        runtime.nextEventSubAuditAt ?? undefined,
+      );
+    }
+    const scheduled = candidates.filter(
+      (candidate): candidate is Date => candidate !== undefined,
+    );
+    if (scheduled.length === 0) {
       await this.ctx.storage.deleteAlarm();
       return;
     }
-    const candidates = [
-      runtime.nextViewerSampleAt,
-      runtime.nextAudienceSampleAt,
-      runtime.nextTokenValidationAt,
-      runtime.nextEventSubAuditAt,
-    ].filter((candidate): candidate is Date => candidate !== null);
     const next = Math.max(
       now.getTime() + 1000,
-      Math.min(...candidates.map((candidate) => candidate.getTime())),
+      Math.min(...scheduled.map((candidate) => candidate.getTime())),
     );
     await this.ctx.storage.setAlarm(next);
   }
