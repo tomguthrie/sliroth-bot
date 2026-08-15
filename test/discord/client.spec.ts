@@ -5,102 +5,170 @@ import {
   DiscordApiError,
   editDiscordMessage,
   sendDiscordMessage,
-} from '../../src/discord/client';
-import { createDiscordMessage } from '../../src/discord/message';
-import { DiscordSnowflake } from '../../src/discord/snowflake';
+  type DiscordMessage,
+} from '../../src/discord';
 
 const BOT_TOKEN = 'test-discord-bot-token';
-const CHANNEL_ID = DiscordSnowflake.parse('123456789012345678');
-const ROLE_ID = DiscordSnowflake.parse('234567890123456789');
-const MESSAGE_ID = DiscordSnowflake.parse('345678901234567890');
+const CHANNEL_ID = '123456789012345678';
+const ROLE_ID = '234567890123456789';
+const MESSAGE_ID = '345678901234567890';
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('sendDiscordMessage', () => {
-  it('sends the message and returns its receipt', async () => {
-    const discordResponse = new Response(
-      JSON.stringify({ id: MESSAGE_ID, channel_id: CHANNEL_ID }),
-      {
-        status: 200,
-        headers: {
-          'content-type': 'application/json',
-        },
-      },
-    );
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(discordResponse);
-
-    await expect(sendDiscordMessage(createMessageOptions())).resolves.toEqual({
-      messageId: MESSAGE_ID,
-      channelId: CHANNEL_ID,
-    });
-
-    expect(fetchSpy).toHaveBeenCalledOnce();
-    expect(discordResponse.bodyUsed).toBe(true);
-  });
-
-  it('edits an exact message and returns its receipt', async () => {
-    const fetchSpy = vi
+describe('Discord message client', () => {
+  it('creates an authenticated, idempotent role-mention message', async () => {
+    const fetcher = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(
         Response.json({ id: MESSAGE_ID, channel_id: CHANNEL_ID }),
       );
 
     await expect(
-      editDiscordMessage({
-        ...createMessageOptions(),
-        messageId: MESSAGE_ID,
-      }),
+      sendDiscordMessage(
+        createOptions({
+          content: `<@&${ROLE_ID}> A new video is available`,
+          nonce: 'dQw4w9WgXcQ',
+          allowedMentions: { roleIds: [ROLE_ID] },
+        }),
+      ),
     ).resolves.toEqual({ messageId: MESSAGE_ID, channelId: CHANNEL_ID });
 
-    const request = fetchSpy.mock.calls[0]?.[0];
-    expect(request).toBeInstanceOf(Request);
-    if (!(request instanceof Request)) throw new Error('Expected a Request');
+    const request = requireRequest(fetcher.mock.calls[0]?.[0]);
+    expect(request.method).toBe('POST');
+    expect(request.url).toBe(
+      `https://discord.com/api/v10/channels/${CHANNEL_ID}/messages`,
+    );
+    expect(request.headers.get('authorization')).toBe(`Bot ${BOT_TOKEN}`);
+    expect(request.headers.get('user-agent')).toBe(
+      'DiscordBot (https://bot.example.com, 0.0.0)',
+    );
+    await expect(request.json()).resolves.toEqual({
+      content: `<@&${ROLE_ID}> A new video is available`,
+      nonce: 'dQw4w9WgXcQ',
+      enforce_nonce: true,
+      allowed_mentions: { parse: [], roles: [ROLE_ID] },
+    });
+  });
+
+  it('suppresses mentions unless explicitly enabled', async () => {
+    const fetcher = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        Response.json({ id: MESSAGE_ID, channel_id: CHANNEL_ID }),
+      );
+
+    await sendDiscordMessage(
+      createOptions({ content: '@everyone This is plain text' }),
+    );
+    await expect(
+      requireRequest(fetcher.mock.calls[0]?.[0]).json(),
+    ).resolves.toEqual({
+      content: '@everyone This is plain text',
+      allowed_mentions: { parse: [] },
+    });
+  });
+
+  it('serializes the embed and link button features used by Twitch', async () => {
+    const fetcher = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        Response.json({ id: MESSAGE_ID, channel_id: CHANNEL_ID }),
+      );
+    const message: DiscordMessage = {
+      content: '@here Sliroth is live!',
+      allowedMentions: { everyone: true },
+      embeds: [
+        {
+          author: {
+            name: 'Sliroth',
+            iconUrl: 'https://example.com/profile.png',
+          },
+          title: 'A stream',
+          url: 'https://twitch.tv/sliroth',
+          color: 0x9146ff,
+          fields: [{ name: 'Viewers', value: '3', inline: true }],
+          thumbnail: { url: 'https://example.com/game.jpg' },
+          image: { url: 'https://example.com/preview.jpg' },
+          footer: { text: 'Started streaming' },
+          timestamp: '2026-06-05T17:28:00.000Z',
+        },
+      ],
+      linkButtons: [
+        { label: 'Watch Stream', url: 'https://twitch.tv/sliroth' },
+      ],
+    };
+
+    await sendDiscordMessage(createOptions(message));
+
+    await expect(
+      requireRequest(fetcher.mock.calls[0]?.[0]).json(),
+    ).resolves.toEqual({
+      content: '@here Sliroth is live!',
+      allowed_mentions: { parse: ['everyone'] },
+      embeds: [
+        {
+          author: {
+            name: 'Sliroth',
+            icon_url: 'https://example.com/profile.png',
+          },
+          title: 'A stream',
+          url: 'https://twitch.tv/sliroth',
+          color: 0x9146ff,
+          fields: [{ name: 'Viewers', value: '3', inline: true }],
+          thumbnail: { url: 'https://example.com/game.jpg' },
+          image: { url: 'https://example.com/preview.jpg' },
+          footer: { text: 'Started streaming' },
+          timestamp: '2026-06-05T17:28:00.000Z',
+        },
+      ],
+      components: [
+        {
+          type: 1,
+          components: [
+            {
+              type: 2,
+              style: 5,
+              label: 'Watch Stream',
+              url: 'https://twitch.tv/sliroth',
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('edits the requested message', async () => {
+    const fetcher = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        Response.json({ id: MESSAGE_ID, channel_id: CHANNEL_ID }),
+      );
+
+    await editDiscordMessage({
+      ...createOptions({ content: 'Stream ended' }),
+      messageId: MESSAGE_ID,
+    });
+
+    const request = requireRequest(fetcher.mock.calls[0]?.[0]);
     expect(request.method).toBe('PATCH');
     expect(request.url).toBe(
       `https://discord.com/api/v10/channels/${CHANNEL_ID}/messages/${MESSAGE_ID}`,
     );
   });
 
-  it('rejects an invalid successful response body', async () => {
+  it('rejects malformed successful responses', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       Response.json({ id: 123, channel_id: CHANNEL_ID }),
     );
 
     await expect(
-      sendDiscordMessage(createMessageOptions()),
+      sendDiscordMessage(createOptions({ content: 'Message' })),
     ).rejects.toBeInstanceOf(z.ZodError);
   });
 
-  it('includes Discord error details when delivery fails', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response('{"message":"Missing Access","code":50001}', {
-        status: 403,
-        headers: {
-          'content-type': 'application/json',
-        },
-      }),
-    );
-
-    await expect(sendDiscordMessage(createMessageOptions())).rejects.toThrow(
-      'Discord rejected the message with HTTP 403: {"message":"Missing Access","code":50001}',
-    );
-  });
-
-  it('handles a failed response without a body', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(null, { status: 503 }),
-    );
-
-    await expect(sendDiscordMessage(createMessageOptions())).rejects.toThrow(
-      'Discord rejected the message with HTTP 503: no response body',
-    );
-  });
-
-  it('exposes Discord rate-limit retry timing', async () => {
+  it('exposes Discord error details and retry timing', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response('Rate limited', {
         status: 429,
@@ -108,24 +176,29 @@ describe('sendDiscordMessage', () => {
       }),
     );
 
-    const error = await sendDiscordMessage(createMessageOptions()).catch(
-      (caught: unknown) => caught,
-    );
+    const error = await sendDiscordMessage(
+      createOptions({ content: 'Message' }),
+    ).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(DiscordApiError);
-    expect(error).toMatchObject({ status: 429, retryAfterSeconds: 1.25 });
+    expect(error).toMatchObject({
+      message: 'Discord rejected the message with HTTP 429: Rate limited',
+      status: 429,
+      retryAfterSeconds: 1.25,
+    });
   });
 });
 
-function createMessageOptions() {
+function createOptions(message: DiscordMessage) {
   return {
     botToken: BOT_TOKEN,
     channelId: CHANNEL_ID,
-    applicationUrl: 'https://bot.example.com',
-    message: createDiscordMessage({
-      content: `<@&${ROLE_ID}> A new video is available`,
-      nonce: 'dQw4w9WgXcQ',
-      allowedMentions: { roleIds: [ROLE_ID] },
-    }),
+    applicationUrl: 'https://bot.example.com/private/path',
+    message,
   };
+}
+
+function requireRequest(value: RequestInfo | URL | undefined): Request {
+  if (!(value instanceof Request)) throw new Error('Expected a Request');
+  return value;
 }

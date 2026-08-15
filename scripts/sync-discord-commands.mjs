@@ -9,10 +9,7 @@ const commands = await Promise.all(
   ['youtube', 'twitch'].map(async (name) =>
     JSON.parse(
       await readFile(
-        new URL(
-          `../src/discord/interactions/command/${name}.json`,
-          import.meta.url,
-        ),
+        new URL(`../src/discord/commands/${name}.json`, import.meta.url),
         'utf8',
       ),
     ),

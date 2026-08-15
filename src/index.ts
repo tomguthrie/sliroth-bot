@@ -1,6 +1,6 @@
 import { AutoRouter, type IRequest } from 'itty-router';
 
-import { handleDiscordInteraction } from './discord/interactions';
+import { handleDiscordInteraction } from './discord';
 import { deliverQueueBatch, type WorkerQueueMessage } from './queue';
 import { handleTwitchEventSub } from './twitch-subscription/eventsub-handler';
 import {

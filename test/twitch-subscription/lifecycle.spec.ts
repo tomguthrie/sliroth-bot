@@ -8,7 +8,7 @@ import {
   streams,
   twitchSubscribers,
 } from '../../src/db/twitch-subscription/schema';
-import { DiscordSnowflake } from '../../src/discord/snowflake';
+import { DiscordSnowflake } from '../../src/discord';
 import type { DiscordMessageDelivery } from '../../src/queue/discord-message';
 import { DISCORD_RECEIPT_TWITCH_STREAM } from '../../src/queue/discord-message';
 

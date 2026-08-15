@@ -1,4 +1,4 @@
-import type { DiscordMessageReceipt } from '../discord/client';
+import type { DiscordMessageReceipt } from '../discord';
 
 /** Records a Twitch stream's Discord create-message receipt. */
 export async function recordTwitchStreamMessageReceipt(

@@ -5,9 +5,9 @@ import type {
 } from '../db/twitch-subscription/schema';
 import {
   createDiscordMentionPayload,
-  createDiscordMessage,
   createDiscordMessageNonce,
-} from '../discord/message';
+  type DiscordMessage,
+} from '../discord';
 import type {
   DiscordCreateMessageDelivery,
   DiscordEditMessageDelivery,
@@ -82,7 +82,7 @@ function createTwitchLiveMessage(
   subscriber: Subscriber,
   previewCacheBustMs: number,
   nonce?: string,
-) {
+): DiscordMessage {
   const channelUrl = twitchChannelUrl(broadcaster.login);
   const mention = createDiscordMentionPayload(subscriber.ping);
   const content = [
@@ -92,10 +92,12 @@ function createTwitchLiveMessage(
   ]
     .filter((part) => part !== undefined)
     .join(' ');
-  const message = createDiscordMessage({
+  const message: DiscordMessage = {
     content,
-    nonce,
-    allowedMentions: mention.allowedMentions,
+    ...(nonce === undefined ? {} : { nonce }),
+    ...(mention.allowedMentions === undefined
+      ? {}
+      : { allowedMentions: mention.allowedMentions }),
     embeds: [
       {
         author: broadcasterAuthor(broadcaster),
@@ -125,7 +127,7 @@ function createTwitchLiveMessage(
       },
     ],
     linkButtons: [{ label: 'Watch Stream', url: channelUrl }],
-  });
+  };
   return message;
 }
 
@@ -141,7 +143,7 @@ export function createTwitchOfflineDelivery(
   }
   const channelUrl = twitchChannelUrl(broadcaster.login);
   const watchUrl = stream.vodUrl ?? channelUrl;
-  const message = createDiscordMessage({
+  const message: DiscordMessage = {
     content:
       subscriber.offline ??
       `${broadcaster.displayName} ${DEFAULT_OFFLINE_MESSAGE}`,
@@ -172,7 +174,7 @@ export function createTwitchOfflineDelivery(
         url: watchUrl,
       },
     ],
-  });
+  };
 
   return {
     operation: 'edit',

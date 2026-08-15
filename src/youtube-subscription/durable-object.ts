@@ -7,8 +7,7 @@ import * as z from 'zod';
 
 import migrations from '../db/youtube-subscription/migrations/migrations.js';
 import { subscribers, videos } from '../db/youtube-subscription/schema';
-import { DiscordMentionTarget } from '../discord/message';
-import { DiscordSnowflake } from '../discord/snowflake';
+import { DiscordMentionTarget, DiscordSnowflake } from '../discord';
 import { toLoggableError } from '../log';
 import { enqueueDiscordMessages } from '../queue/discord-message';
 import type { YouTubeVideoDelivery } from '../queue/subscription-event';

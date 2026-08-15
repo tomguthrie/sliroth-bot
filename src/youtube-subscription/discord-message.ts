@@ -1,9 +1,9 @@
 import type { subscribers } from '../db/youtube-subscription/schema';
 import {
   createDiscordMentionPayload,
-  createDiscordMessage,
   createDiscordMessageNonce,
-} from '../discord/message';
+  type DiscordMessage,
+} from '../discord';
 import type { DiscordMessageDelivery } from '../queue/discord-message';
 import { DISCORD_RECEIPT_IGNORE } from '../queue/discord-message';
 import type { YouTubeVideoNotification } from '../youtube';
@@ -25,14 +25,16 @@ export async function createYouTubeDelivery(
   ]
     .filter((part) => part !== undefined)
     .join(' ');
-  const message = createDiscordMessage({
+  const message: DiscordMessage = {
     content,
     nonce: await createDiscordMessageNonce(
       notification.videoId,
       subscriber.channelId,
     ),
-    allowedMentions: mention.allowedMentions,
-  });
+    ...(mention.allowedMentions === undefined
+      ? {}
+      : { allowedMentions: mention.allowedMentions }),
+  };
 
   return {
     operation: 'create',
