@@ -135,11 +135,15 @@ export class TwitchAnalyticsRepository {
       });
   }
 
-  async finishStream(streamId: string, recordedAt: Date): Promise<void> {
+  async finishStream(
+    streamId: string,
+    endedAt: Date,
+    recordedAt: Date = endedAt,
+  ): Promise<void> {
     await this.db
       .update(streams)
       .set({
-        endedAt: recordedAt,
+        endedAt,
         endedRecordedAt: recordedAt,
         status: 'finalizing',
         dirty: true,

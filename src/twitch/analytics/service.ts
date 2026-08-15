@@ -33,6 +33,7 @@ import { TwitchAnalyticsRepository } from './repository';
 
 const OAUTH_STATE_LIFETIME_MS = 10 * 60 * 1000;
 const VIEWER_SAMPLE_INTERVAL_MS = 60 * 1000;
+const STREAM_OFFLINE_CONFIRMATION_MISSES = 3;
 const AUDIENCE_SAMPLE_INTERVAL_MS = 5 * 60 * 1000;
 const TOKEN_VALIDATION_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const EVENTSUB_AUDIT_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -146,6 +147,8 @@ export class TwitchAnalyticsService {
         singleton: 1,
         status: 'active',
         enabledAt: now,
+        offlineSuspectedAt: null,
+        consecutiveStreamMisses: 0,
         nextViewerSampleAt: null,
         nextAudienceSampleAt: null,
         nextTokenValidationAt: new Date(
@@ -158,6 +161,8 @@ export class TwitchAnalyticsService {
         set: {
           status: 'active',
           enabledAt: now,
+          offlineSuspectedAt: null,
+          consecutiveStreamMisses: 0,
           nextViewerSampleAt: null,
           nextAudienceSampleAt: null,
           nextTokenValidationAt: new Date(
@@ -340,17 +345,33 @@ export class TwitchAnalyticsService {
       ? await appClient.getStream(this.env.TWITCH_ANALYTICS_CHANNEL_ID)
       : undefined;
     let activeStreamId = runtime.activeStreamId;
+    let sampledStreamId = activeStreamId;
+    let offlineSuspectedAt = runtime.offlineSuspectedAt;
+    let consecutiveStreamMisses = runtime.consecutiveStreamMisses;
     let viewerCount: number | undefined;
 
     if (viewerDue) {
       if (stream !== undefined) {
         activeStreamId = stream.id;
+        sampledStreamId = stream.id;
+        offlineSuspectedAt = null;
+        consecutiveStreamMisses = 0;
         viewerCount = stream.viewerCount;
         await this.repository.upsertLiveStream(stream, now);
         await this.repository.recordMetadataIfChanged(stream, now);
       } else if (activeStreamId !== null) {
-        await this.recordStreamOffline(activeStreamId, now);
-        activeStreamId = null;
+        offlineSuspectedAt ??= now;
+        consecutiveStreamMisses += 1;
+        if (consecutiveStreamMisses >= STREAM_OFFLINE_CONFIRMATION_MISSES) {
+          await this.recordStreamOffline(
+            activeStreamId,
+            offlineSuspectedAt,
+            now,
+          );
+          activeStreamId = null;
+          offlineSuspectedAt = null;
+          consecutiveStreamMisses = 0;
+        }
       }
     }
 
@@ -369,7 +390,7 @@ export class TwitchAnalyticsService {
       subscriberCount !== undefined
     ) {
       await this.repository.recordAudienceSample({
-        streamId: activeStreamId,
+        streamId: sampledStreamId,
         sampledAt: now,
         ...(viewerCount === undefined ? {} : { viewerCount }),
         ...(followerCount === undefined ? {} : { followerCount }),
@@ -382,18 +403,22 @@ export class TwitchAnalyticsService {
       .update(analyticsRuntime)
       .set({
         activeStreamId,
+        offlineSuspectedAt,
+        consecutiveStreamMisses,
         ...(viewerDue
           ? {
-              nextViewerSampleAt: new Date(
-                now.getTime() + VIEWER_SAMPLE_INTERVAL_MS,
-              ),
+              nextViewerSampleAt:
+                activeStreamId === null
+                  ? null
+                  : new Date(now.getTime() + VIEWER_SAMPLE_INTERVAL_MS),
             }
           : {}),
         ...(audienceDue
           ? {
-              nextAudienceSampleAt: new Date(
-                now.getTime() + AUDIENCE_SAMPLE_INTERVAL_MS,
-              ),
+              nextAudienceSampleAt:
+                activeStreamId === null
+                  ? null
+                  : new Date(now.getTime() + AUDIENCE_SAMPLE_INTERVAL_MS),
             }
           : {}),
       })
@@ -416,6 +441,8 @@ export class TwitchAnalyticsService {
       .update(analyticsRuntime)
       .set({
         activeStreamId: message.event.streamId,
+        offlineSuspectedAt: null,
+        consecutiveStreamMisses: 0,
         nextViewerSampleAt: recordedAt,
         nextAudienceSampleAt: recordedAt,
       })
@@ -456,9 +483,10 @@ export class TwitchAnalyticsService {
 
   private async recordStreamOffline(
     streamId: string,
-    recordedAt: Date,
+    endedAt: Date,
+    recordedAt: Date = endedAt,
   ): Promise<void> {
-    await this.repository.finishStream(streamId, recordedAt);
+    await this.repository.finishStream(streamId, endedAt, recordedAt);
     await this.localDb
       .insert(analyticsPendingFinalizers)
       .values({
@@ -479,6 +507,8 @@ export class TwitchAnalyticsService {
       .update(analyticsRuntime)
       .set({
         activeStreamId: null,
+        offlineSuspectedAt: null,
+        consecutiveStreamMisses: 0,
         nextViewerSampleAt: null,
         nextAudienceSampleAt: null,
       })

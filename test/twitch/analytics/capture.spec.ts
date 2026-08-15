@@ -258,7 +258,113 @@ describe('Twitch analytics capture', () => {
     );
     expect(scheduledAlarm).toBeNull();
   });
+
+  it('clears a persisted offline suspicion when the stream reappears', async () => {
+    const streamId = `stream-${crypto.randomUUID()}`;
+    const subscription = await createActiveSubscription(streamId);
+    let streamIsLive = false;
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = new URL(
+        input instanceof Request ? input.url : input.toString(),
+      );
+      if (url.pathname !== '/helix/streams') {
+        throw new Error(`Unexpected request: ${url.toString()}`);
+      }
+      return Promise.resolve(
+        Response.json({
+          data: streamIsLive ? [twitchStream(streamId)] : [],
+        }),
+      );
+    });
+
+    await makeViewerSampleDue(subscription);
+    await runInDurableObject(subscription, (instance) => instance.alarm());
+    const suspected = await readAnalyticsRuntime(subscription);
+    expect(suspected.activeStreamId).toBe(streamId);
+    expect(suspected.offlineSuspectedAt).not.toBeNull();
+    expect(suspected.consecutiveStreamMisses).toBe(1);
+
+    streamIsLive = true;
+    await makeViewerSampleDue(subscription);
+    await runInDurableObject(subscription, (instance) => instance.alarm());
+    const recovered = await readAnalyticsRuntime(subscription);
+    expect(recovered.activeStreamId).toBe(streamId);
+    expect(recovered.offlineSuspectedAt).toBeNull();
+    expect(recovered.consecutiveStreamMisses).toBe(0);
+  });
+
+  it('ends a stream after three persisted live-check misses', async () => {
+    const streamId = `stream-${crypto.randomUUID()}`;
+    const subscription = await createActiveSubscription(streamId);
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = new URL(
+        input instanceof Request ? input.url : input.toString(),
+      );
+      if (url.pathname !== '/helix/streams') {
+        throw new Error(`Unexpected request: ${url.toString()}`);
+      }
+      return Promise.resolve(Response.json({ data: [] }));
+    });
+
+    let suspectedAt: Date | null = null;
+    for (let misses = 1; misses <= 3; misses += 1) {
+      await makeViewerSampleDue(subscription);
+      await runInDurableObject(subscription, (instance) => instance.alarm());
+      const runtime = await readAnalyticsRuntime(subscription);
+      if (misses === 1) suspectedAt = runtime.offlineSuspectedAt;
+      if (misses < 3) {
+        expect(runtime.activeStreamId).toBe(streamId);
+        expect(runtime.offlineSuspectedAt).toEqual(suspectedAt);
+        expect(runtime.consecutiveStreamMisses).toBe(misses);
+      } else {
+        expect(runtime.activeStreamId).toBeNull();
+        expect(runtime.offlineSuspectedAt).toBeNull();
+        expect(runtime.consecutiveStreamMisses).toBe(0);
+      }
+    }
+
+    expect(suspectedAt).not.toBeNull();
+    const stream = await env.TWITCH_ANALYTICS_DB.prepare(
+      'SELECT status, ended_at FROM streams WHERE stream_id = ?',
+    )
+      .bind(streamId)
+      .first<{ status: string; ended_at: number }>();
+    expect(stream).toEqual({
+      status: 'finalizing',
+      ended_at: suspectedAt?.getTime(),
+    });
+    const scheduledAlarm = await runInDurableObject(
+      subscription,
+      (_instance, state) => state.storage.getAlarm(),
+    );
+    expect(scheduledAlarm).toBeNull();
+  });
 });
+
+type TwitchSubscriptionStub = Awaited<
+  ReturnType<typeof createActiveSubscription>
+>;
+
+async function makeViewerSampleDue(
+  subscription: TwitchSubscriptionStub,
+): Promise<void> {
+  await runInDurableObject(subscription, async (_instance, state) => {
+    const database = drizzle(state.storage);
+    await database.update(analyticsRuntime).set({
+      nextViewerSampleAt: new Date(0),
+      nextAudienceSampleAt: new Date(Date.now() + 60 * 60 * 1000),
+    });
+  });
+}
+
+function readAnalyticsRuntime(subscription: TwitchSubscriptionStub) {
+  return runInDurableObject(subscription, async (_instance, state) => {
+    const database = drizzle(state.storage);
+    const [runtime] = await database.select().from(analyticsRuntime).limit(1);
+    if (runtime === undefined) throw new Error('Analytics runtime not found');
+    return runtime;
+  });
+}
 
 async function createActiveSubscription(activeStreamId: string | null) {
   const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(crypto.randomUUID());
@@ -304,5 +410,20 @@ function eventSubSubscription(type: string, version: string) {
     type,
     version,
     broadcasterId: CHANNEL_ID,
+  };
+}
+
+function twitchStream(streamId: string) {
+  return {
+    id: streamId,
+    user_id: CHANNEL_ID,
+    user_login: 'sliroth',
+    user_name: 'Sliroth',
+    game_id: 'game-1',
+    game_name: 'A Category',
+    title: 'Fallback test',
+    viewer_count: 4,
+    started_at: '2026-08-15T11:00:00Z',
+    thumbnail_url: 'https://example.com/preview.jpg',
   };
 }

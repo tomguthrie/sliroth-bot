@@ -94,6 +94,8 @@ export const analyticsRuntime = snakeCase.table(
       .notNull(),
     enabledAt: integer({ mode: 'timestamp_ms' }).notNull(),
     activeStreamId: text(),
+    offlineSuspectedAt: integer({ mode: 'timestamp_ms' }),
+    consecutiveStreamMisses: integer().notNull().default(0),
     nextViewerSampleAt: integer({ mode: 'timestamp_ms' }),
     nextAudienceSampleAt: integer({ mode: 'timestamp_ms' }),
     nextTokenValidationAt: integer({ mode: 'timestamp_ms' }),
