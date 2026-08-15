@@ -5,7 +5,10 @@ import { describe, expect, it } from 'vitest';
 
 import { streamMessages } from '../../../src/db/twitch-subscription/schema';
 import { DiscordSnowflake } from '../../../src/discord';
-import { recordTwitchStreamMessageReceipt } from '../../../src/twitch/subscription/message-receipt';
+import {
+  twitchStreamMessageReceiptHandler,
+  TWITCH_STREAM_MESSAGE_RECEIPT,
+} from '../../../src/twitch/subscription/message-receipt';
 
 const BROADCASTER_ID = '123456789012345678';
 const CHANNEL_ID = DiscordSnowflake.parse('234567890123456789');
@@ -22,9 +25,12 @@ describe('Twitch stream message receipts', () => {
       });
     });
 
-    await recordTwitchStreamMessageReceipt(
-      BROADCASTER_ID,
-      streamId,
+    await twitchStreamMessageReceiptHandler.handle(
+      {
+        type: TWITCH_STREAM_MESSAGE_RECEIPT,
+        broadcasterId: BROADCASTER_ID,
+        streamId,
+      },
       { channelId: CHANNEL_ID, messageId: MESSAGE_ID },
       env,
     );
@@ -38,5 +44,19 @@ describe('Twitch stream message receipts', () => {
           .where(eq(streamMessages.streamId, streamId)),
     );
     expect(stored?.messageId).toBe(MESSAGE_ID);
+  });
+
+  it('rejects malformed Twitch receipt targets', async () => {
+    await expect(
+      twitchStreamMessageReceiptHandler.handle(
+        {
+          type: TWITCH_STREAM_MESSAGE_RECEIPT,
+          broadcasterId: 'not-a-broadcaster',
+          streamId: 'stream',
+        },
+        { channelId: CHANNEL_ID, messageId: MESSAGE_ID },
+        env,
+      ),
+    ).rejects.toThrow();
   });
 });
