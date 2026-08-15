@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { applyD1Migrations, runInDurableObject } from 'cloudflare:test';
+import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -72,6 +73,32 @@ describe('Twitch analytics capture', () => {
       .bind(twitchMessageId)
       .first();
     expect(stored).toBeNull();
+  });
+
+  it('ignores revocations when analytics is not active', async () => {
+    const broadcasterId = '999999999999999999';
+    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId);
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('Analytics reconciliation must not run'));
+
+    await subscription.processEventSubMessage({
+      kind: 'twitch-eventsub',
+      messageId: `revocation-${crypto.randomUUID()}`,
+      timestamp: new Date().toISOString(),
+      message: {
+        messageType: 'revocation',
+        subscription: {
+          id: 'untracked-revocation',
+          type: 'stream.online',
+          version: '1',
+          status: 'authorization_revoked',
+          broadcasterId,
+        },
+      },
+    });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('reuses lifecycle subscriptions already created for Discord notifications', async () => {
@@ -341,7 +368,63 @@ describe('Twitch analytics capture', () => {
     });
   });
 
-  it('does not poll or schedule another alarm while offline', async () => {
+  it.each([
+    {
+      failure: 'a network error',
+      response: () => Promise.reject(new Error('Twitch is unavailable')),
+    },
+    {
+      failure: 'an HTTP 5xx response',
+      response: () =>
+        Promise.resolve(
+          new Response(null, {
+            status: 503,
+            statusText: 'Service Unavailable',
+          }),
+        ),
+    },
+    {
+      failure: 'a malformed response',
+      response: () => Promise.resolve(Response.json({ unexpected: true })),
+    },
+  ])('retries token validation after $failure', async ({ response }) => {
+    const subscription = await createActiveSubscription(null);
+    await makeTokenValidationDue(subscription);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => response());
+
+    await runInDurableObject(subscription, (instance) => instance.alarm());
+
+    const failedRuntime = await readAnalyticsRuntime(subscription);
+    expect(failedRuntime.status).toBe('active');
+    expect(failedRuntime.nextTokenValidationAt).toEqual(new Date(0));
+    expect(
+      await runInDurableObject(subscription, (_instance, state) =>
+        state.storage.getAlarm(),
+      ),
+    ).not.toBeNull();
+  });
+
+  it('requires reauthorization when Twitch rejects the token', async () => {
+    const subscription = await createActiveSubscription(null);
+    await makeTokenValidationDue(subscription);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 401, statusText: 'Unauthorized' }),
+    );
+
+    await runInDurableObject(subscription, (instance) => instance.alarm());
+
+    const runtime = await readAnalyticsRuntime(subscription);
+    expect(runtime.status).toBe('reauthorization_required');
+    expect(
+      await runInDurableObject(subscription, (_instance, state) =>
+        state.storage.getAlarm(),
+      ),
+    ).toBeNull();
+  });
+
+  it('does not poll while offline and schedules maintenance', async () => {
     const subscription = await createActiveSubscription(null);
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
@@ -354,7 +437,155 @@ describe('Twitch analytics capture', () => {
       subscription,
       (_instance, state) => state.storage.getAlarm(),
     );
-    expect(scheduledAlarm).toBeNull();
+    expect(scheduledAlarm).not.toBeNull();
+  });
+
+  it('audits EventSub subscriptions while offline', async () => {
+    const subscription = await createActiveSubscription(null);
+    await makeEventSubAuditDue(subscription);
+    const createdTypes: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const request = new Request(input, init);
+      const url = new URL(request.url);
+      if (
+        url.pathname !== '/helix/eventsub/subscriptions' ||
+        request.method !== 'POST'
+      ) {
+        throw new Error(`Unexpected request: ${request.method} ${request.url}`);
+      }
+      const body = await request.json<{
+        type: string;
+        version: string;
+        condition: Record<string, string>;
+        transport: { method: string; callback: string };
+      }>();
+      createdTypes.push(body.type);
+      return Response.json({
+        data: [
+          {
+            id: `analytics-${createdTypes.length}`,
+            status: 'webhook_callback_verification_pending',
+            type: body.type,
+            version: body.version,
+            condition: body.condition,
+            transport: body.transport,
+            created_at: '2026-08-16T00:00:00Z',
+            cost: 0,
+          },
+        ],
+      });
+    });
+
+    await runInDurableObject(subscription, (instance) => instance.alarm());
+
+    expect(createdTypes).toHaveLength(11);
+    const runtime = await readAnalyticsRuntime(subscription);
+    expect(runtime.activeStreamId).toBeNull();
+    expect(runtime.nextEventSubAuditAt?.getTime()).toBeGreaterThan(Date.now());
+    expect(
+      await runInDurableObject(subscription, (_instance, state) =>
+        state.storage.getAlarm(),
+      ),
+    ).not.toBeNull();
+  });
+
+  it.each([
+    {
+      failure: 'a network error',
+      response: () => Promise.reject(new Error('Twitch is unavailable')),
+    },
+    {
+      failure: 'an HTTP 5xx response',
+      response: () =>
+        Promise.resolve(
+          new Response(null, {
+            status: 503,
+            statusText: 'Service Unavailable',
+          }),
+        ),
+    },
+    {
+      failure: 'a malformed response',
+      response: () => Promise.resolve(Response.json({ unexpected: true })),
+    },
+  ])('retries token refresh after $failure', async ({ response }) => {
+    const subscription = await createActiveSubscription(null);
+    await makeAuthorizationRefreshDue(subscription);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => response());
+
+    await runInDurableObject(subscription, (instance) => instance.alarm());
+
+    const runtime = await readAnalyticsRuntime(subscription);
+    expect(runtime.status).toBe('active');
+    expect(await readAnalyticsAuthorization(subscription)).toMatchObject({
+      accessToken: 'user-access-token',
+      refreshToken: 'user-refresh-token',
+    });
+    expect(
+      await runInDurableObject(subscription, (_instance, state) =>
+        state.storage.getAlarm(),
+      ),
+    ).not.toBeNull();
+  });
+
+  it.each([400, 401])(
+    'requires reauthorization when token refresh returns HTTP %i',
+    async (status) => {
+      const subscription = await createActiveSubscription(null);
+      await makeAuthorizationRefreshDue(subscription);
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(null, { status }),
+      );
+
+      await runInDurableObject(subscription, (instance) => instance.alarm());
+
+      expect((await readAnalyticsRuntime(subscription)).status).toBe(
+        'reauthorization_required',
+      );
+      expect(
+        await runInDurableObject(subscription, (_instance, state) =>
+          state.storage.getAlarm(),
+        ),
+      ).toBeNull();
+    },
+  );
+
+  it('requires reauthorization when Twitch rejects a refreshed token', async () => {
+    const subscription = await createActiveSubscription(null);
+    await makeAuthorizationRefreshDue(subscription);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = new URL(
+        input instanceof Request ? input.url : input.toString(),
+      );
+      if (url.pathname === '/oauth2/token') {
+        return Promise.resolve(
+          Response.json({
+            access_token: 'refreshed-access-token',
+            refresh_token: 'refreshed-refresh-token',
+            expires_in: 3600,
+            scope: [],
+          }),
+        );
+      }
+      if (url.pathname === '/oauth2/validate') {
+        return Promise.resolve(new Response(null, { status: 401 }));
+      }
+      throw new Error(`Unexpected request: ${url.toString()}`);
+    });
+
+    await runInDurableObject(subscription, (instance) => instance.alarm());
+
+    expect((await readAnalyticsRuntime(subscription)).status).toBe(
+      'reauthorization_required',
+    );
+    expect(
+      await runInDurableObject(subscription, (_instance, state) =>
+        state.storage.getAlarm(),
+      ),
+    ).toBeNull();
   });
 
   it('finalizes a completed stream while offline without polling Twitch', async () => {
@@ -400,6 +631,62 @@ describe('Twitch analytics capture', () => {
     );
     expect(pending).toEqual([]);
   });
+
+  it.each([{ streamState: 'missing' }, { streamState: 'incomplete' }])(
+    'retains a finalizer job while its stream is $streamState',
+    async ({ streamState }) => {
+      const streamId = `stream-${crypto.randomUUID()}`;
+      const subscription = await createActiveSubscription(null);
+      if (streamState === 'incomplete') {
+        const startedAt = Date.now() - 60 * 1000;
+        await env.TWITCH_ANALYTICS_DB.prepare(
+          `INSERT INTO streams
+           (stream_id, channel_id, started_at, started_recorded_at, status)
+           VALUES (?, ?, ?, ?, 'live')`,
+        )
+          .bind(streamId, CHANNEL_ID, startedAt, startedAt)
+          .run();
+      }
+      await runInDurableObject(subscription, async (_instance, state) => {
+        const database = drizzle(state.storage);
+        await database.insert(analyticsPendingFinalizers).values({
+          streamId,
+          finalizeAfter: new Date(0),
+        });
+      });
+      const beforeAlarm = Date.now();
+      const warnSpy = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => undefined);
+
+      await runInDurableObject(subscription, (instance) => instance.alarm());
+
+      const { pending, scheduledAlarm } = await runInDurableObject(
+        subscription,
+        async (_instance, state) => {
+          const database = drizzle(state.storage);
+          const [pending] = await database
+            .select()
+            .from(analyticsPendingFinalizers)
+            .where(eq(analyticsPendingFinalizers.streamId, streamId))
+            .limit(1);
+          return {
+            pending,
+            scheduledAlarm: await state.storage.getAlarm(),
+          };
+        },
+      );
+      expect(pending?.finalizeAfter.getTime()).toBeGreaterThan(beforeAlarm);
+      expect(scheduledAlarm).toBe(pending?.finalizeAfter.getTime());
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'twitch_analytics_stream_finalization_deferred',
+          streamId,
+          reason: 'stream_missing_or_incomplete',
+        }),
+      );
+    },
+  );
 
   it('still ends a stream when its final audience sample fails', async () => {
     const streamId = `stream-${crypto.randomUUID()}`;
@@ -474,6 +761,76 @@ describe('Twitch analytics capture', () => {
     expect(recovered.consecutiveStreamMisses).toBe(0);
   });
 
+  it('finalizes the previous stream before adopting a polled replacement', async () => {
+    const previousStreamId = `stream-${crypto.randomUUID()}`;
+    const replacementStreamId = `stream-${crypto.randomUUID()}`;
+    const previousStartedAt = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const replacementStartedAt = new Date(Date.now() - 60 * 60 * 1000);
+    const subscription = await createActiveSubscription(
+      previousStreamId,
+      previousStartedAt,
+    );
+    await makeViewerSampleDue(subscription);
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = new URL(
+        input instanceof Request ? input.url : input.toString(),
+      );
+      if (url.pathname !== '/helix/streams') {
+        throw new Error(`Unexpected request: ${url.toString()}`);
+      }
+      return Promise.resolve(
+        Response.json({
+          data: [twitchStream(replacementStreamId, replacementStartedAt)],
+        }),
+      );
+    });
+
+    await runInDurableObject(subscription, (instance) => instance.alarm());
+
+    expect((await readAnalyticsRuntime(subscription)).activeStreamId).toBe(
+      replacementStreamId,
+    );
+    const previous = await env.TWITCH_ANALYTICS_DB.prepare(
+      'SELECT status, ended_at FROM streams WHERE stream_id = ?',
+    )
+      .bind(previousStreamId)
+      .first<{ status: string; ended_at: number | null }>();
+    expect(previous).toEqual({
+      status: 'finalizing',
+      ended_at: replacementStartedAt.getTime(),
+    });
+    const replacement = await env.TWITCH_ANALYTICS_DB.prepare(
+      'SELECT status, started_at FROM streams WHERE stream_id = ?',
+    )
+      .bind(replacementStreamId)
+      .first<{ status: string; started_at: number }>();
+    expect(replacement).toEqual({
+      status: 'live',
+      started_at: replacementStartedAt.getTime(),
+    });
+    const sample = await env.TWITCH_ANALYTICS_DB.prepare(
+      `SELECT stream_id, viewer_count FROM audience_samples
+       WHERE stream_id = ? ORDER BY sampled_at DESC LIMIT 1`,
+    )
+      .bind(replacementStreamId)
+      .first<{ stream_id: string; viewer_count: number }>();
+    expect(sample).toEqual({
+      stream_id: replacementStreamId,
+      viewer_count: 4,
+    });
+    const pending = await runInDurableObject(
+      subscription,
+      async (_instance, state) => {
+        const database = drizzle(state.storage);
+        return database
+          .select()
+          .from(analyticsPendingFinalizers)
+          .where(eq(analyticsPendingFinalizers.streamId, previousStreamId));
+      },
+    );
+    expect(pending).toHaveLength(1);
+  });
+
   it('ends a stream after three persisted live-check misses', async () => {
     const streamId = `stream-${crypto.randomUUID()}`;
     const subscription = await createActiveSubscription(streamId);
@@ -538,6 +895,45 @@ async function makeViewerSampleDue(
   });
 }
 
+async function makeTokenValidationDue(
+  subscription: TwitchSubscriptionStub,
+): Promise<void> {
+  await runInDurableObject(subscription, async (_instance, state) => {
+    const later = new Date(Date.now() + 60 * 60 * 1000);
+    const database = drizzle(state.storage);
+    await database.update(analyticsRuntime).set({
+      nextViewerSampleAt: later,
+      nextAudienceSampleAt: later,
+      nextTokenValidationAt: new Date(0),
+      nextEventSubAuditAt: later,
+    });
+  });
+}
+
+async function makeEventSubAuditDue(
+  subscription: TwitchSubscriptionStub,
+): Promise<void> {
+  await runInDurableObject(subscription, async (_instance, state) => {
+    const later = new Date(Date.now() + 60 * 60 * 1000);
+    const database = drizzle(state.storage);
+    await database.update(analyticsRuntime).set({
+      nextTokenValidationAt: later,
+      nextEventSubAuditAt: new Date(0),
+    });
+  });
+}
+
+async function makeAuthorizationRefreshDue(
+  subscription: TwitchSubscriptionStub,
+): Promise<void> {
+  await runInDurableObject(subscription, async (_instance, state) => {
+    const database = drizzle(state.storage);
+    await database
+      .update(analyticsAuthorization)
+      .set({ expiresAt: new Date(0) });
+  });
+}
+
 function readAnalyticsRuntime(subscription: TwitchSubscriptionStub) {
   return runInDurableObject(subscription, async (_instance, state) => {
     const database = drizzle(state.storage);
@@ -547,7 +943,24 @@ function readAnalyticsRuntime(subscription: TwitchSubscriptionStub) {
   });
 }
 
-async function createActiveSubscription(activeStreamId: string | null) {
+function readAnalyticsAuthorization(subscription: TwitchSubscriptionStub) {
+  return runInDurableObject(subscription, async (_instance, state) => {
+    const database = drizzle(state.storage);
+    const [authorization] = await database
+      .select()
+      .from(analyticsAuthorization)
+      .limit(1);
+    if (authorization === undefined) {
+      throw new Error('Analytics authorization not found');
+    }
+    return authorization;
+  });
+}
+
+async function createActiveSubscription(
+  activeStreamId: string | null,
+  streamStartedAt: Date = new Date(),
+) {
   const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(crypto.randomUUID());
   const now = new Date();
   await runInDurableObject(subscription, async (_instance, state) => {
@@ -573,7 +986,7 @@ async function createActiveSubscription(activeStreamId: string | null) {
     });
   });
   if (activeStreamId !== null) {
-    const timestamp = Date.now();
+    const timestamp = streamStartedAt.getTime();
     await env.TWITCH_ANALYTICS_DB.prepare(
       `INSERT INTO streams
        (stream_id, channel_id, started_at, started_recorded_at, status)
@@ -594,7 +1007,7 @@ function eventSubSubscription(type: string, version: string) {
   };
 }
 
-function twitchStream(streamId: string) {
+function twitchStream(streamId: string, startedAt: Date = new Date()) {
   return {
     id: streamId,
     user_id: CHANNEL_ID,
@@ -604,7 +1017,7 @@ function twitchStream(streamId: string) {
     game_name: 'A Category',
     title: 'Fallback test',
     viewer_count: 4,
-    started_at: '2026-08-15T11:00:00Z',
+    started_at: startedAt.toISOString(),
     thumbnail_url: 'https://example.com/preview.jpg',
   };
 }

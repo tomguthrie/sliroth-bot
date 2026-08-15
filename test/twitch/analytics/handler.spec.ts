@@ -1,9 +1,11 @@
 import { env, exports } from 'cloudflare:workers';
-import { applyD1Migrations } from 'cloudflare:test';
+import { applyD1Migrations, runInDurableObject } from 'cloudflare:test';
+import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import * as z from 'zod';
 
 import migrationSql from '../../../src/db/twitch-analytics/migrations/20260815112814_damp_praxagora/migration.sql';
+import { analyticsRuntime } from '../../../src/db/twitch-subscription/schema';
 
 const migrations = [
   {
@@ -61,6 +63,20 @@ describe('Twitch analytics authorization', () => {
     const state = twitchAuthorization.searchParams.get('state');
     expect(state).not.toBeNull();
 
+    const activeStreamId = `stream-${crypto.randomUUID()}`;
+    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(
+      env.TWITCH_ANALYTICS_CHANNEL_ID,
+    );
+    await runInDurableObject(subscription, async (_instance, state) => {
+      const database = drizzle(state.storage);
+      await database.insert(analyticsRuntime).values({
+        singleton: 1,
+        status: 'reauthorization_required',
+        enabledAt: new Date(),
+        activeStreamId,
+      });
+    });
+
     const eventSubTypes: string[] = [];
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const request =
@@ -106,6 +122,30 @@ describe('Twitch analytics authorization', () => {
             },
           ],
         });
+      }
+      if (url.pathname === '/helix/streams') {
+        return Response.json({
+          data: [
+            {
+              id: activeStreamId,
+              user_id: env.TWITCH_ANALYTICS_CHANNEL_ID,
+              user_login: 'sliroth',
+              user_name: 'Sliroth',
+              game_id: 'game-1',
+              game_name: 'A Category',
+              title: 'Reauthorization test',
+              viewer_count: 4,
+              started_at: '2026-08-16T08:00:00Z',
+              thumbnail_url: 'https://example.com/preview.jpg',
+            },
+          ],
+        });
+      }
+      if (url.pathname === '/helix/channels/followers') {
+        return Response.json({ data: [], total: 119 });
+      }
+      if (url.pathname === '/helix/subscriptions') {
+        return Response.json({ data: [], total: 1 });
       }
       if (
         url.pathname === '/helix/eventsub/subscriptions' &&
@@ -164,6 +204,27 @@ describe('Twitch analytics authorization', () => {
     expect(channel).toEqual({
       channel_id: env.TWITCH_ANALYTICS_CHANNEL_ID,
       login: 'sliroth',
+    });
+    await vi.waitFor(async () => {
+      const resumed = await runInDurableObject(
+        subscription,
+        async (_instance, state) => {
+          const database = drizzle(state.storage);
+          const [runtime] = await database
+            .select()
+            .from(analyticsRuntime)
+            .limit(1);
+          return {
+            runtime,
+            alarm: await state.storage.getAlarm(),
+          };
+        },
+      );
+      expect(resumed.runtime).toMatchObject({
+        status: 'active',
+        activeStreamId,
+      });
+      expect(resumed.alarm).not.toBeNull();
     });
   });
 });

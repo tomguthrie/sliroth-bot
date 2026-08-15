@@ -26,7 +26,10 @@ import {
   createOAuthState,
   exchangeAuthorizationCode,
   hashOAuthState,
+  isTwitchOAuthErrorStatus,
+  isTwitchTokenValidationErrorStatus,
   refreshUserToken,
+  type TwitchOAuthToken,
   type ValidatedTwitchToken,
   validateUserToken,
 } from './oauth';
@@ -40,6 +43,7 @@ const TOKEN_VALIDATION_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const EVENTSUB_AUDIT_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const TOKEN_REFRESH_LEEWAY_MS = 5 * 60 * 1000;
 const STREAM_FINALIZATION_DELAY_MS = 2 * 60 * 1000;
+const STREAM_FINALIZATION_RETRY_DELAY_MS = 5 * 60 * 1000;
 const ACTIVE_EVENTSUB_STATUSES = new Set([
   'enabled',
   'webhook_callback_verification_pending',
@@ -180,6 +184,7 @@ export class TwitchAnalyticsService {
     await this.repository.initializeChannel(user, now);
     await this.repository.recordGrantedCapabilities(validated.scopes, now);
     await this.reconcileEventSub(now);
+    await this.ctx.storage.setAlarm(now.getTime());
     return { login: validated.login };
   }
 
@@ -248,6 +253,7 @@ export class TwitchAnalyticsService {
   }
 
   async eventSubRevoked(): Promise<void> {
+    if ((await this.getActiveRuntime()) === undefined) return;
     await this.reconcileEventSub(new Date());
   }
 
@@ -261,7 +267,7 @@ export class TwitchAnalyticsService {
       });
       const runtime = await this.getActiveRuntime();
       const pendingFinalizer = await this.getNextPendingFinalizer();
-      if (runtime?.activeStreamId == null && pendingFinalizer === undefined) {
+      if (runtime === undefined && pendingFinalizer === undefined) {
         await this.ctx.storage.deleteAlarm();
       } else {
         await this.ctx.storage.setAlarm(Date.now() + VIEWER_SAMPLE_INTERVAL_MS);
@@ -278,10 +284,6 @@ export class TwitchAnalyticsService {
     let runtime = await this.getActiveRuntime();
     if (runtime === undefined) {
       await this.scheduleNextAlarm(undefined, now);
-      return;
-    }
-    if (runtime.activeStreamId === null) {
-      await this.scheduleNextAlarm(runtime, now);
       return;
     }
 
@@ -304,7 +306,9 @@ export class TwitchAnalyticsService {
       try {
         validated = await validateUserToken(authorization.accessToken);
       } catch (error) {
-        await this.requireReauthorization();
+        if (isTwitchTokenValidationErrorStatus(error, 401)) {
+          await this.requireReauthorization();
+        }
         throw error;
       }
       this.assertConfiguredAuthorization(validated);
@@ -370,6 +374,13 @@ export class TwitchAnalyticsService {
 
     if (viewerDue) {
       if (stream !== undefined) {
+        if (activeStreamId !== null && activeStreamId !== stream.id) {
+          await this.enqueueStreamFinalization(
+            activeStreamId,
+            stream.startedAt,
+            now,
+          );
+        }
         activeStreamId = stream.id;
         sampledStreamId = stream.id;
         offlineSuspectedAt = null;
@@ -504,6 +515,25 @@ export class TwitchAnalyticsService {
     endedAt: Date,
     recordedAt: Date = endedAt,
   ): Promise<void> {
+    await this.enqueueStreamFinalization(streamId, endedAt, recordedAt);
+    await this.localDb
+      .update(analyticsRuntime)
+      .set({
+        activeStreamId: null,
+        offlineSuspectedAt: null,
+        consecutiveStreamMisses: 0,
+        nextViewerSampleAt: null,
+        nextAudienceSampleAt: null,
+      })
+      .where(eq(analyticsRuntime.singleton, 1));
+    await this.scheduleNextAlarm(await this.getActiveRuntime(), recordedAt);
+  }
+
+  private async enqueueStreamFinalization(
+    streamId: string,
+    endedAt: Date,
+    recordedAt: Date,
+  ): Promise<void> {
     await this.repository.finishStream(streamId, endedAt, recordedAt);
     const finalizeAfter = new Date(
       recordedAt.getTime() + STREAM_FINALIZATION_DELAY_MS,
@@ -518,17 +548,6 @@ export class TwitchAnalyticsService {
         target: analyticsPendingFinalizers.streamId,
         set: { finalizeAfter },
       });
-    await this.localDb
-      .update(analyticsRuntime)
-      .set({
-        activeStreamId: null,
-        offlineSuspectedAt: null,
-        consecutiveStreamMisses: 0,
-        nextViewerSampleAt: null,
-        nextAudienceSampleAt: null,
-      })
-      .where(eq(analyticsRuntime.singleton, 1));
-    await this.scheduleNextAlarm(await this.getActiveRuntime(), recordedAt);
   }
 
   private async getAudienceCounts(
@@ -638,30 +657,40 @@ export class TwitchAnalyticsService {
     authorization: typeof analyticsAuthorization.$inferSelect,
     now: Date,
   ): Promise<typeof analyticsAuthorization.$inferSelect> {
+    let token: TwitchOAuthToken;
+    let validated: ValidatedTwitchToken;
     try {
-      const token = await refreshUserToken(
-        this.env,
-        authorization.refreshToken,
-      );
-      const validated = await validateUserToken(token.access_token);
+      token = await refreshUserToken(this.env, authorization.refreshToken);
+      validated = await validateUserToken(token.access_token);
+    } catch (error) {
+      if (
+        isTwitchOAuthErrorStatus(error, 400) ||
+        isTwitchOAuthErrorStatus(error, 401) ||
+        isTwitchTokenValidationErrorStatus(error, 401)
+      ) {
+        await this.requireReauthorization();
+      }
+      throw error;
+    }
+    try {
       this.assertConfiguredAuthorization(validated);
-      const updated = {
-        ...authorization,
-        accessToken: token.access_token,
-        refreshToken: token.refresh_token,
-        scopesJson: JSON.stringify(validated.scopes),
-        validatedAt: now,
-        expiresAt: new Date(now.getTime() + validated.expires_in * 1000),
-      };
-      await this.localDb
-        .update(analyticsAuthorization)
-        .set(updated)
-        .where(eq(analyticsAuthorization.singleton, 1));
-      return updated;
     } catch (error) {
       await this.requireReauthorization();
       throw error;
     }
+    const updated = {
+      ...authorization,
+      accessToken: token.access_token,
+      refreshToken: token.refresh_token,
+      scopesJson: JSON.stringify(validated.scopes),
+      validatedAt: now,
+      expiresAt: new Date(now.getTime() + validated.expires_in * 1000),
+    };
+    await this.localDb
+      .update(analyticsAuthorization)
+      .set(updated)
+      .where(eq(analyticsAuthorization.singleton, 1));
+    return updated;
   }
 
   private assertConfiguredAuthorization(validated: ValidatedTwitchToken): void {
@@ -711,7 +740,23 @@ export class TwitchAnalyticsService {
       .orderBy(asc(analyticsPendingFinalizers.finalizeAfter));
     const finalizer = new TwitchAnalyticsFinalizer(this.env);
     for (const job of pending) {
-      await finalizer.finalize(job.streamId, now);
+      const finalized = await finalizer.finalize(job.streamId, now);
+      if (!finalized) {
+        const finalizeAfter = new Date(
+          now.getTime() + STREAM_FINALIZATION_RETRY_DELAY_MS,
+        );
+        await this.localDb
+          .update(analyticsPendingFinalizers)
+          .set({ finalizeAfter })
+          .where(eq(analyticsPendingFinalizers.streamId, job.streamId));
+        console.warn({
+          event: 'twitch_analytics_stream_finalization_deferred',
+          streamId: job.streamId,
+          reason: 'stream_missing_or_incomplete',
+          finalizeAfter,
+        });
+        continue;
+      }
       await this.localDb
         .delete(analyticsPendingFinalizers)
         .where(eq(analyticsPendingFinalizers.streamId, job.streamId));
@@ -733,13 +778,17 @@ export class TwitchAnalyticsService {
   ): Promise<void> {
     const pendingFinalizer = await this.getNextPendingFinalizer();
     const candidates = [pendingFinalizer?.finalizeAfter];
-    if (runtime?.activeStreamId !== null && runtime !== undefined) {
+    if (runtime !== undefined) {
       candidates.push(
-        runtime.nextViewerSampleAt ?? undefined,
-        runtime.nextAudienceSampleAt ?? undefined,
         runtime.nextTokenValidationAt ?? undefined,
         runtime.nextEventSubAuditAt ?? undefined,
       );
+      if (runtime.activeStreamId !== null) {
+        candidates.push(
+          runtime.nextViewerSampleAt ?? undefined,
+          runtime.nextAudienceSampleAt ?? undefined,
+        );
+      }
     }
     const scheduled = candidates.filter(
       (candidate): candidate is Date => candidate !== undefined,

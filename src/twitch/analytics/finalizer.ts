@@ -15,7 +15,6 @@ import {
 
 const MINUTE_MS = 60 * 1000;
 const VIEWER_SAMPLE_VALIDITY_MS = 2 * MINUTE_MS;
-const INSERT_CHUNK_SIZE = 250;
 const ALGORITHM = 'step-viewers-120s-v1';
 
 type Stream = typeof streams.$inferSelect;
@@ -91,11 +90,8 @@ export class TwitchAnalyticsFinalizer {
         .orderBy(asc(activityEvents.occurredAt)),
     ]);
 
-    const fallbackMetadata =
-      metadata.length === 0
-        ? await this.latestChannelMetadata(completedStream)
-        : undefined;
-    const segments = buildSegments(completedStream, metadata, fallbackMetadata);
+    const initialMetadata = await this.metadataAtStreamStart(completedStream);
+    const segments = buildSegments(completedStream, metadata, initialMetadata);
     const minutes = buildMinuteRollups(
       completedStream,
       audience,
@@ -114,18 +110,13 @@ export class TwitchAnalyticsFinalizer {
       computedAt,
     );
 
-    await this.db
-      .delete(streamMinuteRollups)
-      .where(eq(streamMinuteRollups.streamId, streamId));
-    await this.db
-      .delete(streamCategoryRollups)
-      .where(eq(streamCategoryRollups.streamId, streamId));
-    await this.db
-      .delete(streamSegments)
-      .where(eq(streamSegments.streamId, streamId));
-    await insertSegmentChunks(this.db, segments);
-    await insertMinuteChunks(this.db, minutes);
-    await insertCategoryChunks(this.db, categories);
+    await replaceDerivedRollups(
+      this.env.TWITCH_ANALYTICS_DB,
+      streamId,
+      segments,
+      minutes,
+      categories,
+    );
     await this.db.insert(streamSummaries).values(summary).onConflictDoUpdate({
       target: streamSummaries.streamId,
       set: summary,
@@ -142,8 +133,8 @@ export class TwitchAnalyticsFinalizer {
     return true;
   }
 
-  private async latestChannelMetadata(
-    stream: Stream & { endedAt: Date },
+  private async metadataAtStreamStart(
+    stream: Stream,
   ): Promise<MetadataChange | undefined> {
     const [metadata] = await this.db
       .select()
@@ -151,10 +142,13 @@ export class TwitchAnalyticsFinalizer {
       .where(
         and(
           eq(streamMetadataChanges.channelId, stream.channelId),
-          lte(streamMetadataChanges.occurredAt, stream.endedAt),
+          lte(streamMetadataChanges.occurredAt, stream.startedAt),
         ),
       )
-      .orderBy(desc(streamMetadataChanges.occurredAt))
+      .orderBy(
+        desc(streamMetadataChanges.occurredAt),
+        desc(streamMetadataChanges.recordedAt),
+      )
       .limit(1);
     return metadata;
   }
@@ -163,16 +157,16 @@ export class TwitchAnalyticsFinalizer {
 function buildSegments(
   stream: Stream & { endedAt: Date },
   metadata: readonly MetadataChange[],
-  fallback: MetadataChange | undefined,
+  initialMetadata: MetadataChange | undefined,
 ): Segment[] {
-  const changes =
-    metadata.length === 0 ? (fallback ? [fallback] : []) : metadata;
-  const first = changes[0];
-  let current = metadataValues(first);
+  const changes = metadata.filter(
+    (change) => change.occurredAt > stream.startedAt,
+  );
+  let current = metadataValues(initialMetadata);
   let segmentStartedAt = stream.startedAt;
   const segments: Segment[] = [];
 
-  for (const change of changes.slice(1)) {
+  for (const change of changes) {
     const changedAt = clampDate(
       change.occurredAt,
       stream.startedAt,
@@ -427,34 +421,104 @@ function buildSummary(
   };
 }
 
-async function insertSegmentChunks(
-  db: ReturnType<typeof drizzle>,
-  values: readonly Segment[],
+async function replaceDerivedRollups(
+  db: D1Database,
+  streamId: string,
+  segments: readonly Segment[],
+  minutes: readonly MinuteRollup[],
+  categories: readonly CategoryRollup[],
 ): Promise<void> {
-  for (let index = 0; index < values.length; index += INSERT_CHUNK_SIZE) {
-    const chunk = values.slice(index, index + INSERT_CHUNK_SIZE);
-    if (chunk.length > 0) await db.insert(streamSegments).values(chunk);
-  }
-}
+  const segmentRows = segments.map((segment) => [
+    segment.streamId,
+    segment.startedAt.getTime(),
+    segment.endedAt?.getTime() ?? null,
+    segment.title,
+    segment.categoryId ?? null,
+    segment.categoryName ?? null,
+    segment.language ?? null,
+  ]);
+  const minuteRows = minutes.map((minute) => [
+    minute.streamId,
+    minute.minuteAt.getTime(),
+    minute.coveredSeconds,
+    minute.viewerSeconds,
+    minute.peakViewers ?? null,
+    minute.chatMessages ?? 0,
+    minute.uniqueChatters ?? 0,
+    minute.bits ?? 0,
+    minute.channelPoints ?? 0,
+    minute.follows ?? 0,
+    minute.subscriptions ?? 0,
+    minute.activityEvents ?? 0,
+  ]);
+  const categoryRows = categories.map((category) => [
+    category.streamId,
+    category.categoryKey,
+    category.categoryId ?? null,
+    category.categoryName,
+    category.durationSeconds,
+  ]);
 
-async function insertMinuteChunks(
-  db: ReturnType<typeof drizzle>,
-  values: readonly MinuteRollup[],
-): Promise<void> {
-  for (let index = 0; index < values.length; index += INSERT_CHUNK_SIZE) {
-    const chunk = values.slice(index, index + INSERT_CHUNK_SIZE);
-    if (chunk.length > 0) await db.insert(streamMinuteRollups).values(chunk);
-  }
-}
-
-async function insertCategoryChunks(
-  db: ReturnType<typeof drizzle>,
-  values: readonly CategoryRollup[],
-): Promise<void> {
-  for (let index = 0; index < values.length; index += INSERT_CHUNK_SIZE) {
-    const chunk = values.slice(index, index + INSERT_CHUNK_SIZE);
-    if (chunk.length > 0) await db.insert(streamCategoryRollups).values(chunk);
-  }
+  await db.batch([
+    db
+      .prepare('DELETE FROM stream_minute_rollups WHERE stream_id = ?')
+      .bind(streamId),
+    db
+      .prepare('DELETE FROM stream_category_rollups WHERE stream_id = ?')
+      .bind(streamId),
+    db
+      .prepare('DELETE FROM stream_segments WHERE stream_id = ?')
+      .bind(streamId),
+    db
+      .prepare(
+        `INSERT INTO stream_segments
+         (stream_id, started_at, ended_at, title, category_id, category_name,
+          language)
+         SELECT json_extract(row.value, '$[0]'),
+                json_extract(row.value, '$[1]'),
+                json_extract(row.value, '$[2]'),
+                json_extract(row.value, '$[3]'),
+                json_extract(row.value, '$[4]'),
+                json_extract(row.value, '$[5]'),
+                json_extract(row.value, '$[6]')
+         FROM json_each(?) AS row`,
+      )
+      .bind(JSON.stringify(segmentRows)),
+    db
+      .prepare(
+        `INSERT INTO stream_minute_rollups
+         (stream_id, minute_at, covered_seconds, viewer_seconds, peak_viewers,
+          chat_messages, unique_chatters, bits, channel_points, follows,
+          subscriptions, activity_events)
+         SELECT json_extract(row.value, '$[0]'),
+                json_extract(row.value, '$[1]'),
+                json_extract(row.value, '$[2]'),
+                json_extract(row.value, '$[3]'),
+                json_extract(row.value, '$[4]'),
+                json_extract(row.value, '$[5]'),
+                json_extract(row.value, '$[6]'),
+                json_extract(row.value, '$[7]'),
+                json_extract(row.value, '$[8]'),
+                json_extract(row.value, '$[9]'),
+                json_extract(row.value, '$[10]'),
+                json_extract(row.value, '$[11]')
+         FROM json_each(?) AS row`,
+      )
+      .bind(JSON.stringify(minuteRows)),
+    db
+      .prepare(
+        `INSERT INTO stream_category_rollups
+         (stream_id, category_key, category_id, category_name,
+          duration_seconds)
+         SELECT json_extract(row.value, '$[0]'),
+                json_extract(row.value, '$[1]'),
+                json_extract(row.value, '$[2]'),
+                json_extract(row.value, '$[3]'),
+                json_extract(row.value, '$[4]')
+         FROM json_each(?) AS row`,
+      )
+      .bind(JSON.stringify(categoryRows)),
+  ]);
 }
 
 function sum<T>(values: readonly T[], select: (value: T) => number): number {

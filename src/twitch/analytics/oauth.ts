@@ -19,6 +19,42 @@ const ValidatedToken = z.object({
 
 export type ValidatedTwitchToken = z.output<typeof ValidatedToken>;
 
+class TwitchTokenValidationError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'TwitchTokenValidationError';
+  }
+}
+
+class TwitchOAuthError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'TwitchOAuthError';
+  }
+}
+
+/** Returns whether an unknown value is an OAuth-token HTTP error. */
+export function isTwitchOAuthErrorStatus(
+  error: unknown,
+  status: number,
+): boolean {
+  return error instanceof TwitchOAuthError && error.status === status;
+}
+
+/** Returns whether an unknown value is a token-validation HTTP error. */
+export function isTwitchTokenValidationErrorStatus(
+  error: unknown,
+  status: number,
+): boolean {
+  return error instanceof TwitchTokenValidationError && error.status === status;
+}
+
 export async function exchangeAuthorizationCode(
   env: Env,
   code: string,
@@ -56,8 +92,9 @@ export async function validateUserToken(
     headers: { Authorization: `OAuth ${accessToken}` },
   });
   if (!response.ok) {
-    throw new Error(
+    throw new TwitchTokenValidationError(
       `Twitch token validation returned HTTP ${response.status}: ${response.statusText}`,
+      response.status,
     );
   }
   return ValidatedToken.parse(await response.json());
@@ -84,8 +121,9 @@ async function requestOAuthToken(
     body,
   });
   if (!response.ok) {
-    throw new Error(
+    throw new TwitchOAuthError(
       `Twitch OAuth returned HTTP ${response.status}: ${response.statusText}`,
+      response.status,
     );
   }
   return OAuthToken.parse(await response.json());

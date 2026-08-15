@@ -134,6 +134,111 @@ describe('Twitch analytics finalizer', () => {
       { category_name: 'Second game', duration_seconds: 90 },
     ]);
   });
+
+  it('starts a new segment when the first metadata arrives after stream start', async () => {
+    const streamId = `stream-${crypto.randomUUID()}`;
+    const startedAt = new Date('2026-08-14T12:00:00.000Z');
+    const changedAt = new Date('2026-08-14T12:01:00.000Z');
+    const endedAt = new Date('2026-08-14T12:03:00.000Z');
+    await env.TWITCH_ANALYTICS_DB.batch([
+      env.TWITCH_ANALYTICS_DB.prepare(
+        `INSERT INTO streams
+         (stream_id, channel_id, started_at, started_recorded_at, ended_at,
+          ended_recorded_at, status)
+         VALUES (?, ?, ?, ?, ?, ?, 'finalizing')`,
+      ).bind(
+        streamId,
+        CHANNEL_ID,
+        startedAt.getTime(),
+        startedAt.getTime(),
+        endedAt.getTime(),
+        endedAt.getTime(),
+      ),
+      metadata(
+        streamId,
+        'late-metadata',
+        changedAt,
+        'Late title',
+        'late-game',
+        'Late game',
+      ),
+    ]);
+
+    await expect(
+      new TwitchAnalyticsFinalizer(env).finalize(streamId, endedAt),
+    ).resolves.toBe(true);
+
+    const segments = await env.TWITCH_ANALYTICS_DB.prepare(
+      `SELECT started_at, ended_at, title, category_name
+       FROM stream_segments WHERE stream_id = ? ORDER BY started_at`,
+    )
+      .bind(streamId)
+      .all();
+    expect(segments.results).toEqual([
+      {
+        started_at: startedAt.getTime(),
+        ended_at: changedAt.getTime(),
+        title: 'Untitled stream',
+        category_name: 'Uncategorized',
+      },
+      {
+        started_at: changedAt.getTime(),
+        ended_at: endedAt.getTime(),
+        title: 'Late title',
+        category_name: 'Late game',
+      },
+    ]);
+  });
+
+  it('finalizes a six-hour stream within the D1 Free query limit', async () => {
+    const streamId = `stream-${crypto.randomUUID()}`;
+    const startedAt = new Date('2026-08-15T13:00:00.000Z');
+    const endedAt = new Date(startedAt.getTime() + 6 * 60 * 60 * 1000);
+    const stream = env.TWITCH_ANALYTICS_DB.prepare(
+      `INSERT INTO streams
+       (stream_id, channel_id, started_at, started_recorded_at, ended_at,
+        ended_recorded_at, status)
+       VALUES (?, ?, ?, ?, ?, ?, 'finalizing')`,
+    ).bind(
+      streamId,
+      CHANNEL_ID,
+      startedAt.getTime(),
+      startedAt.getTime(),
+      endedAt.getTime(),
+      endedAt.getTime(),
+    );
+    const metadataChanges = Array.from({ length: 25 }, (_, index) =>
+      metadata(
+        streamId,
+        `metadata-${index}`,
+        new Date(startedAt.getTime() + index * 60 * 1000),
+        `Title ${index}`,
+        `game-${index}`,
+        `Game ${index}`,
+      ),
+    );
+    await env.TWITCH_ANALYTICS_DB.batch([stream, ...metadataChanges]);
+
+    await expect(
+      new TwitchAnalyticsFinalizer(env).finalize(streamId, endedAt),
+    ).resolves.toBe(true);
+
+    const result = await env.TWITCH_ANALYTICS_DB.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM stream_minute_rollups WHERE stream_id = ?) AS minutes,
+         (SELECT COUNT(*) FROM stream_segments WHERE stream_id = ?) AS segments,
+         (SELECT COUNT(*) FROM stream_category_rollups WHERE stream_id = ?) AS categories,
+         (SELECT status FROM streams WHERE stream_id = ?) AS status`,
+    )
+      .bind(streamId, streamId, streamId, streamId)
+      .first();
+    expect(result).toEqual({
+      minutes: 360,
+      segments: 25,
+      categories: 25,
+      status: 'finalized',
+    });
+  });
 });
 
 function metadata(
