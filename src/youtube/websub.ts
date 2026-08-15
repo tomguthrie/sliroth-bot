@@ -1,39 +1,17 @@
-import * as z from 'zod';
-
-import { YouTubeChannelId, YouTubeWebSubSecret } from './data';
-
 export const YOUTUBE_WEBSUB_HUB_URL =
   'https://pubsubhubbub.appspot.com/subscribe';
 
 const YOUTUBE_FEED_URL = 'https://www.youtube.com/xml/feeds/videos.xml';
-const HttpOrigin = z
-  .url({ protocol: /^https?$/ })
-  .transform((value) => new URL(value).origin);
-const YouTubeWebSubSignature = z
-  .string()
-  .regex(/^sha1=[0-9a-f]{40}$/i)
-  .transform((value) => value.slice('sha1='.length));
-
-export const WebSubMode = z.enum(['subscribe', 'unsubscribe']);
-
-export type WebSubMode = z.infer<typeof WebSubMode>;
-
-export const WebSubLeaseSeconds = z
-  .int()
-  .positive()
-  .max(Number.MAX_SAFE_INTEGER)
-  .brand<'WebSubLeaseSeconds'>();
-
-export type WebSubLeaseSeconds = z.infer<typeof WebSubLeaseSeconds>;
+export type WebSubMode = 'subscribe' | 'unsubscribe';
 
 export interface CreateYouTubeWebSubRequestOptions {
   mode: WebSubMode;
-  channelId: YouTubeChannelId;
+  channelId: string;
   publicBaseUrl: string;
-  secret: YouTubeWebSubSecret;
+  secret: string;
 }
 
-export function createYouTubeTopicUrl(channelId: YouTubeChannelId): string {
+export function createYouTubeTopicUrl(channelId: string): string {
   const topicUrl = new URL(YOUTUBE_FEED_URL);
   topicUrl.searchParams.set('channel_id', channelId);
 
@@ -44,7 +22,7 @@ export function createYouTubeWebSubRequest(
   options: CreateYouTubeWebSubRequestOptions,
 ): Request {
   const { mode, channelId, secret } = options;
-  const publicBaseUrl = HttpOrigin.parse(options.publicBaseUrl);
+  const publicBaseUrl = httpOrigin(options.publicBaseUrl);
   const body = new URLSearchParams({
     'hub.mode': mode,
     'hub.topic': createYouTubeTopicUrl(channelId),
@@ -64,27 +42,19 @@ export function createYouTubeWebSubRequest(
   });
 }
 
-export function createYouTubeCallbackUrl(
-  publicBaseUrl: string,
-  channelId: YouTubeChannelId,
-): string {
-  return new URL(
-    `/youtube/websub/${encodeURIComponent(channelId)}`,
-    HttpOrigin.parse(publicBaseUrl),
-  ).toString();
-}
-
 export async function verifyYouTubeWebSubSignature(
   body: ArrayBuffer,
   signatureHeader: string | null,
-  secret: YouTubeWebSubSecret,
+  secret: string,
 ): Promise<boolean> {
-  const result = YouTubeWebSubSignature.safeParse(signatureHeader);
-  if (!result.success) {
+  if (
+    signatureHeader === null ||
+    !/^sha1=[0-9a-f]{40}$/i.test(signatureHeader)
+  ) {
     return false;
   }
 
-  const signature = hexToBytes(result.data);
+  const signature = hexToBytes(signatureHeader.slice('sha1='.length));
 
   const key = await crypto.subtle.importKey(
     'raw',
@@ -109,4 +79,12 @@ function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
   }
 
   return bytes;
+}
+
+function httpOrigin(value: string): string {
+  const url = new URL(value);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('WebSub public base URL must use HTTP or HTTPS');
+  }
+  return url.origin;
 }

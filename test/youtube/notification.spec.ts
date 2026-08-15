@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import * as z from 'zod';
 
 import { parseYouTubeVideoNotifications } from '../../src/youtube/notification';
 
@@ -91,8 +92,8 @@ describe('parseYouTubeVideoNotifications', () => {
   });
 
   it('rejects XML without an Atom feed', () => {
-    expect(() => parseYouTubeVideoNotifications('<notification />')).toThrow(
-      'YouTube notification must contain an Atom feed',
-    );
+    expect(() =>
+      parseYouTubeVideoNotifications('<notification />'),
+    ).toThrowError(z.ZodError);
   });
 });

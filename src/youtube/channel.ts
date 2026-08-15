@@ -1,8 +1,6 @@
 import { parse } from 'txml/txml';
 import * as z from 'zod';
 
-import { YouTubeChannelId, YouTubeHandle } from './data';
-
 const YOUTUBE_CHANNEL_FEED_URL = 'https://www.youtube.com/feeds/videos.xml';
 
 const XML_PARSE_OPTIONS = {
@@ -11,66 +9,68 @@ const XML_PARSE_OPTIONS = {
   simplify: true,
 };
 
-const UnknownRecord = z.record(z.string(), z.unknown());
 const YouTubeChannelFeed = z.object({
-  title: z.string().refine((value) => value.trim() !== ''),
+  feed: z.object({
+    title: z.string().trim().min(1),
+  }),
 });
-const YouTubeChannelUrl = z
-  .url({
-    protocol: /^https$/,
-    hostname: /^(?:www\.|m\.)?youtube\.com$/i,
-  })
-  .transform((value) => new URL(value).pathname)
-  .pipe(
-    z.union([
-      z
-        .string()
-        .regex(/^\/channel\/[^/]+(?:\/|$)/)
-        .transform((pathname) =>
-          pathname.replace(/^\/channel\/([^/]+).*$/, '$1'),
-        )
-        .pipe(YouTubeChannelId)
-        .transform((value): { type: 'id'; value: YouTubeChannelId } => ({
-          type: 'id',
-          value,
-        })),
-      z
-        .string()
-        .regex(/^\/@[^/]+(?:\/|$)/)
-        .transform((pathname) => pathname.replace(/^\/([^/]+).*$/, '$1'))
-        .pipe(YouTubeHandle)
-        .transform((value): { type: 'handle'; value: YouTubeHandle } => ({
-          type: 'handle',
-          value,
-        })),
-    ]),
+
+/** A resolved YouTube channel. */
+export interface YouTubeChannel {
+  id: string;
+  title: string;
+}
+
+/** Returns whether the input is a YouTube channel ID. */
+export function isYouTubeChannelId(input: string): boolean {
+  return /^UC[A-Za-z0-9_-]{22}$/.test(input);
+}
+
+/** Returns whether the input is a normalized YouTube handle. */
+export function isYouTubeChannelHandle(input: string): boolean {
+  return (
+    input !== '' &&
+    !input.startsWith('@') &&
+    !/[\s/\\?#]/u.test(input) &&
+    !isYouTubeChannelId(input)
   );
-const YouTubeChannelReference = z
-  .string()
-  .trim()
-  .min(1)
-  .pipe(
-    z.union([
-      YouTubeChannelId.transform(
-        (value): { type: 'id'; value: YouTubeChannelId } => ({
-          type: 'id',
-          value,
-        }),
-      ),
-      YouTubeChannelUrl,
-      YouTubeHandle.transform(
-        (value): { type: 'handle'; value: YouTubeHandle } => ({
-          type: 'handle',
-          value,
-        }),
-      ),
-    ]),
-  );
+}
+
+/** Extracts a channel ID from a bare ID or supported YouTube channel URL. */
+export function parseYouTubeChannelId(input: string): string | undefined {
+  const value = input.trim();
+  if (isYouTubeChannelId(value)) return value;
+
+  const pathname = parseYouTubeUrlPathname(value);
+  const channelId =
+    pathname === undefined
+      ? undefined
+      : /^\/channel\/([^/]+)(?:\/|$)/.exec(pathname)?.[1];
+
+  return channelId !== undefined && isYouTubeChannelId(channelId)
+    ? channelId
+    : undefined;
+}
+
+/** Extracts a handle from a bare handle or supported YouTube handle URL. */
+export function parseYouTubeChannelHandle(input: string): string | undefined {
+  const value = input.trim();
+  const bareHandle = value.startsWith('@') ? value.slice(1) : value;
+  if (isYouTubeChannelHandle(bareHandle)) return bareHandle;
+
+  const pathname = parseYouTubeUrlPathname(value);
+  const handle =
+    pathname === undefined
+      ? undefined
+      : /^\/@([^/]+)(?:\/|$)/.exec(pathname)?.[1];
+
+  return handle !== undefined && isYouTubeChannelHandle(handle)
+    ? handle
+    : undefined;
+}
 
 /** Builds the readable channel feed URL, not the WebSub topic URL. */
-export function createYouTubeChannelFeedUrl(
-  channelId: YouTubeChannelId,
-): string {
+export function createYouTubeChannelFeedUrl(channelId: string): string {
   const url = new URL(YOUTUBE_CHANNEL_FEED_URL);
   url.searchParams.set('channel_id', channelId);
   return url.toString();
@@ -78,7 +78,7 @@ export function createYouTubeChannelFeedUrl(
 
 /** Fetches the current display title for a YouTube channel. */
 export async function fetchYouTubeChannelTitle(
-  channelId: YouTubeChannelId,
+  channelId: string,
 ): Promise<string> {
   const response = await fetch(createYouTubeChannelFeedUrl(channelId));
   if (!response.ok) {
@@ -88,58 +88,29 @@ export async function fetchYouTubeChannelTitle(
     throw new Error(`YouTube channel feed returned HTTP ${response.status}`);
   }
 
-  const documentResult = UnknownRecord.safeParse(
+  return YouTubeChannelFeed.parse(
     parse(await response.text(), XML_PARSE_OPTIONS),
-  );
-  const feedResult = UnknownRecord.safeParse(
-    documentResult.success ? documentResult.data.feed : undefined,
-  );
-  if (!feedResult.success) {
-    throw new Error('YouTube channel feed must contain an Atom feed');
-  }
-
-  const channelResult = YouTubeChannelFeed.safeParse(feedResult.data);
-  if (!channelResult.success) {
-    throw new Error('YouTube channel feed must contain a title');
-  }
-  return channelResult.data.title;
-}
-
-export interface ResolvedYouTubeChannel {
-  id: YouTubeChannelId;
-  title: string;
+  ).feed.title;
 }
 
 /** Resolves a YouTube channel ID, handle, or channel URL without the Data API. */
 export async function resolveYouTubeChannel(
   input: string,
-): Promise<ResolvedYouTubeChannel> {
-  const reference = YouTubeChannelReference.safeParse(input);
-  if (!reference.success) {
-    throw new YouTubeChannelResolutionError('Invalid YouTube channel', {
-      cause: reference.error,
-    });
-  }
+): Promise<YouTubeChannel | undefined> {
+  const channelId = parseYouTubeChannelId(input);
+  const handle =
+    channelId === undefined ? parseYouTubeChannelHandle(input) : undefined;
   const id =
-    reference.data.type === 'id'
-      ? reference.data.value
-      : await resolveYouTubeHandle(reference.data.value);
+    channelId ??
+    (handle === undefined ? undefined : await resolveYouTubeHandle(handle));
+  if (id === undefined) return undefined;
 
-  try {
-    return { id, title: await fetchYouTubeChannelTitle(id) };
-  } catch (error) {
-    throw new YouTubeChannelResolutionError(
-      'YouTube channel could not be loaded',
-      { cause: error },
-    );
-  }
+  return { id, title: await fetchYouTubeChannelTitle(id) };
 }
 
-export class YouTubeChannelResolutionError extends Error {}
-
 async function resolveYouTubeHandle(
-  handle: YouTubeHandle,
-): Promise<YouTubeChannelId> {
+  handle: string,
+): Promise<string | undefined> {
   const url = new URL(
     `@${encodeURIComponent(handle)}`,
     'https://www.youtube.com/',
@@ -149,18 +120,26 @@ async function resolveYouTubeHandle(
     if (response.body !== null) {
       await response.body.cancel();
     }
-    throw new YouTubeChannelResolutionError(
-      `YouTube handle returned HTTP ${response.status}`,
-    );
+    throw new Error(`YouTube handle returned HTTP ${response.status}`);
   }
 
   const match = /"externalId":"(UC[A-Za-z0-9_-]{22})"/.exec(
     await response.text(),
   );
   if (match?.[1] === undefined) {
-    throw new YouTubeChannelResolutionError(
-      'YouTube handle page did not contain a channel ID',
-    );
+    return undefined;
   }
-  return YouTubeChannelId.parse(match[1]);
+  return match[1];
+}
+
+function parseYouTubeUrlPathname(input: string): string | undefined {
+  try {
+    const url = new URL(input);
+    return url.protocol === 'https:' &&
+      /^(?:www\.|m\.)?youtube\.com$/i.test(url.hostname)
+      ? url.pathname
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }

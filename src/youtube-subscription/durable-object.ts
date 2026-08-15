@@ -12,18 +12,14 @@ import { DiscordSnowflake } from '../discord/snowflake';
 import { toLoggableError } from '../log';
 import { enqueueDiscordMessages } from '../queue/discord-message';
 import type { YouTubeVideoDelivery } from '../queue/subscription-event';
-import { YouTubeChannelId, YouTubeWebSubSecret } from '../youtube/data';
-import {
-  parseYouTubeVideoNotifications,
-  YouTubeVideoNotification,
-} from '../youtube/notification';
 import {
   createYouTubeTopicUrl,
   createYouTubeWebSubRequest,
-  WebSubLeaseSeconds,
-  WebSubMode,
+  isYouTubeChannelId,
+  parseYouTubeVideoNotifications,
   verifyYouTubeWebSubSignature,
-} from '../youtube/websub';
+} from '../youtube';
+import type { WebSubMode, YouTubeVideoNotification } from '../youtube';
 import { createYouTubeDelivery } from './discord-message';
 import {
   createChannelYouTubeSubscriptionKey,
@@ -42,7 +38,7 @@ type WebSubStatus = z.infer<typeof WebSubStatus>;
 
 const WebSubState = z
   .object({
-    secret: YouTubeWebSubSecret.optional(),
+    secret: z.string().min(1).optional(),
     status: WebSubStatus.optional(),
   })
   .refine(
@@ -173,11 +169,10 @@ export class YouTubeSubscription extends DurableObject<Env> {
 
   /** Confirms a pending WebSub subscription or unsubscription. */
   async confirmWebSubIntent(
-    mode: z.input<typeof WebSubMode>,
+    mode: WebSubMode,
     topic: string,
     leaseSeconds?: number,
   ): Promise<boolean> {
-    const validatedMode = WebSubMode.parse(mode);
     const youtubeChannelId = this.requireYouTubeChannelId();
     if (topic !== createYouTubeTopicUrl(youtubeChannelId)) {
       return false;
@@ -185,23 +180,22 @@ export class YouTubeSubscription extends DurableObject<Env> {
 
     const state = await this.readWebSubState();
     const expectedStatus =
-      validatedMode === 'subscribe' ? 'subscribing' : 'unsubscribing';
+      mode === 'subscribe' ? 'subscribing' : 'unsubscribing';
     if (state.status !== expectedStatus || state.secret === undefined) {
       return false;
     }
 
-    if (validatedMode === 'unsubscribe') {
+    if (mode === 'unsubscribe') {
       await this.clearWebSubState();
       return true;
     }
 
-    const validatedLeaseSeconds = WebSubLeaseSeconds.safeParse(leaseSeconds);
-    if (!validatedLeaseSeconds.success) {
+    if (!isPositiveSafeInteger(leaseSeconds)) {
       return false;
     }
 
     const renewalDelayMs = Math.floor(
-      validatedLeaseSeconds.data * 1000 * WEBSUB_RENEWAL_FRACTION,
+      leaseSeconds * 1000 * WEBSUB_RENEWAL_FRACTION,
     );
     if (!Number.isSafeInteger(renewalDelayMs)) {
       return false;
@@ -296,22 +290,19 @@ export class YouTubeSubscription extends DurableObject<Env> {
   }
 
   /** Claims a new video and queues notifications for all subscribers. */
-  async recordVideo(
-    notification: z.input<typeof YouTubeVideoNotification>,
-  ): Promise<void> {
-    const validated = YouTubeVideoNotification.parse(notification);
+  async recordVideo(notification: YouTubeVideoNotification): Promise<void> {
     const youtubeChannelId = this.requireYouTubeChannelId();
-    if (validated.channelId !== youtubeChannelId) {
+    if (notification.channelId !== youtubeChannelId) {
       throw new Error(
-        `YouTube channel ID ${validated.channelId} does not match Durable Object ${youtubeChannelId}`,
+        `YouTube channel ID ${notification.channelId} does not match Durable Object ${youtubeChannelId}`,
       );
     }
-    const publishedAt = new Date(validated.publishedAt);
+    const publishedAt = new Date(notification.publishedAt);
     const [claim] = await this.db
       .insert(videos)
       .values({
-        id: validated.videoId,
-        title: validated.title,
+        id: notification.videoId,
+        title: notification.title,
         publishedAt,
       })
       .onConflictDoNothing({ target: videos.id })
@@ -325,13 +316,13 @@ export class YouTubeSubscription extends DurableObject<Env> {
       const subscriberRows = await this.db.select().from(subscribers);
       const deliveries = await Promise.all(
         subscriberRows.map((subscriber) =>
-          createYouTubeDelivery(validated, subscriber),
+          createYouTubeDelivery(notification, subscriber),
         ),
       );
 
       await enqueueDiscordMessages(this.env.DISCORD_MESSAGES, deliveries);
     } catch (error) {
-      await this.db.delete(videos).where(eq(videos.id, validated.videoId));
+      await this.db.delete(videos).where(eq(videos.id, notification.videoId));
       throw error;
     }
   }
@@ -362,10 +353,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
     await this.requestWebSub('unsubscribe', state.secret);
   }
 
-  private async requestWebSub(
-    mode: WebSubMode,
-    secret: YouTubeWebSubSecret,
-  ): Promise<void> {
+  private async requestWebSub(mode: WebSubMode, secret: string): Promise<void> {
     const status = mode === 'subscribe' ? 'subscribing' : 'unsubscribing';
     await Promise.all([
       this.ctx.storage.put({
@@ -418,20 +406,27 @@ export class YouTubeSubscription extends DurableObject<Env> {
     return result?.subscriberCount ?? 0;
   }
 
-  private requireYouTubeChannelId(): YouTubeChannelId {
+  private requireYouTubeChannelId(): string {
     const objectName = this.ctx.id.name;
     if (objectName === undefined) {
       throw new Error('YouTubeSubscription requires a named Durable Object');
     }
 
-    return YouTubeChannelId.parse(objectName);
+    if (!isYouTubeChannelId(objectName)) {
+      throw new Error(`Invalid YouTube channel ID: ${objectName}`);
+    }
+    return objectName;
   }
 }
 
-function createSecret(): YouTubeWebSubSecret {
+function createSecret(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
-  return YouTubeWebSubSecret.parse(
-    Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join(''),
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join(
+    '',
   );
+}
+
+function isPositiveSafeInteger(value: number | undefined): value is number {
+  return value !== undefined && value > 0 && Number.isSafeInteger(value);
 }

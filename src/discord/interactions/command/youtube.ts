@@ -6,10 +6,7 @@ import {
   listGuildYouTubeSubscriptions,
 } from '../../../youtube-subscription/index';
 import { toLoggableError } from '../../../log';
-import {
-  resolveYouTubeChannel,
-  YouTubeChannelResolutionError,
-} from '../../../youtube/channel';
+import { resolveYouTubeChannel } from '../../../youtube';
 import {
   createDeferredEphemeralInteractionResponse,
   editInteractionResponse,
@@ -252,6 +249,14 @@ async function completeYouTubeAdd(
 ): Promise<void> {
   try {
     const channel = await resolveYouTubeChannel(options.youtube);
+    if (channel === undefined) {
+      await editInteractionResponse(
+        applicationId,
+        token,
+        'That YouTube channel could not be resolved. Try its full channel ID (starting with `UC`) or `/channel/` URL.',
+      );
+      return;
+    }
     await env.YOUTUBE_SUBSCRIPTIONS.getByName(channel.id).addSubscriber({
       guildId,
       channelId,
@@ -268,13 +273,11 @@ async function completeYouTubeAdd(
     );
   } catch (error) {
     logInteractionFailure(error);
-    const content =
-      error instanceof YouTubeChannelResolutionError
-        ? 'That YouTube channel could not be resolved. Try its full channel ID (starting with `UC`) or `/channel/` URL.'
-        : 'The YouTube notification could not be added. Please try again.';
-    await editInteractionResponse(applicationId, token, content).catch(
-      logInteractionFailure,
-    );
+    await editInteractionResponse(
+      applicationId,
+      token,
+      'The YouTube notification could not be added. Please try again.',
+    ).catch(logInteractionFailure);
   }
 }
 

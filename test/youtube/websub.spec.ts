@@ -1,25 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { YouTubeChannelId, YouTubeWebSubSecret } from '../../src/youtube/data';
 import {
   createYouTubeWebSubRequest,
   verifyYouTubeWebSubSignature,
-  WebSubLeaseSeconds,
   YOUTUBE_WEBSUB_HUB_URL,
 } from '../../src/youtube/websub';
-import { WebSubChallenge } from '../../src/youtube/websub-handler';
 
-const CHANNEL_ID = YouTubeChannelId.parse('UC_x5XG1OV2P6uZZ5FSM9Ttw');
-const SECRET = YouTubeWebSubSecret.parse('test-websub-secret');
-
-describe('WebSub values', () => {
-  it('validates challenges and lease durations', () => {
-    expect(WebSubChallenge.parse('challenge-123')).toBe('challenge-123');
-    expect(WebSubChallenge.safeParse('contains a space').success).toBe(false);
-    expect(WebSubLeaseSeconds.parse(1_000)).toBe(1_000);
-    expect(WebSubLeaseSeconds.safeParse(0).success).toBe(false);
-  });
-});
+const CHANNEL_ID = 'UC_x5XG1OV2P6uZZ5FSM9Ttw';
+const SECRET = 'test-websub-secret';
 
 describe('createYouTubeWebSubRequest', () => {
   it('creates a form-encoded YouTube subscription request', async () => {

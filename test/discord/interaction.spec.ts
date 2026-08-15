@@ -216,6 +216,46 @@ describe('Discord interactions', () => {
     });
   });
 
+  it('reports a YouTube channel that cannot be resolved', async () => {
+    const requests: Request[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      const request = new Request(input, init);
+      requests.push(request.clone());
+      if (
+        request.method === 'PATCH' &&
+        request.url.includes('/messages/@original')
+      ) {
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      return Promise.reject(
+        new Error(`Unexpected fetch: ${request.method} ${request.url}`),
+      );
+    });
+    const ctx = createExecutionContext();
+
+    const response = await handleDiscordInteraction(
+      await createSignedRequest(createAddInteraction('not a channel')),
+      env,
+      ctx,
+    );
+    expect(await deferredInteractionBody(response)).toEqual({
+      type: 5,
+      flags: 64,
+    });
+    await waitOnExecutionContext(ctx);
+
+    const editRequest = requests.find(
+      (request) =>
+        request.method === 'PATCH' &&
+        request.url.includes('/messages/@original'),
+    );
+    expect(await editRequest?.json()).toEqual({
+      content:
+        'That YouTube channel could not be resolved. Try its full channel ID (starting with `UC`) or `/channel/` URL.',
+      allowed_mentions: { parse: [] },
+    });
+  });
+
   it('rejects duplicate YouTube add options', async () => {
     const response = await exports.default.fetch(
       await createSignedRequest(

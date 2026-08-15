@@ -1,7 +1,7 @@
 import * as z from 'zod';
 
 import { DiscordSnowflake } from '../discord/snowflake';
-import { YouTubeChannelId } from '../youtube/data';
+import { isYouTubeChannelId } from '../youtube';
 
 const NonBlankString = z.string().refine((value) => value.trim() !== '');
 
@@ -15,7 +15,7 @@ export type YouTubeSubscriptionMetadata = z.infer<
 
 export interface GuildYouTubeSubscription {
   discordChannelId: DiscordSnowflake;
-  youtubeChannelId: YouTubeChannelId;
+  youtubeChannelId: string;
   youtubeChannelTitle: string;
 }
 
@@ -66,23 +66,21 @@ export async function listGuildYouTubeSubscriptions(
 export async function listChannelYouTubeSubscriptions(
   index: KVNamespace,
   channelId: string,
-): Promise<YouTubeChannelId[]> {
+): Promise<string[]> {
   DiscordSnowflake.parse(channelId);
   const prefix = `channel:${channelId}:youtube:`;
   const page = await index.list({ prefix });
 
   return page.keys.flatMap((key) => {
-    const youtubeChannelId = YouTubeChannelId.safeParse(
-      key.name.slice(prefix.length),
-    );
-    if (!youtubeChannelId.success) {
+    const youtubeChannelId = key.name.slice(prefix.length);
+    if (!isYouTubeChannelId(youtubeChannelId)) {
       console.warn({
         event: 'youtube_subscription_index_key_invalid',
         key: key.name,
       });
       return [];
     }
-    return [youtubeChannelId.data];
+    return [youtubeChannelId];
   });
 }
 
@@ -105,11 +103,10 @@ function parseGuildSubscriptionKey(
   const discordChannelId = suffix.slice(0, separatorOffset);
   const youtubeChannelId = suffix.slice(separatorOffset + separator.length);
   const parsedDiscordChannelId = DiscordSnowflake.safeParse(discordChannelId);
-  const parsedYouTubeChannelId = YouTubeChannelId.safeParse(youtubeChannelId);
   const parsedMetadata = YouTubeSubscriptionMetadata.safeParse(metadata);
   if (
     !parsedDiscordChannelId.success ||
-    !parsedYouTubeChannelId.success ||
+    !isYouTubeChannelId(youtubeChannelId) ||
     !parsedMetadata.success
   ) {
     return undefined;
@@ -117,7 +114,7 @@ function parseGuildSubscriptionKey(
 
   return {
     discordChannelId: parsedDiscordChannelId.data,
-    youtubeChannelId: parsedYouTubeChannelId.data,
+    youtubeChannelId,
     youtubeChannelTitle: parsedMetadata.data.title,
   };
 }

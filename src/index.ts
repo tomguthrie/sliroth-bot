@@ -2,11 +2,11 @@ import { AutoRouter, type IRequest } from 'itty-router';
 
 import { handleDiscordInteraction } from './discord/interactions';
 import { deliverQueueBatch, type WorkerQueueMessage } from './queue';
+import { handleTwitchEventSub } from './twitch-subscription/eventsub-handler';
 import {
   handleYouTubeWebSubIntent,
   handleYouTubeWebSubNotification,
-} from './youtube/websub-handler';
-import { handleTwitchEventSub } from './twitch-subscription/eventsub-handler';
+} from './youtube-subscription/websub-handler';
 
 export { YouTubeSubscription } from './youtube-subscription/durable-object';
 export { TwitchSubscription } from './twitch-subscription/durable-object';
