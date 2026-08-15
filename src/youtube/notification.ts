@@ -1,13 +1,13 @@
-import { XMLParser } from 'fast-xml-parser';
+import { parse } from 'txml/txml';
 import * as z from 'zod';
 
 import { YouTubeChannelId, YouTubeTimestamp, YouTubeVideoId } from './data';
 
-const parser = new XMLParser({
-  removeNSPrefix: true,
-  parseTagValue: false,
-  trimValues: true,
-});
+const XML_PARSE_OPTIONS = {
+  decodeEntities: true,
+  selfClosingTags: [],
+  simplify: true,
+};
 
 const UnknownRecord = z.record(z.string(), z.unknown());
 export const YouTubeVideoNotification = z.object({
@@ -21,23 +21,30 @@ export type YouTubeVideoNotification = z.infer<typeof YouTubeVideoNotification>;
 
 const YouTubeAtomEntry = z
   .object({
-    videoId: z.string().trim().min(1).pipe(YouTubeVideoId),
-    channelId: z.string().trim().min(1).pipe(YouTubeChannelId),
+    'yt:videoId': z.string().trim().min(1).pipe(YouTubeVideoId),
+    'yt:channelId': z.string().trim().min(1).pipe(YouTubeChannelId),
     title: z.string().trim().min(1),
     published: z.string().trim().min(1).pipe(YouTubeTimestamp),
   })
-  .transform(({ videoId, channelId, title, published: publishedAt }) => ({
-    videoId,
-    channelId,
-    title,
-    publishedAt,
-  }));
+  .transform(
+    ({
+      'yt:videoId': videoId,
+      'yt:channelId': channelId,
+      title,
+      published: publishedAt,
+    }) => ({
+      videoId,
+      channelId,
+      title,
+      publishedAt,
+    }),
+  );
 const YouTubeAtomEntries = z.array(YouTubeAtomEntry);
 
 export function parseYouTubeVideoNotifications(
   xml: string,
 ): YouTubeVideoNotification[] {
-  const documentResult = UnknownRecord.safeParse(parser.parse(xml));
+  const documentResult = UnknownRecord.safeParse(parse(xml, XML_PARSE_OPTIONS));
   if (!documentResult.success) {
     throw new Error('YouTube notification must contain an XML document');
   }
