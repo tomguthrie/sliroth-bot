@@ -185,9 +185,13 @@ export class TwitchApiClient {
    *
    * @param env Worker bindings containing Twitch credentials and token storage.
    */
-  constructor(private readonly env: Env) {}
+  constructor(
+    private readonly env: Env,
+    private readonly userAccessToken?: string,
+  ) {}
 
   private async getAccessToken(): Promise<string> {
+    if (this.userAccessToken !== undefined) return this.userAccessToken;
     const accessToken = (this.accessToken ??= getAccessToken(this.env));
 
     try {
@@ -226,7 +230,11 @@ export class TwitchApiClient {
       },
     });
 
-    if (response.status === 401 && retryOnUnauthorized) {
+    if (
+      response.status === 401 &&
+      retryOnUnauthorized &&
+      this.userAccessToken === undefined
+    ) {
       if (response.body !== null) await response.body.cancel();
       this.accessToken = refreshAccessToken(this.env);
 
@@ -299,6 +307,16 @@ export class TwitchApiClient {
     await this.fetch(path, query, init);
   }
 
+  private async requestTotal(
+    path: string,
+    query?: QueryParams,
+  ): Promise<number> {
+    const response = await this.fetch(path, query);
+    return z
+      .object({ total: z.number().int().nonnegative() })
+      .parse(await response.json()).total;
+  }
+
   /**
    * Gets a Twitch user by broadcaster ID.
    *
@@ -362,6 +380,22 @@ export class TwitchApiClient {
       user_id: broadcasterId,
       type: 'archive',
       first,
+    });
+  }
+
+  /** Gets the broadcaster's current follower count. */
+  async getFollowerCount(broadcasterId: string): Promise<number> {
+    return this.requestTotal('channels/followers', {
+      broadcaster_id: broadcasterId,
+      first: 1,
+    });
+  }
+
+  /** Gets the broadcaster's current subscriber count. */
+  async getSubscriberCount(broadcasterId: string): Promise<number> {
+    return this.requestTotal('subscriptions', {
+      broadcaster_id: broadcasterId,
+      first: 1,
     });
   }
 

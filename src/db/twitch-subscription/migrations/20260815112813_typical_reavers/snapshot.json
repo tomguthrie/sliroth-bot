@@ -1,0 +1,776 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "id": "b48f6d27-e568-4b4d-9003-a213e63bdf45",
+  "prevIds": [
+    "17dceb5b-3988-4fdf-ad0e-803ac8841f4c"
+  ],
+  "ddl": [
+    {
+      "name": "analytics_authorization",
+      "entityType": "tables"
+    },
+    {
+      "name": "analytics_oauth_states",
+      "entityType": "tables"
+    },
+    {
+      "name": "analytics_pending_finalizers",
+      "entityType": "tables"
+    },
+    {
+      "name": "analytics_runtime",
+      "entityType": "tables"
+    },
+    {
+      "name": "broadcaster",
+      "entityType": "tables"
+    },
+    {
+      "name": "eventsub_subscriptions",
+      "entityType": "tables"
+    },
+    {
+      "name": "processed_eventsub_messages",
+      "entityType": "tables"
+    },
+    {
+      "name": "stream_messages",
+      "entityType": "tables"
+    },
+    {
+      "name": "streams",
+      "entityType": "tables"
+    },
+    {
+      "name": "subscribers",
+      "entityType": "tables"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "singleton",
+      "entityType": "columns",
+      "table": "analytics_authorization"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "access_token",
+      "entityType": "columns",
+      "table": "analytics_authorization"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "refresh_token",
+      "entityType": "columns",
+      "table": "analytics_authorization"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "scopes_json",
+      "entityType": "columns",
+      "table": "analytics_authorization"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "authorized_at",
+      "entityType": "columns",
+      "table": "analytics_authorization"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "validated_at",
+      "entityType": "columns",
+      "table": "analytics_authorization"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "table": "analytics_authorization"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "state_hash",
+      "entityType": "columns",
+      "table": "analytics_oauth_states"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "analytics_oauth_states"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "table": "analytics_oauth_states"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "stream_id",
+      "entityType": "columns",
+      "table": "analytics_pending_finalizers"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "finalize_after",
+      "entityType": "columns",
+      "table": "analytics_pending_finalizers"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "singleton",
+      "entityType": "columns",
+      "table": "analytics_runtime"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "status",
+      "entityType": "columns",
+      "table": "analytics_runtime"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "enabled_at",
+      "entityType": "columns",
+      "table": "analytics_runtime"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "active_stream_id",
+      "entityType": "columns",
+      "table": "analytics_runtime"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "next_viewer_sample_at",
+      "entityType": "columns",
+      "table": "analytics_runtime"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "next_audience_sample_at",
+      "entityType": "columns",
+      "table": "analytics_runtime"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "next_token_validation_at",
+      "entityType": "columns",
+      "table": "analytics_runtime"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "next_event_sub_audit_at",
+      "entityType": "columns",
+      "table": "analytics_runtime"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "broadcaster"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "login",
+      "entityType": "columns",
+      "table": "broadcaster"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "display_name",
+      "entityType": "columns",
+      "table": "broadcaster"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "profile_image_url",
+      "entityType": "columns",
+      "table": "broadcaster"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "offline_image_url",
+      "entityType": "columns",
+      "table": "broadcaster"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "event_sub_audited_at",
+      "entityType": "columns",
+      "table": "broadcaster"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "subscription_key",
+      "entityType": "columns",
+      "table": "eventsub_subscriptions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "type",
+      "entityType": "columns",
+      "table": "eventsub_subscriptions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "version",
+      "entityType": "columns",
+      "table": "eventsub_subscriptions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "condition_json",
+      "entityType": "columns",
+      "table": "eventsub_subscriptions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "subscription_id",
+      "entityType": "columns",
+      "table": "eventsub_subscriptions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "message_id",
+      "entityType": "columns",
+      "table": "processed_eventsub_messages"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "processed_at",
+      "entityType": "columns",
+      "table": "processed_eventsub_messages"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "stream_id",
+      "entityType": "columns",
+      "table": "stream_messages"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "channel_id",
+      "entityType": "columns",
+      "table": "stream_messages"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "message_id",
+      "entityType": "columns",
+      "table": "stream_messages"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "1",
+      "generated": null,
+      "name": "enqueued_revision",
+      "entityType": "columns",
+      "table": "stream_messages"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "title",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "game_name",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "viewer_count",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "game_box_art_url",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "preview_image_url",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "started_at",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "ended_at",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "vod_url",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "1",
+      "generated": null,
+      "name": "revision",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "channel_id",
+      "entityType": "columns",
+      "table": "subscribers"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "guild_id",
+      "entityType": "columns",
+      "table": "subscribers"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "message",
+      "entityType": "columns",
+      "table": "subscribers"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "offline",
+      "entityType": "columns",
+      "table": "subscribers"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "ping",
+      "entityType": "columns",
+      "table": "subscribers"
+    },
+    {
+      "columns": [
+        "singleton"
+      ],
+      "nameExplicit": false,
+      "name": "analytics_authorization_pk",
+      "entityType": "pks",
+      "table": "analytics_authorization"
+    },
+    {
+      "columns": [
+        "state_hash"
+      ],
+      "nameExplicit": false,
+      "name": "analytics_oauth_states_pk",
+      "entityType": "pks",
+      "table": "analytics_oauth_states"
+    },
+    {
+      "columns": [
+        "stream_id"
+      ],
+      "nameExplicit": false,
+      "name": "analytics_pending_finalizers_pk",
+      "entityType": "pks",
+      "table": "analytics_pending_finalizers"
+    },
+    {
+      "columns": [
+        "singleton"
+      ],
+      "nameExplicit": false,
+      "name": "analytics_runtime_pk",
+      "entityType": "pks",
+      "table": "analytics_runtime"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "broadcaster_pk",
+      "entityType": "pks",
+      "table": "broadcaster"
+    },
+    {
+      "columns": [
+        "subscription_key"
+      ],
+      "nameExplicit": false,
+      "name": "eventsub_subscriptions_pk",
+      "entityType": "pks",
+      "table": "eventsub_subscriptions"
+    },
+    {
+      "columns": [
+        "message_id"
+      ],
+      "nameExplicit": false,
+      "name": "processed_eventsub_messages_pk",
+      "entityType": "pks",
+      "table": "processed_eventsub_messages"
+    },
+    {
+      "columns": [
+        "stream_id",
+        "channel_id"
+      ],
+      "nameExplicit": false,
+      "name": "stream_messages_pk",
+      "entityType": "pks",
+      "table": "stream_messages"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "streams_pk",
+      "entityType": "pks",
+      "table": "streams"
+    },
+    {
+      "columns": [
+        "channel_id"
+      ],
+      "nameExplicit": false,
+      "name": "subscribers_pk",
+      "entityType": "pks",
+      "table": "subscribers"
+    },
+    {
+      "columns": [
+        {
+          "value": "expires_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "analytics_oauth_states_expires_at_idx",
+      "entityType": "indexes",
+      "table": "analytics_oauth_states"
+    },
+    {
+      "columns": [
+        {
+          "value": "finalize_after",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "analytics_pending_finalizers_due_idx",
+      "entityType": "indexes",
+      "table": "analytics_pending_finalizers"
+    },
+    {
+      "columns": [
+        {
+          "value": "type",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "eventsub_subscriptions_type_idx",
+      "entityType": "indexes",
+      "table": "eventsub_subscriptions"
+    },
+    {
+      "columns": [
+        {
+          "value": "subscription_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "eventsub_subscriptions_subscription_id_idx",
+      "entityType": "indexes",
+      "table": "eventsub_subscriptions"
+    },
+    {
+      "columns": [
+        {
+          "value": "processed_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "processed_eventsub_messages_processed_at_idx",
+      "entityType": "indexes",
+      "table": "processed_eventsub_messages"
+    },
+    {
+      "columns": [
+        {
+          "value": "guild_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "subscribers_guild_id_idx",
+      "entityType": "indexes",
+      "table": "subscribers"
+    },
+    {
+      "value": "\"singleton\" = 1",
+      "name": "analytics_authorization_singleton_check",
+      "entityType": "checks",
+      "table": "analytics_authorization"
+    },
+    {
+      "value": "json_valid(\"scopes_json\")",
+      "name": "analytics_authorization_scopes_json_check",
+      "entityType": "checks",
+      "table": "analytics_authorization"
+    },
+    {
+      "value": "\"singleton\" = 1",
+      "name": "analytics_runtime_singleton_check",
+      "entityType": "checks",
+      "table": "analytics_runtime"
+    },
+    {
+      "value": "\"status\" in ('inactive', 'active', 'reauthorization_required')",
+      "name": "analytics_runtime_status_check",
+      "entityType": "checks",
+      "table": "analytics_runtime"
+    },
+    {
+      "value": "json_valid(\"condition_json\")",
+      "name": "eventsub_subscriptions_condition_json_check",
+      "entityType": "checks",
+      "table": "eventsub_subscriptions"
+    }
+  ],
+  "renames": []
+}

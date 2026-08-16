@@ -26,6 +26,8 @@
       "TWITCH_CLIENT_ID",
       "TWITCH_CLIENT_SECRET",
       "TWITCH_EVENTSUB_SECRET",
+      "TWITCH_ANALYTICS_CHANNEL_ID",
+      "TWITCH_ANALYTICS_SETUP_SECRET",
     ],
   },
   "rules": [
@@ -47,6 +49,14 @@
       },
     ],
   },
+  "d1_databases": [
+    {
+      "binding": "TWITCH_ANALYTICS_DB",
+      "database_name": "sliroth-bot-twitch-analytics",
+      "migrations_dir": "src/db/twitch-analytics/migrations",
+      "migrations_pattern": "src/db/twitch-analytics/migrations/*/migration.sql",
+    },
+  ],
   "kv_namespaces": [
     {
       "binding": "TOKEN_STORE",

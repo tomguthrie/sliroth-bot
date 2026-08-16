@@ -134,13 +134,45 @@ describe('parseEventSubMessage', () => {
       parseEventSubMessage('notification', {
         subscription: {
           id: 'subscription-1',
-          type: 'channel.follow',
-          version: '2',
+          type: 'channel.ban',
+          version: '1',
           condition: { broadcaster_user_id: '123' },
         },
         event: {},
       }),
-    ).toThrow('Unsupported Twitch EventSub type: channel.follow');
+    ).toThrow('Unsupported Twitch EventSub type: channel.ban');
+  });
+
+  it('parses analytics chat notifications without retaining message text', () => {
+    expect(
+      parseEventSubMessage('notification', {
+        subscription: {
+          id: 'subscription-chat',
+          type: 'channel.chat.message',
+          version: '1',
+          condition: {
+            broadcaster_user_id: '123',
+            user_id: '123',
+          },
+        },
+        event: {
+          broadcaster_user_id: '123',
+          chatter_user_id: '456',
+          chatter_user_login: 'viewer',
+          chatter_user_name: 'Viewer',
+          message_id: 'message-1',
+          message_type: 'text',
+          message: { text: 'not persisted' },
+        },
+      }),
+    ).toMatchObject({
+      eventType: 'channel.chat.message',
+      event: {
+        chatterUserId: '456',
+        messageId: 'message-1',
+        messageType: 'text',
+      },
+    });
   });
 
   it('rejects malformed notification events', () => {
