@@ -13,6 +13,8 @@ export default defineConfig({
           TWITCH_CLIENT_ID: 'test-twitch-client-id',
           TWITCH_CLIENT_SECRET: 'test-twitch-client-secret',
           TWITCH_EVENTSUB_SECRET: 'test-twitch-eventsub-secret',
+          TWITCH_ANALYTICS_CHANNEL_ID: '123456789012345678',
+          TWITCH_ANALYTICS_SETUP_SECRET: 'test-twitch-analytics-setup-secret',
         },
       },
       wrangler: {

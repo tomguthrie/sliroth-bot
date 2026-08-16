@@ -2,7 +2,12 @@ import { AutoRouter, type IRequest } from 'itty-router';
 
 import { createDiscordInteractionHandler } from './discord';
 import { deliverQueueBatch, type WorkerQueueMessage } from './queue';
-import { handleTwitchEventSub, twitchDiscordCommand } from './twitch';
+import {
+  handleTwitchAnalyticsCallback,
+  handleTwitchAnalyticsSetup,
+  handleTwitchEventSub,
+  twitchDiscordCommand,
+} from './twitch';
 import {
   handleYouTubeWebSubIntent,
   handleYouTubeWebSubNotification,
@@ -21,6 +26,8 @@ const router = AutoRouter<IRequest, [Env, ExecutionContext], Response>();
 
 router
   .post('/discord/interactions', handleDiscordInteraction)
+  .get('/twitch/analytics/setup', handleTwitchAnalyticsSetup)
+  .get('/twitch/analytics/callback', handleTwitchAnalyticsCallback)
   .post('/twitch/eventsub/:broadcasterId', handleTwitchEventSub)
   .get('/youtube/websub/:channelId', handleYouTubeWebSubIntent)
   .post('/youtube/websub/:channelId', handleYouTubeWebSubNotification);

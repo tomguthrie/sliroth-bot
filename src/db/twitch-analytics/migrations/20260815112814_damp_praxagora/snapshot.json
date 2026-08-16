@@ -1,0 +1,1818 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "id": "d952da86-ccc9-4afd-9ee7-3ce5aa0adef1",
+  "prevIds": [
+    "00000000-0000-0000-0000-000000000000"
+  ],
+  "ddl": [
+    {
+      "name": "activity_events",
+      "entityType": "tables"
+    },
+    {
+      "name": "analytics_capabilities",
+      "entityType": "tables"
+    },
+    {
+      "name": "analytics_channels",
+      "entityType": "tables"
+    },
+    {
+      "name": "audience_samples",
+      "entityType": "tables"
+    },
+    {
+      "name": "chat_messages",
+      "entityType": "tables"
+    },
+    {
+      "name": "stream_category_rollups",
+      "entityType": "tables"
+    },
+    {
+      "name": "stream_metadata_changes",
+      "entityType": "tables"
+    },
+    {
+      "name": "stream_minute_rollups",
+      "entityType": "tables"
+    },
+    {
+      "name": "stream_segments",
+      "entityType": "tables"
+    },
+    {
+      "name": "stream_summaries",
+      "entityType": "tables"
+    },
+    {
+      "name": "streams",
+      "entityType": "tables"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "event_sub_message_id",
+      "entityType": "columns",
+      "table": "activity_events"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "provider_event_id",
+      "entityType": "columns",
+      "table": "activity_events"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "channel_id",
+      "entityType": "columns",
+      "table": "activity_events"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "stream_id",
+      "entityType": "columns",
+      "table": "activity_events"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "kind",
+      "entityType": "columns",
+      "table": "activity_events"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "occurred_at",
+      "entityType": "columns",
+      "table": "activity_events"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "received_at",
+      "entityType": "columns",
+      "table": "activity_events"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "actor_user_id",
+      "entityType": "columns",
+      "table": "activity_events"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "actor_login",
+      "entityType": "columns",
+      "table": "activity_events"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "actor_name",
+      "entityType": "columns",
+      "table": "activity_events"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "target_user_id",
+      "entityType": "columns",
+      "table": "activity_events"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "target_login",
+      "entityType": "columns",
+      "table": "activity_events"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "target_name",
+      "entityType": "columns",
+      "table": "activity_events"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "quantity",
+      "entityType": "columns",
+      "table": "activity_events"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "value",
+      "entityType": "columns",
+      "table": "activity_events"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "unit",
+      "entityType": "columns",
+      "table": "activity_events"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "1",
+      "generated": null,
+      "name": "schema_version",
+      "entityType": "columns",
+      "table": "activity_events"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'{}'",
+      "generated": null,
+      "name": "details_json",
+      "entityType": "columns",
+      "table": "activity_events"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "channel_id",
+      "entityType": "columns",
+      "table": "analytics_capabilities"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "capability",
+      "entityType": "columns",
+      "table": "analytics_capabilities"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "status",
+      "entityType": "columns",
+      "table": "analytics_capabilities"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "reason",
+      "entityType": "columns",
+      "table": "analytics_capabilities"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "checked_at",
+      "entityType": "columns",
+      "table": "analytics_capabilities"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "channel_id",
+      "entityType": "columns",
+      "table": "analytics_channels"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "login",
+      "entityType": "columns",
+      "table": "analytics_channels"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "display_name",
+      "entityType": "columns",
+      "table": "analytics_channels"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'Europe/London'",
+      "generated": null,
+      "name": "timezone",
+      "entityType": "columns",
+      "table": "analytics_channels"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "tracking_started_at",
+      "entityType": "columns",
+      "table": "analytics_channels"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "analytics_channels"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "table": "analytics_channels"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": true,
+      "default": null,
+      "generated": null,
+      "name": "sample_id",
+      "entityType": "columns",
+      "table": "audience_samples"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "channel_id",
+      "entityType": "columns",
+      "table": "audience_samples"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "stream_id",
+      "entityType": "columns",
+      "table": "audience_samples"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "sampled_at",
+      "entityType": "columns",
+      "table": "audience_samples"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "viewer_count",
+      "entityType": "columns",
+      "table": "audience_samples"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "follower_count",
+      "entityType": "columns",
+      "table": "audience_samples"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "subscriber_count",
+      "entityType": "columns",
+      "table": "audience_samples"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "source",
+      "entityType": "columns",
+      "table": "audience_samples"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "event_sub_message_id",
+      "entityType": "columns",
+      "table": "chat_messages"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "twitch_message_id",
+      "entityType": "columns",
+      "table": "chat_messages"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "channel_id",
+      "entityType": "columns",
+      "table": "chat_messages"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "stream_id",
+      "entityType": "columns",
+      "table": "chat_messages"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "sent_at",
+      "entityType": "columns",
+      "table": "chat_messages"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "received_at",
+      "entityType": "columns",
+      "table": "chat_messages"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "chatter_user_id",
+      "entityType": "columns",
+      "table": "chat_messages"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "chatter_login",
+      "entityType": "columns",
+      "table": "chat_messages"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "chatter_name",
+      "entityType": "columns",
+      "table": "chat_messages"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "message_type",
+      "entityType": "columns",
+      "table": "chat_messages"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "source_broadcaster_user_id",
+      "entityType": "columns",
+      "table": "chat_messages"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "stream_id",
+      "entityType": "columns",
+      "table": "stream_category_rollups"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "category_key",
+      "entityType": "columns",
+      "table": "stream_category_rollups"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "category_id",
+      "entityType": "columns",
+      "table": "stream_category_rollups"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "category_name",
+      "entityType": "columns",
+      "table": "stream_category_rollups"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "duration_seconds",
+      "entityType": "columns",
+      "table": "stream_category_rollups"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "change_id",
+      "entityType": "columns",
+      "table": "stream_metadata_changes"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "channel_id",
+      "entityType": "columns",
+      "table": "stream_metadata_changes"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "stream_id",
+      "entityType": "columns",
+      "table": "stream_metadata_changes"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "occurred_at",
+      "entityType": "columns",
+      "table": "stream_metadata_changes"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "recorded_at",
+      "entityType": "columns",
+      "table": "stream_metadata_changes"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "title",
+      "entityType": "columns",
+      "table": "stream_metadata_changes"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "category_id",
+      "entityType": "columns",
+      "table": "stream_metadata_changes"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "category_name",
+      "entityType": "columns",
+      "table": "stream_metadata_changes"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "language",
+      "entityType": "columns",
+      "table": "stream_metadata_changes"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'[]'",
+      "generated": null,
+      "name": "content_labels_json",
+      "entityType": "columns",
+      "table": "stream_metadata_changes"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "stream_id",
+      "entityType": "columns",
+      "table": "stream_minute_rollups"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "minute_at",
+      "entityType": "columns",
+      "table": "stream_minute_rollups"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "covered_seconds",
+      "entityType": "columns",
+      "table": "stream_minute_rollups"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "viewer_seconds",
+      "entityType": "columns",
+      "table": "stream_minute_rollups"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "peak_viewers",
+      "entityType": "columns",
+      "table": "stream_minute_rollups"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "chat_messages",
+      "entityType": "columns",
+      "table": "stream_minute_rollups"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "unique_chatters",
+      "entityType": "columns",
+      "table": "stream_minute_rollups"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "bits",
+      "entityType": "columns",
+      "table": "stream_minute_rollups"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "channel_points",
+      "entityType": "columns",
+      "table": "stream_minute_rollups"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "follows",
+      "entityType": "columns",
+      "table": "stream_minute_rollups"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "subscriptions",
+      "entityType": "columns",
+      "table": "stream_minute_rollups"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "activity_events",
+      "entityType": "columns",
+      "table": "stream_minute_rollups"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "stream_id",
+      "entityType": "columns",
+      "table": "stream_segments"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "started_at",
+      "entityType": "columns",
+      "table": "stream_segments"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "ended_at",
+      "entityType": "columns",
+      "table": "stream_segments"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "title",
+      "entityType": "columns",
+      "table": "stream_segments"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "category_id",
+      "entityType": "columns",
+      "table": "stream_segments"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "category_name",
+      "entityType": "columns",
+      "table": "stream_segments"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "language",
+      "entityType": "columns",
+      "table": "stream_segments"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "stream_id",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "revision",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "algorithm",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "computed_at",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "duration_seconds",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "viewer_seconds",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "viewer_covered_seconds",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "peak_viewers",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "follower_count_first",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "follower_count_last",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "subscriber_count_first",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "subscriber_count_last",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "chat_messages",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "unique_chatters",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "bits",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "channel_points",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "follows",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "subscriptions",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "raids_in",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "raids_out",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "display_title",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "primary_category_id",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "primary_category_name",
+      "entityType": "columns",
+      "table": "stream_summaries"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "stream_id",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "channel_id",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "started_at",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "started_recorded_at",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "ended_at",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "ended_recorded_at",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "status",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "true",
+      "generated": null,
+      "name": "dirty",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "finalized_at",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "summary_revision",
+      "entityType": "columns",
+      "table": "streams"
+    },
+    {
+      "columns": [
+        "channel_id"
+      ],
+      "tableTo": "analytics_channels",
+      "columnsTo": [
+        "channel_id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "RESTRICT",
+      "nameExplicit": false,
+      "name": "fk_activity_events_channel_id_analytics_channels_channel_id_fk",
+      "entityType": "fks",
+      "table": "activity_events"
+    },
+    {
+      "columns": [
+        "stream_id"
+      ],
+      "tableTo": "streams",
+      "columnsTo": [
+        "stream_id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "RESTRICT",
+      "nameExplicit": false,
+      "name": "fk_activity_events_stream_id_streams_stream_id_fk",
+      "entityType": "fks",
+      "table": "activity_events"
+    },
+    {
+      "columns": [
+        "channel_id"
+      ],
+      "tableTo": "analytics_channels",
+      "columnsTo": [
+        "channel_id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "RESTRICT",
+      "nameExplicit": false,
+      "name": "fk_analytics_capabilities_channel_id_analytics_channels_channel_id_fk",
+      "entityType": "fks",
+      "table": "analytics_capabilities"
+    },
+    {
+      "columns": [
+        "channel_id"
+      ],
+      "tableTo": "analytics_channels",
+      "columnsTo": [
+        "channel_id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "RESTRICT",
+      "nameExplicit": false,
+      "name": "fk_audience_samples_channel_id_analytics_channels_channel_id_fk",
+      "entityType": "fks",
+      "table": "audience_samples"
+    },
+    {
+      "columns": [
+        "stream_id"
+      ],
+      "tableTo": "streams",
+      "columnsTo": [
+        "stream_id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "RESTRICT",
+      "nameExplicit": false,
+      "name": "fk_audience_samples_stream_id_streams_stream_id_fk",
+      "entityType": "fks",
+      "table": "audience_samples"
+    },
+    {
+      "columns": [
+        "channel_id"
+      ],
+      "tableTo": "analytics_channels",
+      "columnsTo": [
+        "channel_id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "RESTRICT",
+      "nameExplicit": false,
+      "name": "fk_chat_messages_channel_id_analytics_channels_channel_id_fk",
+      "entityType": "fks",
+      "table": "chat_messages"
+    },
+    {
+      "columns": [
+        "stream_id"
+      ],
+      "tableTo": "streams",
+      "columnsTo": [
+        "stream_id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "RESTRICT",
+      "nameExplicit": false,
+      "name": "fk_chat_messages_stream_id_streams_stream_id_fk",
+      "entityType": "fks",
+      "table": "chat_messages"
+    },
+    {
+      "columns": [
+        "stream_id"
+      ],
+      "tableTo": "streams",
+      "columnsTo": [
+        "stream_id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "RESTRICT",
+      "nameExplicit": false,
+      "name": "fk_stream_category_rollups_stream_id_streams_stream_id_fk",
+      "entityType": "fks",
+      "table": "stream_category_rollups"
+    },
+    {
+      "columns": [
+        "channel_id"
+      ],
+      "tableTo": "analytics_channels",
+      "columnsTo": [
+        "channel_id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "RESTRICT",
+      "nameExplicit": false,
+      "name": "fk_stream_metadata_changes_channel_id_analytics_channels_channel_id_fk",
+      "entityType": "fks",
+      "table": "stream_metadata_changes"
+    },
+    {
+      "columns": [
+        "stream_id"
+      ],
+      "tableTo": "streams",
+      "columnsTo": [
+        "stream_id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "RESTRICT",
+      "nameExplicit": false,
+      "name": "fk_stream_metadata_changes_stream_id_streams_stream_id_fk",
+      "entityType": "fks",
+      "table": "stream_metadata_changes"
+    },
+    {
+      "columns": [
+        "stream_id"
+      ],
+      "tableTo": "streams",
+      "columnsTo": [
+        "stream_id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "RESTRICT",
+      "nameExplicit": false,
+      "name": "fk_stream_minute_rollups_stream_id_streams_stream_id_fk",
+      "entityType": "fks",
+      "table": "stream_minute_rollups"
+    },
+    {
+      "columns": [
+        "stream_id"
+      ],
+      "tableTo": "streams",
+      "columnsTo": [
+        "stream_id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "RESTRICT",
+      "nameExplicit": false,
+      "name": "fk_stream_segments_stream_id_streams_stream_id_fk",
+      "entityType": "fks",
+      "table": "stream_segments"
+    },
+    {
+      "columns": [
+        "stream_id"
+      ],
+      "tableTo": "streams",
+      "columnsTo": [
+        "stream_id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "RESTRICT",
+      "nameExplicit": false,
+      "name": "fk_stream_summaries_stream_id_streams_stream_id_fk",
+      "entityType": "fks",
+      "table": "stream_summaries"
+    },
+    {
+      "columns": [
+        "channel_id"
+      ],
+      "tableTo": "analytics_channels",
+      "columnsTo": [
+        "channel_id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "RESTRICT",
+      "nameExplicit": false,
+      "name": "fk_streams_channel_id_analytics_channels_channel_id_fk",
+      "entityType": "fks",
+      "table": "streams"
+    },
+    {
+      "columns": [
+        "event_sub_message_id"
+      ],
+      "nameExplicit": false,
+      "name": "activity_events_pk",
+      "entityType": "pks",
+      "table": "activity_events"
+    },
+    {
+      "columns": [
+        "channel_id",
+        "capability"
+      ],
+      "nameExplicit": false,
+      "name": "analytics_capabilities_pk",
+      "entityType": "pks",
+      "table": "analytics_capabilities"
+    },
+    {
+      "columns": [
+        "channel_id"
+      ],
+      "nameExplicit": false,
+      "name": "analytics_channels_pk",
+      "entityType": "pks",
+      "table": "analytics_channels"
+    },
+    {
+      "columns": [
+        "event_sub_message_id"
+      ],
+      "nameExplicit": false,
+      "name": "chat_messages_pk",
+      "entityType": "pks",
+      "table": "chat_messages"
+    },
+    {
+      "columns": [
+        "stream_id",
+        "category_key"
+      ],
+      "nameExplicit": false,
+      "name": "stream_category_rollups_pk",
+      "entityType": "pks",
+      "table": "stream_category_rollups"
+    },
+    {
+      "columns": [
+        "change_id"
+      ],
+      "nameExplicit": false,
+      "name": "stream_metadata_changes_pk",
+      "entityType": "pks",
+      "table": "stream_metadata_changes"
+    },
+    {
+      "columns": [
+        "stream_id",
+        "minute_at"
+      ],
+      "nameExplicit": false,
+      "name": "stream_minute_rollups_pk",
+      "entityType": "pks",
+      "table": "stream_minute_rollups"
+    },
+    {
+      "columns": [
+        "stream_id",
+        "started_at"
+      ],
+      "nameExplicit": false,
+      "name": "stream_segments_pk",
+      "entityType": "pks",
+      "table": "stream_segments"
+    },
+    {
+      "columns": [
+        "stream_id"
+      ],
+      "nameExplicit": false,
+      "name": "stream_summaries_pk",
+      "entityType": "pks",
+      "table": "stream_summaries"
+    },
+    {
+      "columns": [
+        "stream_id"
+      ],
+      "nameExplicit": false,
+      "name": "streams_pk",
+      "entityType": "pks",
+      "table": "streams"
+    },
+    {
+      "columns": [
+        "sample_id"
+      ],
+      "nameExplicit": false,
+      "name": "audience_samples_pk",
+      "table": "audience_samples",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        {
+          "value": "stream_id",
+          "isExpression": false
+        },
+        {
+          "value": "occurred_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "activity_events_stream_occurred_at_idx",
+      "entityType": "indexes",
+      "table": "activity_events"
+    },
+    {
+      "columns": [
+        {
+          "value": "stream_id",
+          "isExpression": false
+        },
+        {
+          "value": "kind",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "activity_events_stream_kind_idx",
+      "entityType": "indexes",
+      "table": "activity_events"
+    },
+    {
+      "columns": [
+        {
+          "value": "channel_id",
+          "isExpression": false
+        },
+        {
+          "value": "sampled_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "audience_samples_channel_sampled_at_idx",
+      "entityType": "indexes",
+      "table": "audience_samples"
+    },
+    {
+      "columns": [
+        {
+          "value": "stream_id",
+          "isExpression": false
+        },
+        {
+          "value": "sampled_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "audience_samples_stream_sampled_at_idx",
+      "entityType": "indexes",
+      "table": "audience_samples"
+    },
+    {
+      "columns": [
+        {
+          "value": "twitch_message_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "chat_messages_twitch_message_id_idx",
+      "entityType": "indexes",
+      "table": "chat_messages"
+    },
+    {
+      "columns": [
+        {
+          "value": "stream_id",
+          "isExpression": false
+        },
+        {
+          "value": "sent_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "chat_messages_stream_sent_at_idx",
+      "entityType": "indexes",
+      "table": "chat_messages"
+    },
+    {
+      "columns": [
+        {
+          "value": "stream_id",
+          "isExpression": false
+        },
+        {
+          "value": "chatter_user_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "chat_messages_stream_chatter_idx",
+      "entityType": "indexes",
+      "table": "chat_messages"
+    },
+    {
+      "columns": [
+        {
+          "value": "stream_id",
+          "isExpression": false
+        },
+        {
+          "value": "occurred_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "stream_metadata_changes_stream_occurred_at_idx",
+      "entityType": "indexes",
+      "table": "stream_metadata_changes"
+    },
+    {
+      "columns": [
+        {
+          "value": "channel_id",
+          "isExpression": false
+        },
+        {
+          "value": "started_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "streams_channel_started_at_idx",
+      "entityType": "indexes",
+      "table": "streams"
+    },
+    {
+      "columns": [
+        {
+          "value": "channel_id",
+          "isExpression": false
+        },
+        {
+          "value": "status",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "streams_channel_status_idx",
+      "entityType": "indexes",
+      "table": "streams"
+    },
+    {
+      "value": "\"quantity\" is null or \"quantity\" >= 0",
+      "name": "activity_events_quantity_check",
+      "entityType": "checks",
+      "table": "activity_events"
+    },
+    {
+      "value": "\"schema_version\" > 0",
+      "name": "activity_events_schema_version_check",
+      "entityType": "checks",
+      "table": "activity_events"
+    },
+    {
+      "value": "json_valid(\"details_json\")",
+      "name": "activity_events_details_json_check",
+      "entityType": "checks",
+      "table": "activity_events"
+    },
+    {
+      "value": "\"status\" in ('active', 'unavailable', 'revoked', 'error')",
+      "name": "analytics_capabilities_status_check",
+      "entityType": "checks",
+      "table": "analytics_capabilities"
+    },
+    {
+      "value": "\"source\" in ('activation', 'stream_start', 'alarm', 'stream_end')",
+      "name": "audience_samples_source_check",
+      "entityType": "checks",
+      "table": "audience_samples"
+    },
+    {
+      "value": "\"viewer_count\" is not null or \"follower_count\" is not null or \"subscriber_count\" is not null",
+      "name": "audience_samples_has_value_check",
+      "entityType": "checks",
+      "table": "audience_samples"
+    },
+    {
+      "value": "\"viewer_count\" is null or \"viewer_count\" >= 0",
+      "name": "audience_samples_viewer_count_check",
+      "entityType": "checks",
+      "table": "audience_samples"
+    },
+    {
+      "value": "\"follower_count\" is null or \"follower_count\" >= 0",
+      "name": "audience_samples_follower_count_check",
+      "entityType": "checks",
+      "table": "audience_samples"
+    },
+    {
+      "value": "\"subscriber_count\" is null or \"subscriber_count\" >= 0",
+      "name": "audience_samples_subscriber_count_check",
+      "entityType": "checks",
+      "table": "audience_samples"
+    },
+    {
+      "value": "\"duration_seconds\" >= 0",
+      "name": "stream_category_rollups_duration_seconds_check",
+      "entityType": "checks",
+      "table": "stream_category_rollups"
+    },
+    {
+      "value": "json_valid(\"content_labels_json\")",
+      "name": "stream_metadata_changes_content_labels_json_check",
+      "entityType": "checks",
+      "table": "stream_metadata_changes"
+    },
+    {
+      "value": "\"covered_seconds\" between 0 and 60",
+      "name": "stream_minute_rollups_covered_seconds_check",
+      "entityType": "checks",
+      "table": "stream_minute_rollups"
+    },
+    {
+      "value": "\"viewer_seconds\" >= 0 and (\"peak_viewers\" is null or \"peak_viewers\" >= 0) and \"chat_messages\" >= 0 and \"unique_chatters\" >= 0 and \"bits\" >= 0 and \"channel_points\" >= 0 and \"follows\" >= 0 and \"subscriptions\" >= 0 and \"activity_events\" >= 0",
+      "name": "stream_minute_rollups_nonnegative_check",
+      "entityType": "checks",
+      "table": "stream_minute_rollups"
+    },
+    {
+      "value": "\"ended_at\" is null or \"ended_at\" > \"started_at\"",
+      "name": "stream_segments_ended_at_check",
+      "entityType": "checks",
+      "table": "stream_segments"
+    },
+    {
+      "value": "\"revision\" > 0",
+      "name": "stream_summaries_revision_check",
+      "entityType": "checks",
+      "table": "stream_summaries"
+    },
+    {
+      "value": "\"duration_seconds\" >= 0 and \"viewer_seconds\" >= 0 and \"viewer_covered_seconds\" >= 0 and (\"peak_viewers\" is null or \"peak_viewers\" >= 0) and (\"follower_count_first\" is null or \"follower_count_first\" >= 0) and (\"follower_count_last\" is null or \"follower_count_last\" >= 0) and (\"subscriber_count_first\" is null or \"subscriber_count_first\" >= 0) and (\"subscriber_count_last\" is null or \"subscriber_count_last\" >= 0) and \"chat_messages\" >= 0 and \"unique_chatters\" >= 0 and \"bits\" >= 0 and \"channel_points\" >= 0 and \"follows\" >= 0 and \"subscriptions\" >= 0 and \"raids_in\" >= 0 and \"raids_out\" >= 0",
+      "name": "stream_summaries_nonnegative_check",
+      "entityType": "checks",
+      "table": "stream_summaries"
+    },
+    {
+      "value": "\"status\" in ('live', 'finalizing', 'finalized')",
+      "name": "streams_status_check",
+      "entityType": "checks",
+      "table": "streams"
+    },
+    {
+      "value": "\"ended_at\" is null or \"ended_at\" >= \"started_at\"",
+      "name": "streams_ended_at_check",
+      "entityType": "checks",
+      "table": "streams"
+    },
+    {
+      "value": "\"summary_revision\" >= 0",
+      "name": "streams_summary_revision_check",
+      "entityType": "checks",
+      "table": "streams"
+    }
+  ],
+  "renames": []
+}
