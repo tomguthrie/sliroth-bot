@@ -42,7 +42,7 @@
     "discord-interactions": "^4.4.0",
     "drizzle-orm": "^1.0.0-rc.4",
     "itty-router": "^5.0.24",
-    "txml": "^6.0.0",
+    "txml": "^6.0.1",
     "zod": "^4.4.3"
   },
   "devEngines": {
