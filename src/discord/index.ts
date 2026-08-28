@@ -1,8 +1,4 @@
-export {
-  DiscordApiError,
-  editDiscordMessage,
-  sendDiscordMessage,
-} from './client';
+export { DiscordApiError, editDiscordMessage, sendDiscordMessage } from './client';
 export type {
   DiscordMessageReceipt,
   EditDiscordMessageOptions,

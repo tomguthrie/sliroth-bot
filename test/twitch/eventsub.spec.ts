@@ -242,9 +242,7 @@ describe('verifyEventSubRequest', () => {
       body,
     });
 
-    await expect(verifyEventSubRequest(request, body, SECRET)).resolves.toBe(
-      true,
-    );
+    await expect(verifyEventSubRequest(request, body, SECRET)).resolves.toBe(true);
   });
 
   it('rejects a request when the body does not match the signature', async () => {
@@ -274,9 +272,7 @@ describe('verifyEventSubRequest', () => {
       body: receivedBody,
     });
 
-    await expect(
-      verifyEventSubRequest(request, receivedBody, SECRET),
-    ).resolves.toBe(false);
+    await expect(verifyEventSubRequest(request, receivedBody, SECRET)).resolves.toBe(false);
   });
 
   it('rejects a request with the wrong secret', async () => {
@@ -284,12 +280,7 @@ describe('verifyEventSubRequest', () => {
     const messageId = 'message-123';
     const timestamp = '2026-08-13T18:30:00Z';
 
-    const signature = await createSignature(
-      messageId,
-      timestamp,
-      body,
-      'different-secret',
-    );
+    const signature = await createSignature(messageId, timestamp, body, 'different-secret');
 
     const request = new Request('https://example.com/twitch/eventsub', {
       method: 'POST',
@@ -301,9 +292,7 @@ describe('verifyEventSubRequest', () => {
       body,
     });
 
-    await expect(verifyEventSubRequest(request, body, SECRET)).resolves.toBe(
-      false,
-    );
+    await expect(verifyEventSubRequest(request, body, SECRET)).resolves.toBe(false);
   });
 
   it('rejects a malformed signature', async () => {
@@ -319,9 +308,7 @@ describe('verifyEventSubRequest', () => {
       body,
     });
 
-    await expect(verifyEventSubRequest(request, body, SECRET)).resolves.toBe(
-      false,
-    );
+    await expect(verifyEventSubRequest(request, body, SECRET)).resolves.toBe(false);
   });
 
   it.each([
@@ -346,9 +333,7 @@ describe('verifyEventSubRequest', () => {
       body,
     });
 
-    await expect(verifyEventSubRequest(request, body, SECRET)).resolves.toBe(
-      false,
-    );
+    await expect(verifyEventSubRequest(request, body, SECRET)).resolves.toBe(false);
   });
 
   it('verifies the exact raw body rather than reparsed JSON', async () => {
@@ -370,30 +355,25 @@ describe('verifyEventSubRequest', () => {
       body: signedBody,
     });
 
-    await expect(
-      verifyEventSubRequest(request, signedBody, SECRET),
-    ).resolves.toBe(true);
+    await expect(verifyEventSubRequest(request, signedBody, SECRET)).resolves.toBe(true);
 
-    await expect(
-      verifyEventSubRequest(request, normalizedBody, SECRET),
-    ).resolves.toBe(false);
+    await expect(verifyEventSubRequest(request, normalizedBody, SECRET)).resolves.toBe(false);
   });
 });
 
 describe('getEventSubMessageType', () => {
-  it.each([
-    'notification',
-    'webhook_callback_verification',
-    'revocation',
-  ] as const)('returns %s for supported message types', (type) => {
-    const request = new Request('https://example.com', {
-      headers: {
-        'Twitch-Eventsub-Message-Type': type,
-      },
-    });
+  it.each(['notification', 'webhook_callback_verification', 'revocation'] as const)(
+    'returns %s for supported message types',
+    (type) => {
+      const request = new Request('https://example.com', {
+        headers: {
+          'Twitch-Eventsub-Message-Type': type,
+        },
+      });
 
-    expect(getEventSubMessageType(request)).toBe(type);
-  });
+      expect(getEventSubMessageType(request)).toBe(type);
+    },
+  );
 
   it('returns undefined for unsupported message types', () => {
     const request = new Request('https://example.com', {

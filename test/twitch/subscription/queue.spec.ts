@@ -35,11 +35,7 @@ describe('Twitch subscription Queue processing', () => {
     mockTwitchVideos([]);
     const getByName = vi.spyOn(env.TWITCH_SUBSCRIPTIONS, 'getByName');
 
-    const result = await processTwitchSubscriptionEvent(
-      DELIVERY,
-      env,
-      createContext(attempt),
-    );
+    const result = await processTwitchSubscriptionEvent(DELIVERY, env, createContext(attempt));
 
     expect(result).toEqual({ action: 'retry', delaySeconds: delay });
     expect(getByName).not.toHaveBeenCalled();
@@ -47,15 +43,9 @@ describe('Twitch subscription Queue processing', () => {
 
   it('acknowledges a missing Twitch VOD after retries are exhausted', async () => {
     mockTwitchVideos([]);
-    const warning = vi
-      .spyOn(console, 'warn')
-      .mockImplementation(() => undefined);
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-    const result = await processTwitchSubscriptionEvent(
-      DELIVERY,
-      env,
-      createContext(5),
-    );
+    const result = await processTwitchSubscriptionEvent(DELIVERY, env, createContext(5));
 
     expect(result).toEqual({ action: 'ack' });
     expect(warning).toHaveBeenCalledWith(
@@ -85,20 +75,11 @@ describe('Twitch subscription Queue processing', () => {
         });
     });
 
-    const result = await processTwitchSubscriptionEvent(
-      DELIVERY,
-      env,
-      createContext(1),
-    );
+    const result = await processTwitchSubscriptionEvent(DELIVERY, env, createContext(1));
 
     expect(result).toEqual({ action: 'ack' });
-    const [stored] = await runInDurableObject(
-      subscription,
-      async (_instance, state) =>
-        drizzle(state.storage)
-          .select()
-          .from(streams)
-          .where(eq(streams.id, STREAM_ID)),
+    const [stored] = await runInDurableObject(subscription, async (_instance, state) =>
+      drizzle(state.storage).select().from(streams).where(eq(streams.id, STREAM_ID)),
     );
     expect(stored?.vodUrl).toBe(vodUrl);
   });
@@ -120,9 +101,7 @@ function mockTwitchVideos(videos: readonly TwitchVideoWire[]): void {
   vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
     const request = new Request(input, init);
     if (new URL(request.url).hostname === 'id.twitch.tv') {
-      return Promise.resolve(
-        Response.json({ access_token: 'token', expires_in: 3600 }),
-      );
+      return Promise.resolve(Response.json({ access_token: 'token', expires_in: 3600 }));
     }
     return Promise.resolve(Response.json({ data: videos }));
   });

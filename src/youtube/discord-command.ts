@@ -1,6 +1,5 @@
 import * as z from 'zod';
 
-import { DiscordSnowflake } from '../discord/snowflake';
 import {
   createDeferredResponse,
   createEphemeralResponse,
@@ -8,10 +7,7 @@ import {
   logCommandFailure,
   unsupportedInteractionResponse,
 } from '../discord/interaction';
-import type {
-  DiscordCommandHandler,
-  DiscordInteraction,
-} from '../discord/interaction';
+import type { DiscordCommandHandler, DiscordInteraction } from '../discord/interaction';
 import {
   createNotificationList,
   describeDiscordMention,
@@ -24,12 +20,13 @@ import {
   resolveNotificationPing,
 } from '../discord/permission';
 import type { DiscordCommandContext } from '../discord/permission';
+import { DiscordSnowflake } from '../discord/snowflake';
 import { resolveYouTubeChannel } from './channel';
+import youtubeCommand from './discord-command.json';
 import {
   listChannelYouTubeSubscriptions,
   listGuildYouTubeSubscriptions,
 } from './subscription/index';
-import youtubeCommand from './discord-command.json';
 
 const YOUTUBE_COMMAND_NAME = youtubeCommand.name;
 
@@ -88,8 +85,7 @@ const YouTubeAddOptions = z
     const messageOption = options.find(({ name }) => name === 'message');
     const pingOption = options.find(({ name }) => name === 'ping');
     const roleOption = options.find(({ name }) => name === 'role');
-    const message =
-      messageOption?.name === 'message' ? messageOption.value : undefined;
+    const message = messageOption?.name === 'message' ? messageOption.value : undefined;
     const ping = pingOption?.name === 'ping' ? pingOption.value : undefined;
     const roleId = roleOption?.name === 'role' ? roleOption.value : undefined;
     return {
@@ -127,9 +123,7 @@ const YouTubeRemoveCommand = z
 const YouTubeCommand = z
   .object({
     name: z.literal(YOUTUBE_COMMAND_NAME),
-    options: z.tuple([
-      z.union([YouTubeAddCommand, YouTubeListCommand, YouTubeRemoveCommand]),
-    ]),
+    options: z.tuple([z.union([YouTubeAddCommand, YouTubeListCommand, YouTubeRemoveCommand])]),
   })
   .transform(({ options: [command] }) => command);
 
@@ -152,16 +146,10 @@ async function handleYouTubeCommand(
       if (permissionError !== undefined) {
         return createEphemeralResponse(permissionError);
       }
-      const ping = resolveNotificationPing(
-        command.options,
-        interaction,
-        context.guildId,
-      );
+      const ping = resolveNotificationPing(command.options, interaction, context.guildId);
       if ('error' in ping) return createEphemeralResponse(ping.error);
 
-      ctx.waitUntil(
-        completeYouTubeAdd(env, context, command.options, ping.ping),
-      );
+      ctx.waitUntil(completeYouTubeAdd(env, context, command.options, ping.ping));
       return createDeferredResponse();
     }
     case 'remove':
@@ -177,9 +165,7 @@ export const youtubeDiscordCommand: DiscordCommandHandler = {
   handle: handleYouTubeCommand,
 };
 
-function validateYouTubeAdd(
-  interaction: DiscordInteraction,
-): string | undefined {
+function validateYouTubeAdd(interaction: DiscordInteraction): string | undefined {
   if (!isNotificationChannel(interaction)) {
     return 'YouTube notifications can only be added in a text or announcement channel.';
   }
@@ -227,10 +213,7 @@ async function completeYouTubeAdd(
   }
 }
 
-async function completeYouTubeRemove(
-  env: Env,
-  context: DiscordCommandContext,
-): Promise<void> {
+async function completeYouTubeRemove(env: Env, context: DiscordCommandContext): Promise<void> {
   try {
     const channelIds = await listChannelYouTubeSubscriptions(
       env.YOUTUBE_SUBSCRIPTIONS_INDEX,
@@ -238,20 +221,14 @@ async function completeYouTubeRemove(
     );
     await Promise.all(
       channelIds.map((channelId) =>
-        env.YOUTUBE_SUBSCRIPTIONS.getByName(channelId).removeSubscriber(
-          context.channelId,
-        ),
+        env.YOUTUBE_SUBSCRIPTIONS.getByName(channelId).removeSubscriber(context.channelId),
       ),
     );
     const content =
       channelIds.length === 0
         ? `No YouTube notifications were configured for <#${context.channelId}>.`
         : `Removed ${channelIds.length} YouTube notification${channelIds.length === 1 ? '' : 's'} from <#${context.channelId}>.`;
-    await editInteractionResponse(
-      context.applicationId,
-      context.token,
-      content,
-    );
+    await editInteractionResponse(context.applicationId, context.token, content);
   } catch (error) {
     await reportYouTubeFailure(
       context,
@@ -272,9 +249,7 @@ async function listYouTubeSubscriptions(
       context.guildId,
     );
     if (subscriptions.length === 0) {
-      return createEphemeralResponse(
-        'No YouTube notifications are configured for this server.',
-      );
+      return createEphemeralResponse('No YouTube notifications are configured for this server.');
     }
     return createEphemeralResponse(
       createNotificationList(
@@ -289,9 +264,7 @@ async function listYouTubeSubscriptions(
     );
   } catch (error) {
     logCommandFailure('youtube', 'list', context, error);
-    return createEphemeralResponse(
-      'YouTube notifications could not be loaded. Please try again.',
-    );
+    return createEphemeralResponse('YouTube notifications could not be loaded. Please try again.');
   }
 }
 
@@ -303,11 +276,7 @@ async function reportYouTubeFailure(
 ): Promise<void> {
   logCommandFailure('youtube', action, context, error);
   try {
-    await editInteractionResponse(
-      context.applicationId,
-      context.token,
-      message,
-    );
+    await editInteractionResponse(context.applicationId, context.token, message);
   } catch (responseError) {
     logCommandFailure('youtube', action, context, responseError);
   }

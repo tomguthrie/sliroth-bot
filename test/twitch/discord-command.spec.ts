@@ -1,8 +1,5 @@
+import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
-import {
-  createExecutionContext,
-  waitOnExecutionContext,
-} from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DiscordInteraction } from '../../src/discord/interaction';
@@ -50,9 +47,7 @@ describe('/twitch command', () => {
       createExecutionContext(),
     );
 
-    await expect(content(response)).resolves.toBe(
-      'I need Embed Links permission in this channel.',
-    );
+    await expect(content(response)).resolves.toBe('I need Embed Links permission in this channel.');
   });
 
   it('adds a broadcaster through a deferred response', async () => {
@@ -65,12 +60,8 @@ describe('/twitch command', () => {
     };
     mocks.resolveTwitchChannel.mockResolvedValue(broadcaster);
     const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(BROADCASTER_ID);
-    const addSubscriber = vi
-      .spyOn(subscription, 'addSubscriber')
-      .mockResolvedValue(undefined);
-    vi.spyOn(env.TWITCH_SUBSCRIPTIONS, 'getByName').mockReturnValue(
-      subscription,
-    );
+    const addSubscriber = vi.spyOn(subscription, 'addSubscriber').mockResolvedValue(undefined);
+    vi.spyOn(env.TWITCH_SUBSCRIPTIONS, 'getByName').mockReturnValue(subscription);
     const requests = mockInteractionEdits();
     const ctx = createExecutionContext();
 
@@ -112,12 +103,8 @@ describe('/twitch command', () => {
   it('removes subscriptions without checking delivery permissions', async () => {
     mocks.listChannelTwitchSubscriptions.mockResolvedValue([BROADCASTER_ID]);
     const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(BROADCASTER_ID);
-    const removeSubscriber = vi
-      .spyOn(subscription, 'removeSubscriber')
-      .mockResolvedValue(true);
-    vi.spyOn(env.TWITCH_SUBSCRIPTIONS, 'getByName').mockReturnValue(
-      subscription,
-    );
+    const removeSubscriber = vi.spyOn(subscription, 'removeSubscriber').mockResolvedValue(true);
+    vi.spyOn(env.TWITCH_SUBSCRIPTIONS, 'getByName').mockReturnValue(subscription);
     mockInteractionEdits();
     const ctx = createExecutionContext();
 
@@ -148,11 +135,7 @@ describe('/twitch command', () => {
       },
     ]);
 
-    const response = await handleTwitchCommand(
-      interaction('list'),
-      env,
-      createExecutionContext(),
-    );
+    const response = await handleTwitchCommand(interaction('list'), env, createExecutionContext());
     const list = await content(response);
 
     expect(list).toBe(

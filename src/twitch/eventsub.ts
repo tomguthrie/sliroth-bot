@@ -11,8 +11,7 @@ export const TWITCH_EVENTSUB_SUBSCRIPTIONS = [
   { type: TWITCH_EVENT_STREAM_OFFLINE, version: '1' },
 ] as const;
 
-export type EventSubSubscriptionDefinition =
-  (typeof TWITCH_EVENTSUB_SUBSCRIPTIONS)[number];
+export type EventSubSubscriptionDefinition = (typeof TWITCH_EVENTSUB_SUBSCRIPTIONS)[number];
 
 const ChannelUpdateEvent = z
   .object({
@@ -122,8 +121,7 @@ export interface EventSubRevocation {
   subscription: EventSubSubscription & { status: string };
 }
 
-export type EventSubMessage =
-  EventSubNotification | EventSubVerification | EventSubRevocation;
+export type EventSubMessage = EventSubNotification | EventSubVerification | EventSubRevocation;
 
 const EventSubNotificationMessage = z.object({
   subscription: EventSubSubscription,
@@ -167,9 +165,7 @@ function parseEventSubNotification(body: unknown): EventSubNotification {
       };
 
     default:
-      throw new Error(
-        `Unsupported Twitch EventSub type: ${envelope.subscription.type}`,
-      );
+      throw new Error(`Unsupported Twitch EventSub type: ${envelope.subscription.type}`);
   }
 }
 
@@ -215,11 +211,7 @@ export async function verifyEventSubRequest(
   const timestamp = request.headers.get('Twitch-Eventsub-Message-Timestamp');
   const signature = request.headers.get('Twitch-Eventsub-Message-Signature');
 
-  if (
-    messageId === null ||
-    timestamp === null ||
-    !signature?.startsWith('sha256=')
-  ) {
+  if (messageId === null || timestamp === null || !signature?.startsWith('sha256=')) {
     return false;
   }
 
@@ -260,12 +252,9 @@ export async function verifyEventSubRequest(
   return crypto.subtle.timingSafeEqual(actual, expectedBytes);
 }
 
-export type EventSubMessageType =
-  'notification' | 'webhook_callback_verification' | 'revocation';
+export type EventSubMessageType = 'notification' | 'webhook_callback_verification' | 'revocation';
 
-export function getEventSubMessageType(
-  request: Request,
-): EventSubMessageType | undefined {
+export function getEventSubMessageType(request: Request): EventSubMessageType | undefined {
   const type = request.headers.get('Twitch-Eventsub-Message-Type');
 
   switch (type) {
@@ -283,9 +272,7 @@ export function getEventSubMessageId(request: Request): string | undefined {
   return request.headers.get('Twitch-Eventsub-Message-Id') ?? undefined;
 }
 
-export function getEventSubMessageTimestamp(
-  request: Request,
-): Date | undefined {
+export function getEventSubMessageTimestamp(request: Request): Date | undefined {
   const value = request.headers.get('Twitch-Eventsub-Message-Timestamp');
 
   if (value === null) {

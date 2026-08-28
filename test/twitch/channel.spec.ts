@@ -57,21 +57,15 @@ describe('parseTwitchChannelName', () => {
   });
 
   it('extracts the login from a Twitch channel URL', () => {
-    expect(parseTwitchChannelLogin('https://twitch.tv/sliroth')).toBe(
-      'sliroth',
-    );
+    expect(parseTwitchChannelLogin('https://twitch.tv/sliroth')).toBe('sliroth');
   });
 
   it('accepts www Twitch URLs', () => {
-    expect(parseTwitchChannelLogin('https://www.twitch.tv/sliroth')).toBe(
-      'sliroth',
-    );
+    expect(parseTwitchChannelLogin('https://www.twitch.tv/sliroth')).toBe('sliroth');
   });
 
   it('accepts a trailing slash', () => {
-    expect(parseTwitchChannelLogin('https://twitch.tv/sliroth/')).toBe(
-      'sliroth',
-    );
+    expect(parseTwitchChannelLogin('https://twitch.tv/sliroth/')).toBe('sliroth');
   });
 
   it('accepts http Twitch URLs', () => {
@@ -79,15 +73,11 @@ describe('parseTwitchChannelName', () => {
   });
 
   it('rejects non-Twitch URLs', () => {
-    expect(
-      parseTwitchChannelLogin('https://example.com/sliroth'),
-    ).toBeUndefined();
+    expect(parseTwitchChannelLogin('https://example.com/sliroth')).toBeUndefined();
   });
 
   it('rejects non-channel Twitch URLs', () => {
-    expect(
-      parseTwitchChannelLogin('https://twitch.tv/directory/category'),
-    ).toBeUndefined();
+    expect(parseTwitchChannelLogin('https://twitch.tv/directory/category')).toBeUndefined();
   });
 
   it('rejects invalid input', () => {
@@ -136,17 +126,13 @@ describe('resolveTwitchChannel', () => {
 
     getUserByLogin.mockResolvedValue(user);
 
-    await expect(
-      resolveTwitchChannel('https://twitch.tv/sliroth', env),
-    ).resolves.toBe(user);
+    await expect(resolveTwitchChannel('https://twitch.tv/sliroth', env)).resolves.toBe(user);
 
     expect(getUserByLogin).toHaveBeenCalledWith('sliroth');
   });
 
   it('returns undefined when the channel cannot be parsed', async () => {
-    await expect(
-      resolveTwitchChannel('not a twitch channel', env),
-    ).resolves.toBeUndefined();
+    await expect(resolveTwitchChannel('not a twitch channel', env)).resolves.toBeUndefined();
 
     expect(getUserById).not.toHaveBeenCalled();
     expect(getUserByLogin).not.toHaveBeenCalled();

@@ -26,13 +26,8 @@ export async function createYouTubeDelivery(
     .join(' ');
   const message: DiscordMessage = {
     content,
-    nonce: await createDiscordMessageNonce(
-      notification.videoId,
-      subscriber.channelId,
-    ),
-    ...(mention.allowedMentions === undefined
-      ? {}
-      : { allowedMentions: mention.allowedMentions }),
+    nonce: await createDiscordMessageNonce(notification.videoId, subscriber.channelId),
+    ...(mention.allowedMentions === undefined ? {} : { allowedMentions: mention.allowedMentions }),
   };
 
   return {

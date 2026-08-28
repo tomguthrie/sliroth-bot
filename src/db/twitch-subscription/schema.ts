@@ -51,13 +51,8 @@ export const eventSubSubscriptions = snakeCase.table(
   (table) => [
     primaryKey({ columns: [table.subscriptionKey] }),
     index('eventsub_subscriptions_type_idx').on(table.type),
-    uniqueIndex('eventsub_subscriptions_subscription_id_idx').on(
-      table.subscriptionId,
-    ),
-    check(
-      'eventsub_subscriptions_condition_json_check',
-      sql`json_valid(${table.conditionJson})`,
-    ),
+    uniqueIndex('eventsub_subscriptions_subscription_id_idx').on(table.subscriptionId),
+    check('eventsub_subscriptions_condition_json_check', sql`json_valid(${table.conditionJson})`),
   ],
 );
 

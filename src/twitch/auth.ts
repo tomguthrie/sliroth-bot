@@ -93,9 +93,7 @@ async function fetchAccessToken(env: Env): Promise<AccessToken> {
   });
 
   if (!response.ok) {
-    throw new Error(
-      `Failed to fetch access token: ${response.status} ${response.statusText}`,
-    );
+    throw new Error(`Failed to fetch access token: ${response.status} ${response.statusText}`);
   }
 
   return AccessToken.parse(await response.json());

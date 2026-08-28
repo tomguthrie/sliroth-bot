@@ -38,24 +38,16 @@ describe('createYouTubeWebSubRequest', () => {
 describe('verifyYouTubeWebSubSignature', () => {
   it('accepts a valid notification signature', async () => {
     const secret = SECRET;
-    const body = Uint8Array.from(
-      new TextEncoder().encode('<feed>test</feed>'),
-    ).buffer;
+    const body = Uint8Array.from(new TextEncoder().encode('<feed>test</feed>')).buffer;
     const signature = await createSignature(body, secret);
 
-    await expect(
-      verifyYouTubeWebSubSignature(body, signature, secret),
-    ).resolves.toBe(true);
+    await expect(verifyYouTubeWebSubSignature(body, signature, secret)).resolves.toBe(true);
   });
 
   it('rejects missing, malformed, and incorrect signatures', async () => {
-    const body = Uint8Array.from(
-      new TextEncoder().encode('<feed>test</feed>'),
-    ).buffer;
+    const body = Uint8Array.from(new TextEncoder().encode('<feed>test</feed>')).buffer;
 
-    await expect(
-      verifyYouTubeWebSubSignature(body, null, SECRET),
-    ).resolves.toBe(false);
+    await expect(verifyYouTubeWebSubSignature(body, null, SECRET)).resolves.toBe(false);
 
     await expect(
       verifyYouTubeWebSubSignature(body, 'sha1=not-a-valid-signature', SECRET),
@@ -67,10 +59,7 @@ describe('verifyYouTubeWebSubSignature', () => {
   });
 });
 
-async function createSignature(
-  body: ArrayBuffer,
-  secret: string,
-): Promise<string> {
+async function createSignature(body: ArrayBuffer, secret: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(secret),

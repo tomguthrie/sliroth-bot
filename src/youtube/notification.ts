@@ -24,12 +24,7 @@ const YouTubeAtomEntry = z
     published: z.string(),
   })
   .transform(
-    ({
-      'yt:videoId': videoId,
-      'yt:channelId': channelId,
-      title,
-      published: publishedAt,
-    }) => ({
+    ({ 'yt:videoId': videoId, 'yt:channelId': channelId, title, published: publishedAt }) => ({
       videoId,
       channelId,
       title,
@@ -43,11 +38,8 @@ const YouTubeAtomFeed = z.object({
   }),
 });
 
-export function parseYouTubeVideoNotifications(
-  xml: string,
-): YouTubeVideoNotification[] {
-  const entryValue = YouTubeAtomFeed.parse(parse(xml, XML_PARSE_OPTIONS)).feed
-    .entry;
+export function parseYouTubeVideoNotifications(xml: string): YouTubeVideoNotification[] {
+  const entryValue = YouTubeAtomFeed.parse(parse(xml, XML_PARSE_OPTIONS)).feed.entry;
 
   if (entryValue === undefined) {
     return [];

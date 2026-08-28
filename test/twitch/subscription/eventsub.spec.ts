@@ -1,8 +1,4 @@
-import {
-  createExecutionContext,
-  env,
-  runInDurableObject,
-} from 'cloudflare:test';
+import { createExecutionContext, env, runInDurableObject } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -30,9 +26,7 @@ beforeEach(async () => {
 
 describe('TwitchSubscription EventSub reconciliation', () => {
   it('rejects invalid broadcaster data before changing storage', async () => {
-    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(
-      `broadcaster-${crypto.randomUUID()}`,
-    );
+    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(`broadcaster-${crypto.randomUUID()}`);
 
     await expect(
       runInDurableObject(subscription, (instance: TwitchSubscription) =>
@@ -96,9 +90,7 @@ describe('TwitchSubscription EventSub reconciliation', () => {
         requests.push({ method: request.method, url: request.url });
         return new Response(null, { status: 204 });
       }
-      throw new Error(
-        `Unexpected Twitch request: ${request.method} ${request.url}`,
-      );
+      throw new Error(`Unexpected Twitch request: ${request.method} ${request.url}`);
     });
 
     const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(BROADCASTER_ID);
@@ -115,9 +107,7 @@ describe('TwitchSubscription EventSub reconciliation', () => {
 
     expect(
       requests
-        .filter(
-          ({ method, url }) => method === 'POST' && url.includes('/helix/'),
-        )
+        .filter(({ method, url }) => method === 'POST' && url.includes('/helix/'))
         .map(({ eventType, eventVersion }) => [eventType, eventVersion])
         .sort(([left], [right]) => left?.localeCompare(right ?? '') ?? 0),
     ).toEqual([
@@ -140,9 +130,7 @@ describe('TwitchSubscription EventSub reconciliation', () => {
     ).resolves.toMatchObject({ value: '1', metadata: null });
 
     await expect(subscription.removeSubscriber(CHANNEL_ID)).resolves.toBe(true);
-    expect(
-      requests.filter((request) => request.method === 'DELETE'),
-    ).toHaveLength(3);
+    expect(requests.filter((request) => request.method === 'DELETE')).toHaveLength(3);
     await expect(
       env.TWITCH_SUBSCRIPTIONS_INDEX.get(
         createGuildTwitchSubscriptionKey(GUILD_ID, CHANNEL_ID, BROADCASTER_ID),
@@ -171,11 +159,7 @@ describe('Twitch EventSub webhook', () => {
       type: 'webhook_callback_verification',
     });
 
-    const response = await handleTwitchEventSub(
-      request,
-      env,
-      createExecutionContext(),
-    );
+    const response = await handleTwitchEventSub(request, env, createExecutionContext());
 
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe('challenge-value');
@@ -186,19 +170,11 @@ describe('Twitch EventSub webhook', () => {
     const stale = await signedRequest('stale-id', body, {
       timestamp: '2020-01-01T00:00:00Z',
     });
-    expect(
-      (await handleTwitchEventSub(stale, env, createExecutionContext())).status,
-    ).toBe(403);
+    expect((await handleTwitchEventSub(stale, env, createExecutionContext())).status).toBe(403);
 
     const invalid = await signedRequest('invalid-id', body);
-    invalid.headers.set(
-      'twitch-eventsub-message-signature',
-      `sha256=${'0'.repeat(64)}`,
-    );
-    expect(
-      (await handleTwitchEventSub(invalid, env, createExecutionContext()))
-        .status,
-    ).toBe(403);
+    invalid.headers.set('twitch-eventsub-message-signature', `sha256=${'0'.repeat(64)}`);
+    expect((await handleTwitchEventSub(invalid, env, createExecutionContext())).status).toBe(403);
   });
 
   it('rejects a correctly signed message with a timestamp more than 60 seconds in the future', async () => {
@@ -207,10 +183,7 @@ describe('Twitch EventSub webhook', () => {
     const future = await signedRequest('future-id', body, {
       timestamp: futureTimestamp,
     });
-    expect(
-      (await handleTwitchEventSub(future, env, createExecutionContext()))
-        .status,
-    ).toBe(403);
+    expect((await handleTwitchEventSub(future, env, createExecutionContext())).status).toBe(403);
   });
 
   it('rejects a signed payload with an invalid shape', async () => {
@@ -219,11 +192,7 @@ describe('Twitch EventSub webhook', () => {
       JSON.stringify({ subscription: null }),
     );
 
-    const response = await handleTwitchEventSub(
-      request,
-      env,
-      createExecutionContext(),
-    );
+    const response = await handleTwitchEventSub(request, env, createExecutionContext());
 
     expect(response.status).toBe(400);
     await expect(response.text()).resolves.toBe('Invalid EventSub payload');
@@ -231,9 +200,7 @@ describe('Twitch EventSub webhook', () => {
 
   it('queues an authenticated channel update', async () => {
     const broadcasterId = '123456789012345681';
-    const send = vi
-      .spyOn(env.SUBSCRIPTION_EVENTS, 'send')
-      .mockResolvedValue(queueSendResponse());
+    const send = vi.spyOn(env.SUBSCRIPTION_EVENTS, 'send').mockResolvedValue(queueSendResponse());
     const body = channelUpdateBody(broadcasterId);
     const messageId = `channel-update-${crypto.randomUUID()}`;
     const timestamp = new Date().toISOString();
@@ -265,9 +232,7 @@ describe('Twitch EventSub webhook', () => {
 
   it('queues parsed notifications using their JSON-safe message shape', async () => {
     const broadcasterId = '123456789012345683';
-    const send = vi
-      .spyOn(env.SUBSCRIPTION_EVENTS, 'send')
-      .mockResolvedValue(queueSendResponse());
+    const send = vi.spyOn(env.SUBSCRIPTION_EVENTS, 'send').mockResolvedValue(queueSendResponse());
     const timestamp = new Date().toISOString();
     const body = JSON.stringify({
       subscription: {
@@ -322,9 +287,7 @@ describe('Twitch EventSub webhook', () => {
 
   it('queues authenticated revocations', async () => {
     const broadcasterId = '123456789012345684';
-    const send = vi
-      .spyOn(env.SUBSCRIPTION_EVENTS, 'send')
-      .mockResolvedValue(queueSendResponse());
+    const send = vi.spyOn(env.SUBSCRIPTION_EVENTS, 'send').mockResolvedValue(queueSendResponse());
     const body = JSON.stringify({
       subscription: {
         id: 'subscription-revoked',
@@ -374,9 +337,7 @@ describe('Twitch EventSub webhook', () => {
     );
 
     expect(response.status).toBe(400);
-    await expect(response.text()).resolves.toBe(
-      'EventSub broadcaster mismatch',
-    );
+    await expect(response.text()).resolves.toBe('EventSub broadcaster mismatch');
   });
 
   it('rejects an invalid channel update event', async () => {
@@ -434,14 +395,10 @@ describe('Twitch EventSub webhook', () => {
         }
         return Response.json({ data: [] });
       }
-      throw new Error(
-        `Unexpected Twitch request: ${request.method} ${request.url}`,
-      );
+      throw new Error(`Unexpected Twitch request: ${request.method} ${request.url}`);
     });
 
-    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(
-      RECONCILE_BROADCASTER_ID,
-    );
+    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(RECONCILE_BROADCASTER_ID);
     await subscription.addSubscriber(
       {
         id: RECONCILE_BROADCASTER_ID,
@@ -502,18 +459,13 @@ describe('Twitch EventSub webhook', () => {
       },
     } as const;
 
-    const processed = await runInDurableObject(
-      subscription,
-      async (instance, state) => {
-        const channelUpdate = vi
-          .spyOn(instance, 'channelUpdate')
-          .mockResolvedValue(undefined);
-        await instance.processEventSubMessage(delivery);
-        await instance.processEventSubMessage(delivery);
-        expect(channelUpdate).toHaveBeenCalledOnce();
-        return drizzle(state.storage).select().from(processedEventSubMessages);
-      },
-    );
+    const processed = await runInDurableObject(subscription, async (instance, state) => {
+      const channelUpdate = vi.spyOn(instance, 'channelUpdate').mockResolvedValue(undefined);
+      await instance.processEventSubMessage(delivery);
+      await instance.processEventSubMessage(delivery);
+      expect(channelUpdate).toHaveBeenCalledOnce();
+      return drizzle(state.storage).select().from(processedEventSubMessages);
+    });
     expect(processed).toHaveLength(1);
     expect(processed[0]?.messageId).toBe(messageId);
     expect(processed[0]?.processedAt).toBeInstanceOf(Date);
@@ -588,11 +540,7 @@ async function signedRequest(
     ['sign'],
   );
   const signature = new Uint8Array(
-    await crypto.subtle.sign(
-      'HMAC',
-      key,
-      new TextEncoder().encode(messageId + timestamp + body),
-    ),
+    await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(messageId + timestamp + body)),
   );
   return new Request(
     `https://bot.example.com/twitch/eventsub/${options.broadcasterId ?? WEBHOOK_BROADCASTER_ID}`,
@@ -610,7 +558,5 @@ async function signedRequest(
 }
 
 function toHex(value: Uint8Array): string {
-  return Array.from(value, (byte) => byte.toString(16).padStart(2, '0')).join(
-    '',
-  );
+  return Array.from(value, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }

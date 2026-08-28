@@ -14,11 +14,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/setup@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/setup@c8e77b72cd6022852162c92aa10e7e72b7209c9b # v2
         with:
           cache: true
-      - run: pnpm typecheck
-      - run: pnpm lint
-      - run: pnpm format:check
+      - run: node --version
+      - run: pnpm check
       - run: pnpm test

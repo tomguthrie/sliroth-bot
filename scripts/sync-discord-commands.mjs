@@ -8,10 +8,7 @@ const botToken = requireEnvironmentVariable('DISCORD_BOT_TOKEN');
 const commands = await Promise.all(
   ['youtube', 'twitch'].map(async (provider) =>
     JSON.parse(
-      await readFile(
-        new URL(`../src/${provider}/discord-command.json`, import.meta.url),
-        'utf8',
-      ),
+      await readFile(new URL(`../src/${provider}/discord-command.json`, import.meta.url), 'utf8'),
     ),
   ),
 );
@@ -23,8 +20,7 @@ const response = await fetch(
     headers: {
       authorization: `Bot ${botToken}`,
       'content-type': 'application/json',
-      'user-agent':
-        'DiscordBot (https://github.com/tomguthrie/sliroth-bot, 0.0.0)',
+      'user-agent': 'DiscordBot (https://github.com/tomguthrie/sliroth-bot, 0.0.0)',
     },
     body: JSON.stringify(commands),
   },

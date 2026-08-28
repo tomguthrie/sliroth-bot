@@ -37,10 +37,7 @@ describe('Discord Queue producer', () => {
 
     await enqueueDiscordMessages({ sendBatch }, deliveries);
 
-    expect(sendBatch).toHaveBeenCalledWith([
-      { body: deliveries[0] },
-      { body: deliveries[1] },
-    ]);
+    expect(sendBatch).toHaveBeenCalledWith([{ body: deliveries[0] }, { body: deliveries[1] }]);
   });
 });
 
@@ -60,9 +57,7 @@ describe('Discord Queue processor', () => {
   it('passes an optional receipt to its feature handler', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(discordReceipt());
     const handle = vi.fn().mockResolvedValue(undefined);
-    const processor = createDiscordMessageProcessor([
-      { type: 'test-receipt', handle },
-    ]);
+    const processor = createDiscordMessageProcessor([{ type: 'test-receipt', handle }]);
     const delivery = {
       ...createDelivery('receipt'),
       receipt: { type: 'test-receipt', ownerId: 'owner' },
@@ -89,23 +84,18 @@ describe('Discord Queue processor', () => {
     );
   });
 
-  it.each([400, 401, 403, 404])(
-    'acknowledges permanent HTTP %i failures',
-    async (status) => {
-      vi.spyOn(console, 'error').mockImplementation(() => undefined);
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-        new Response('Permanent failure', { status }),
-      );
+  it.each([400, 401, 403, 404])('acknowledges permanent HTTP %i failures', async (status) => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('Permanent failure', { status }));
 
-      const result = await createDiscordMessageProcessor([])(
-        createDelivery(`http-${status}`),
-        TEST_ENV,
-        CONTEXT,
-      );
+    const result = await createDiscordMessageProcessor([])(
+      createDelivery(`http-${status}`),
+      TEST_ENV,
+      CONTEXT,
+    );
 
-      expect(result).toEqual({ action: 'ack' });
-    },
-  );
+    expect(result).toEqual({ action: 'ack' });
+  });
 
   it('uses Discord Retry-After for rate limits', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -127,9 +117,7 @@ describe('Discord Queue processor', () => {
 
   it('retries transient failures', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
-      new TypeError('Network error'),
-    );
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Network error'));
 
     const result = await createDiscordMessageProcessor([])(
       createDelivery('transient'),

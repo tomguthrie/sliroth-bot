@@ -1,5 +1,4 @@
-export const YOUTUBE_WEBSUB_HUB_URL =
-  'https://pubsubhubbub.appspot.com/subscribe';
+export const YOUTUBE_WEBSUB_HUB_URL = 'https://pubsubhubbub.appspot.com/subscribe';
 
 const YOUTUBE_FEED_URL = 'https://www.youtube.com/xml/feeds/videos.xml';
 export type WebSubMode = 'subscribe' | 'unsubscribe';
@@ -18,9 +17,7 @@ export function createYouTubeTopicUrl(channelId: string): string {
   return topicUrl.toString();
 }
 
-export function createYouTubeWebSubRequest(
-  options: CreateYouTubeWebSubRequestOptions,
-): Request {
+export function createYouTubeWebSubRequest(options: CreateYouTubeWebSubRequestOptions): Request {
   const { mode, channelId, secret } = options;
   const publicBaseUrl = httpOrigin(options.publicBaseUrl);
   const body = new URLSearchParams({
@@ -47,10 +44,7 @@ export async function verifyYouTubeWebSubSignature(
   signatureHeader: string | null,
   secret: string,
 ): Promise<boolean> {
-  if (
-    signatureHeader === null ||
-    !/^sha1=[0-9a-f]{40}$/i.test(signatureHeader)
-  ) {
+  if (signatureHeader === null || !/^sha1=[0-9a-f]{40}$/i.test(signatureHeader)) {
     return false;
   }
 

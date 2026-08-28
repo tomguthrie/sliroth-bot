@@ -8,10 +8,9 @@ import * as z from 'zod';
 import migrations from '../../db/youtube-subscription/migrations/migrations.js';
 import { subscribers, videos } from '../../db/youtube-subscription/schema';
 import { DiscordMentionTarget } from '../../discord/message';
+import { enqueueDiscordMessages } from '../../discord/queue';
 import { DiscordSnowflake } from '../../discord/snowflake';
 import { toLoggableError } from '../../log';
-import { enqueueDiscordMessages } from '../../discord/queue';
-import type { YouTubeVideoDelivery } from './queue';
 import { isYouTubeChannelId } from '../channel';
 import { parseYouTubeVideoNotifications } from '../notification';
 import type { YouTubeVideoNotification } from '../notification';
@@ -27,6 +26,7 @@ import {
   createGuildYouTubeSubscriptionKey,
   type YouTubeSubscriptionMetadata,
 } from './index';
+import type { YouTubeVideoDelivery } from './queue';
 
 const SUBSCRIPTION_INDEX_VALUE = '1';
 const WEBSUB_SECRET_KEY = 'websub:secret';
@@ -42,9 +42,7 @@ const WebSubState = z
     secret: z.string().min(1).optional(),
     status: WebSubStatus.optional(),
   })
-  .refine(
-    ({ secret, status }) => (secret === undefined) === (status === undefined),
-  );
+  .refine(({ secret, status }) => (secret === undefined) === (status === undefined));
 type WebSubState = z.infer<typeof WebSubState>;
 
 export const YouTubeSubscriberRegistration = z.object({
@@ -55,12 +53,8 @@ export const YouTubeSubscriberRegistration = z.object({
   ping: DiscordMentionTarget.optional(),
 });
 
-export type YouTubeSubscriberRegistration = z.infer<
-  typeof YouTubeSubscriberRegistration
->;
-type YouTubeSubscriberRegistrationInput = z.input<
-  typeof YouTubeSubscriberRegistration
->;
+export type YouTubeSubscriberRegistration = z.infer<typeof YouTubeSubscriberRegistration>;
+type YouTubeSubscriberRegistrationInput = z.input<typeof YouTubeSubscriberRegistration>;
 
 export class YouTubeSubscription extends DurableObject<Env> {
   private readonly db: DrizzleSqliteDODatabase;
@@ -77,9 +71,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
   }
 
   /** Adds or updates a Discord subscriber and its global lookup indexes. */
-  async addSubscriber(
-    registration: YouTubeSubscriberRegistrationInput,
-  ): Promise<void> {
+  async addSubscriber(registration: YouTubeSubscriberRegistrationInput): Promise<void> {
     const validated = YouTubeSubscriberRegistration.parse(registration);
     const youtubeChannelId = this.requireYouTubeChannelId();
     const [subscriber] = await this.db
@@ -121,10 +113,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
         { metadata },
       ),
       this.env.YOUTUBE_SUBSCRIPTIONS_INDEX.put(
-        createChannelYouTubeSubscriptionKey(
-          subscriber.channelId,
-          youtubeChannelId,
-        ),
+        createChannelYouTubeSubscriptionKey(subscriber.channelId, youtubeChannelId),
         SUBSCRIPTION_INDEX_VALUE,
       ),
     ]);
@@ -146,22 +135,13 @@ export class YouTubeSubscription extends DurableObject<Env> {
       return;
     }
 
-    await this.db
-      .delete(subscribers)
-      .where(eq(subscribers.channelId, validatedChannelId));
+    await this.db.delete(subscribers).where(eq(subscribers.channelId, validatedChannelId));
     await Promise.all([
       this.env.YOUTUBE_SUBSCRIPTIONS_INDEX.delete(
-        createGuildYouTubeSubscriptionKey(
-          subscriber.guildId,
-          validatedChannelId,
-          youtubeChannelId,
-        ),
+        createGuildYouTubeSubscriptionKey(subscriber.guildId, validatedChannelId, youtubeChannelId),
       ),
       this.env.YOUTUBE_SUBSCRIPTIONS_INDEX.delete(
-        createChannelYouTubeSubscriptionKey(
-          validatedChannelId,
-          youtubeChannelId,
-        ),
+        createChannelYouTubeSubscriptionKey(validatedChannelId, youtubeChannelId),
       ),
     ]);
 
@@ -180,8 +160,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
     }
 
     const state = await this.readWebSubState();
-    const expectedStatus =
-      mode === 'subscribe' ? 'subscribing' : 'unsubscribing';
+    const expectedStatus = mode === 'subscribe' ? 'subscribing' : 'unsubscribing';
     if (state.status !== expectedStatus || state.secret === undefined) {
       return false;
     }
@@ -195,9 +174,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
       return false;
     }
 
-    const renewalDelayMs = Math.floor(
-      leaseSeconds * 1000 * WEBSUB_RENEWAL_FRACTION,
-    );
+    const renewalDelayMs = Math.floor(leaseSeconds * 1000 * WEBSUB_RENEWAL_FRACTION);
     if (!Number.isSafeInteger(renewalDelayMs)) {
       return false;
     }
@@ -240,18 +217,12 @@ export class YouTubeSubscription extends DurableObject<Env> {
       return false;
     }
 
-    const valid = await verifyYouTubeWebSubSignature(
-      body,
-      signatureHeader,
-      state.secret,
-    );
+    const valid = await verifyYouTubeWebSubSignature(body, signatureHeader, state.secret);
     if (!valid) {
       return false;
     }
 
-    const notifications = parseYouTubeVideoNotifications(
-      new TextDecoder().decode(body),
-    );
+    const notifications = parseYouTubeVideoNotifications(new TextDecoder().decode(body));
     if (notifications.length !== 0) {
       await this.env.SUBSCRIPTION_EVENTS.sendBatch(
         notifications.map((notification) => {
@@ -316,9 +287,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
     try {
       const subscriberRows = await this.db.select().from(subscribers);
       const deliveries = await Promise.all(
-        subscriberRows.map((subscriber) =>
-          createYouTubeDelivery(notification, subscriber),
-        ),
+        subscriberRows.map((subscriber) => createYouTubeDelivery(notification, subscriber)),
       );
 
       await enqueueDiscordMessages(this.env.DISCORD_MESSAGES, deliveries);
@@ -383,10 +352,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
   }
 
   private async readWebSubState(): Promise<WebSubState> {
-    const values = await this.ctx.storage.get<unknown>([
-      WEBSUB_SECRET_KEY,
-      WEBSUB_STATUS_KEY,
-    ]);
+    const values = await this.ctx.storage.get<unknown>([WEBSUB_SECRET_KEY, WEBSUB_STATUS_KEY]);
     return WebSubState.parse({
       secret: values.get(WEBSUB_SECRET_KEY),
       status: values.get(WEBSUB_STATUS_KEY),
@@ -401,9 +367,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
   }
 
   private async getSubscriberCount(): Promise<number> {
-    const [result] = await this.db
-      .select({ subscriberCount: count() })
-      .from(subscribers);
+    const [result] = await this.db.select({ subscriberCount: count() }).from(subscribers);
     return result?.subscriberCount ?? 0;
   }
 
@@ -423,9 +387,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
 function createSecret(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join(
-    '',
-  );
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function isPositiveSafeInteger(value: number | undefined): value is number {

@@ -6,8 +6,10 @@ uploaded to a specific channel.
 ## Development
 
 ```sh
-pnpm i
+pnpm install
+pnpm fmt
 pnpm check
+pnpm test
 ```
 
 Runtime configuration is declared in `wrangler.jsonc`. Secret values must be
@@ -16,8 +18,12 @@ configured through Cloudflare or a local `.dev.vars` file.
 ## Database migrations
 
 Each Durable Object has an independent Drizzle Kit configuration, schema, and
-migration history. Generate every pending migration with:
+migration history. Generate or check migrations explicitly for the relevant
+schema:
 
 ```sh
-pnpm db:generate
+pnpm db:generate:twitch-subscription
+pnpm db:generate:youtube-subscription
+pnpm db:check:twitch-subscription
+pnpm db:check:youtube-subscription
 ```

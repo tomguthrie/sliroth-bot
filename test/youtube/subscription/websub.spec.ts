@@ -1,23 +1,15 @@
-import { env } from 'cloudflare:workers';
 import { runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
+import { env } from 'cloudflare:workers';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  type MockInstance,
-  vi,
-} from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 
 import { subscribers } from '../../../src/db/youtube-subscription/schema';
-import { createYouTubeTopicUrl } from '../../../src/youtube/websub';
 import type { YouTubeSubscription } from '../../../src/youtube/subscription/durable-object';
 import {
   handleYouTubeWebSubIntent,
   handleYouTubeWebSubNotification,
 } from '../../../src/youtube/subscription/websub-handler';
+import { createYouTubeTopicUrl } from '../../../src/youtube/websub';
 
 const GUILD_ID = '123456789012345678';
 const CHANNEL_ID = '234567890123456789';
@@ -81,19 +73,13 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
 
     const beforeConfirmation = Date.now();
     await expect(
-      subscription.confirmWebSubIntent(
-        'subscribe',
-        createYouTubeTopicUrl(youtubeChannelId),
-        1000,
-      ),
+      subscription.confirmWebSubIntent('subscribe', createYouTubeTopicUrl(youtubeChannelId), 1000),
     ).resolves.toBe(true);
     const afterConfirmation = Date.now();
 
     const confirmed = await readWebSubState(subscription);
     expect(confirmed.status).toBe('subscribed');
-    expect(confirmed.alarm).toBeGreaterThanOrEqual(
-      beforeConfirmation + 800_000,
-    );
+    expect(confirmed.alarm).toBeGreaterThanOrEqual(beforeConfirmation + 800_000);
     expect(confirmed.alarm).toBeLessThanOrEqual(afterConfirmation + 800_000);
 
     await expect(runDurableObjectAlarm(subscription)).resolves.toBe(true);
@@ -125,10 +111,7 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
     expect((await readWebSubState(subscription)).status).toBe('unsubscribing');
 
     await expect(
-      subscription.confirmWebSubIntent(
-        'unsubscribe',
-        createYouTubeTopicUrl(youtubeChannelId),
-      ),
+      subscription.confirmWebSubIntent('unsubscribe', createYouTubeTopicUrl(youtubeChannelId)),
     ).resolves.toBe(true);
     await expect(readWebSubState(subscription)).resolves.toEqual({
       alarm: null,
@@ -142,9 +125,7 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
       hubRequests.push(await readHubRequest(input));
       return new Response(null, { status: 503 });
     });
-    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
-      randomYouTubeChannelId(),
-    );
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(randomYouTubeChannelId());
 
     await expect(
       runInDurableObject(subscription, (instance: YouTubeSubscription) =>
@@ -156,10 +137,8 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
       ),
     ).rejects.toThrow('YouTube WebSub hub returned HTTP 503');
 
-    const subscriberRows = await runInDurableObject(
-      subscription,
-      async (_instance, state) =>
-        drizzle(state.storage).select().from(subscribers),
+    const subscriberRows = await runInDurableObject(subscription, async (_instance, state) =>
+      drizzle(state.storage).select().from(subscribers),
     );
     expect(subscriberRows).toHaveLength(1);
     const state = await readWebSubState(subscription);
@@ -178,10 +157,7 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
     });
 
     await expect(
-      subscription.confirmWebSubIntent(
-        'unsubscribe',
-        createYouTubeTopicUrl(youtubeChannelId),
-      ),
+      subscription.confirmWebSubIntent('unsubscribe', createYouTubeTopicUrl(youtubeChannelId)),
     ).resolves.toBe(false);
     await expect(
       subscription.confirmWebSubIntent(
@@ -204,10 +180,7 @@ describe('YouTubeSubscription WebSub lifecycle', () => {
     });
 
     await expect(
-      subscription.denyWebSubIntent(
-        createYouTubeTopicUrl(youtubeChannelId),
-        'Topic unavailable',
-      ),
+      subscription.denyWebSubIntent(createYouTubeTopicUrl(youtubeChannelId), 'Topic unavailable'),
     ).resolves.toBe(true);
     await expect(readWebSubState(subscription)).resolves.toEqual({
       alarm: null,
@@ -238,13 +211,9 @@ describe('YouTube WebSub webhook', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('content-type')).toBe(
-      'application/octet-stream',
-    );
+    expect(response.headers.get('content-type')).toBe('application/octet-stream');
     expect(response.headers.get('x-content-type-options')).toBe('nosniff');
-    expect(new TextDecoder().decode(await response.arrayBuffer())).toBe(
-      'challenge-123',
-    );
+    expect(new TextDecoder().decode(await response.arrayBuffer())).toBe('challenge-123');
   });
 
   it('accepts a matching denial and clears pending state', async () => {
@@ -296,9 +265,7 @@ describe('YouTube WebSub webhook', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(new TextDecoder().decode(await response.arrayBuffer())).toBe(
-      'unsubscribe-challenge',
-    );
+    expect(new TextDecoder().decode(await response.arrayBuffer())).toBe('unsubscribe-challenge');
     await expect(readWebSubState(subscription)).resolves.toEqual({
       alarm: null,
       secret: undefined,
@@ -330,10 +297,7 @@ describe('YouTube WebSub webhook', () => {
       '?hub.mode=subscribe&hub.topic=topic&hub.challenge=challenge&hub.lease_seconds=0',
     ],
   ])('rejects an intent with %s', async (_case, channelId, suffix) => {
-    const response = await handleYouTubeWebSubIntent(
-      webSubRequest(channelId, suffix),
-      env,
-    );
+    const response = await handleYouTubeWebSubIntent(webSubRequest(channelId, suffix), env);
 
     expect(response.status).toBe(channelId === 'not-a-channel' ? 404 : 400);
   });
@@ -347,27 +311,20 @@ describe('YouTube WebSub webhook', () => {
       channelTitle: CHANNEL_TITLE,
     });
     const queuedDeliveries: unknown[] = [];
-    const secret = await runInDurableObject(
-      subscription,
-      async (instance, state) => {
-        Object.defineProperty(instance, 'env', {
-          configurable: true,
-          value: {
-            SUBSCRIPTION_EVENTS: {
-              sendBatch(
-                messages: Iterable<MessageSendRequest<unknown>>,
-              ): Promise<void> {
-                queuedDeliveries.push(
-                  ...Array.from(messages, ({ body }) => body),
-                );
-                return Promise.resolve();
-              },
+    const secret = await runInDurableObject(subscription, async (instance, state) => {
+      Object.defineProperty(instance, 'env', {
+        configurable: true,
+        value: {
+          SUBSCRIPTION_EVENTS: {
+            sendBatch(messages: Iterable<MessageSendRequest<unknown>>): Promise<void> {
+              queuedDeliveries.push(...Array.from(messages, ({ body }) => body));
+              return Promise.resolve();
             },
           },
-        });
-        return state.storage.get<string>(WEBSUB_SECRET_KEY);
-      },
-    );
+        },
+      });
+      return state.storage.get<string>(WEBSUB_SECRET_KEY);
+    });
     if (secret === undefined) throw new Error('Missing WebSub secret');
 
     const body = createNotification(youtubeChannelId);
@@ -421,10 +378,7 @@ function randomYouTubeChannelId(): string {
 }
 
 function webSubRequest(channelId: string, suffix: string, init?: RequestInit) {
-  const request = new Request(
-    `https://example.com/youtube/websub/${channelId}${suffix}`,
-    init,
-  );
+  const request = new Request(`https://example.com/youtube/websub/${channelId}${suffix}`, init);
   return Object.assign(request, {
     route: '/youtube/websub/:channelId',
     params: { channelId },
@@ -454,20 +408,14 @@ async function createSignature(body: string, secret: string): Promise<string> {
     false,
     ['sign'],
   );
-  const signature = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    new TextEncoder().encode(body),
-  );
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body));
   const hex = Array.from(new Uint8Array(signature), (byte) =>
     byte.toString(16).padStart(2, '0'),
   ).join('');
   return `sha1=${hex}`;
 }
 
-async function readHubRequest(
-  input: RequestInfo | URL,
-): Promise<Record<string, string>> {
+async function readHubRequest(input: RequestInfo | URL): Promise<Record<string, string>> {
   if (!(input instanceof Request)) {
     throw new Error('YouTubeSubscription did not send a Request to the hub');
   }
@@ -482,18 +430,13 @@ async function readHubRequest(
   );
 }
 
-function readWebSubState(
-  subscription: DurableObjectStub<YouTubeSubscription>,
-): Promise<{
+function readWebSubState(subscription: DurableObjectStub<YouTubeSubscription>): Promise<{
   secret: string | undefined;
   status: string | undefined;
   alarm: number | null;
 }> {
   return runInDurableObject(subscription, async (_instance, state) => {
-    const values = await state.storage.get<string>([
-      WEBSUB_SECRET_KEY,
-      WEBSUB_STATUS_KEY,
-    ]);
+    const values = await state.storage.get<string>([WEBSUB_SECRET_KEY, WEBSUB_STATUS_KEY]);
     return {
       secret: values.get(WEBSUB_SECRET_KEY),
       status: values.get(WEBSUB_STATUS_KEY),

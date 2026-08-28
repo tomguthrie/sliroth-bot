@@ -6,10 +6,7 @@ import type { WebSubMode } from '../websub';
 const MAX_WEBSUB_CHALLENGE_LENGTH = 2048;
 
 /** Confirms or rejects a YouTube WebSub subscription intent. */
-export async function handleYouTubeWebSubIntent(
-  request: IRequest,
-  env: Env,
-): Promise<Response> {
+export async function handleYouTubeWebSubIntent(request: IRequest, env: Env): Promise<Response> {
   const channelId = request.params.channelId;
   if (channelId === undefined || !isYouTubeChannelId(channelId)) {
     return new Response('Not Found', { status: 404 });
@@ -51,11 +48,7 @@ export async function handleYouTubeWebSubIntent(
     return new Response('Bad Request', { status: 400 });
   }
 
-  const accepted = await subscription.confirmWebSubIntent(
-    mode,
-    topic,
-    leaseSeconds,
-  );
+  const accepted = await subscription.confirmWebSubIntent(mode, topic, leaseSeconds);
   if (!accepted) {
     return new Response('Not Found', { status: 404 });
   }
@@ -78,9 +71,7 @@ export async function handleYouTubeWebSubNotification(
     return new Response('Not Found', { status: 404 });
   }
 
-  const accepted = await env.YOUTUBE_SUBSCRIPTIONS.getByName(
-    channelId,
-  ).receiveWebSubNotification(
+  const accepted = await env.YOUTUBE_SUBSCRIPTIONS.getByName(channelId).receiveWebSubNotification(
     await request.arrayBuffer(),
     request.headers.get('x-hub-signature'),
   );

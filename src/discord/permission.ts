@@ -1,10 +1,7 @@
 import { ChannelTypes } from 'discord-interactions';
 
 import type { DiscordInteraction } from './interaction';
-import {
-  createEphemeralResponse,
-  unsupportedInteractionResponse,
-} from './interaction';
+import { createEphemeralResponse, unsupportedInteractionResponse } from './interaction';
 import type { DiscordMentionTarget } from './message';
 
 const ADMINISTRATOR_PERMISSION = 1n << 3n;
@@ -28,19 +25,10 @@ export function getCommandContext(
   const guildId = interaction.guild_id;
   const channelId = interaction.channel_id;
   if (guildId === undefined || channelId === undefined) {
-    return createEphemeralResponse(
-      'This command can only be used in a server.',
-    );
+    return createEphemeralResponse('This command can only be used in a server.');
   }
-  if (
-    !hasDiscordPermission(
-      interaction.member?.permissions,
-      MANAGE_GUILD_PERMISSION,
-    )
-  ) {
-    return createEphemeralResponse(
-      'You need the Manage Server permission to use this command.',
-    );
+  if (!hasDiscordPermission(interaction.member?.permissions, MANAGE_GUILD_PERMISSION)) {
+    return createEphemeralResponse('You need the Manage Server permission to use this command.');
   }
 
   const applicationId = interaction.application_id;
@@ -51,9 +39,7 @@ export function getCommandContext(
   return { applicationId, token, guildId, channelId };
 }
 
-export function isNotificationChannel(
-  interaction: DiscordInteraction,
-): boolean {
+export function isNotificationChannel(interaction: DiscordInteraction): boolean {
   return (
     interaction.channel?.type === ChannelTypes.GUILD_TEXT ||
     interaction.channel?.type === ChannelTypes.GUILD_ANNOUNCEMENT
@@ -67,16 +53,10 @@ export function canPostInChannel(permissions: string | undefined): boolean {
   );
 }
 
-export function hasDiscordPermission(
-  value: string | undefined,
-  permission: bigint,
-): boolean {
+export function hasDiscordPermission(value: string | undefined, permission: bigint): boolean {
   if (value === undefined) return false;
   const permissions = BigInt(value);
-  return (
-    (permissions & permission) !== 0n ||
-    (permissions & ADMINISTRATOR_PERMISSION) !== 0n
-  );
+  return (permissions & permission) !== 0n || (permissions & ADMINISTRATOR_PERMISSION) !== 0n;
 }
 
 /** Resolves the mention selected by a notification add command. */
@@ -86,19 +66,13 @@ export function resolveNotificationPing(
   guildId: string,
 ): { ping?: DiscordMentionTarget } | { error: string } {
   if (options.ping !== undefined) {
-    return hasDiscordPermission(
-      interaction.app_permissions,
-      MENTION_EVERYONE_PERMISSION,
-    )
+    return hasDiscordPermission(interaction.app_permissions, MENTION_EVERYONE_PERMISSION)
       ? { ping: options.ping }
       : { error: 'I need Mention Everyone permission to use that ping.' };
   }
   if (options.roleId === undefined) return {};
   if (options.roleId === guildId) {
-    return hasDiscordPermission(
-      interaction.app_permissions,
-      MENTION_EVERYONE_PERMISSION,
-    )
+    return hasDiscordPermission(interaction.app_permissions, MENTION_EVERYONE_PERMISSION)
       ? { ping: 'everyone' }
       : { error: 'I need Mention Everyone permission to mention @everyone.' };
   }
@@ -109,10 +83,7 @@ export function resolveNotificationPing(
   }
   if (
     role.mentionable !== true &&
-    !hasDiscordPermission(
-      interaction.app_permissions,
-      MENTION_EVERYONE_PERMISSION,
-    )
+    !hasDiscordPermission(interaction.app_permissions, MENTION_EVERYONE_PERMISSION)
   ) {
     return {
       error: 'I need Mention Everyone permission to mention that role.',

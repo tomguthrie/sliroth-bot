@@ -22,10 +22,7 @@ export const twitchStreamMessageReceiptHandler = {
     receipt: DiscordMessageReceipt,
     env: Env,
   ): Promise<void> {
-    const { broadcasterId, streamId } =
-      TwitchStreamMessageReceiptTarget.parse(target);
-    await env.TWITCH_SUBSCRIPTIONS.getByName(
-      broadcasterId,
-    ).recordDiscordMessage(streamId, receipt);
+    const { broadcasterId, streamId } = TwitchStreamMessageReceiptTarget.parse(target);
+    await env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId).recordDiscordMessage(streamId, receipt);
   },
 } satisfies DiscordMessageReceiptHandler;

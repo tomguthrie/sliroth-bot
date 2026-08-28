@@ -35,13 +35,11 @@ describe('Twitch stream message receipts', () => {
       env,
     );
 
-    const [stored] = await runInDurableObject(
-      subscription,
-      async (_instance, state) =>
-        drizzle(state.storage)
-          .select()
-          .from(streamMessages)
-          .where(eq(streamMessages.streamId, streamId)),
+    const [stored] = await runInDurableObject(subscription, async (_instance, state) =>
+      drizzle(state.storage)
+        .select()
+        .from(streamMessages)
+        .where(eq(streamMessages.streamId, streamId)),
     );
     expect(stored?.messageId).toBe(MESSAGE_ID);
   });
