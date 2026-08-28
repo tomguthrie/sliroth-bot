@@ -2,8 +2,8 @@ import { env } from 'cloudflare:workers';
 import { runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 
-describe('TwitchSubscription analytics schema', () => {
-  it('keeps broadcaster-local analytics state free of channel IDs', async () => {
+describe('TwitchSubscription schema', () => {
+  it('removes local analytics state while preserving EventSub metadata', async () => {
     const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(
       crypto.randomUUID(),
     );
@@ -27,12 +27,10 @@ describe('TwitchSubscription analytics schema', () => {
       },
     );
 
-    expect(schema.authorization).not.toContain('channel_id');
-    expect(schema.runtime).not.toContain('channel_id');
-    expect(schema.oauthStates).not.toContain('channel_id');
-    expect(schema.finalizers).not.toContain('channel_id');
-    expect(schema.authorization).toContain('singleton');
-    expect(schema.runtime).toContain('singleton');
+    expect(schema.authorization).toEqual([]);
+    expect(schema.runtime).toEqual([]);
+    expect(schema.oauthStates).toEqual([]);
+    expect(schema.finalizers).toEqual([]);
     expect(schema.eventSub).toEqual([
       'subscription_key',
       'type',

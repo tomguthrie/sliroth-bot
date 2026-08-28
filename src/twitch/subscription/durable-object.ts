@@ -7,7 +7,6 @@ import * as z from 'zod';
 
 import migrations from '../../db/twitch-subscription/migrations/migrations.js';
 import {
-  analyticsRuntime,
   broadcasters,
   eventSubSubscriptions,
   processedEventSubMessages,
@@ -19,7 +18,6 @@ import type { DiscordMessageReceipt } from '../../discord/client';
 import { DiscordMentionTarget } from '../../discord/message';
 import { DiscordSnowflake } from '../../discord/snowflake';
 import { enqueueDiscordMessages } from '../../discord/queue';
-import { TwitchAnalyticsService } from '../analytics/service';
 import {
   type TwitchEventSubDelivery,
   type TwitchVodLookupDelivery,
@@ -31,7 +29,6 @@ import {
 } from '../client';
 import {
   TWITCH_EVENTSUB_SUBSCRIPTIONS,
-  TWITCH_EVENT_STREAM_ONLINE,
   type ChannelUpdateEvent,
   type EventSubNotification,
   type EventSubSubscriptionDefinition,
@@ -86,7 +83,6 @@ type TwitchEventSubSubscription = NonNullable<
 /** Coordinates subscribers and EventSub state for one Twitch broadcaster. */
 export class TwitchSubscription extends DurableObject<Env> {
   private readonly db: DrizzleSqliteDODatabase;
-  private readonly analytics: TwitchAnalyticsService;
   private reconciliation: Promise<void> | undefined;
   private readonly eventSubProcessing = new Map<string, Promise<void>>();
 
@@ -94,17 +90,11 @@ export class TwitchSubscription extends DurableObject<Env> {
     super(ctx, env);
 
     this.db = drizzle(this.ctx.storage);
-    this.analytics = new TwitchAnalyticsService(this.ctx, env, this.db);
 
     void ctx.blockConcurrencyWhile(() => {
       migrate(this.db, migrations);
       return Promise.resolve();
     });
-  }
-
-  /** Cancels analytics sampling while retirement awaits the next stream. */
-  alarm(): Promise<void> {
-    return this.analytics.alarm();
   }
 
   /** Adds or updates a subscriber, then reconciles Twitch EventSub state. */
@@ -468,26 +458,14 @@ export class TwitchSubscription extends DurableObject<Env> {
     if (subscriberCount === undefined) {
       throw new Error('Failed to count Twitch subscribers');
     }
-    const [analytics] = await this.db
-      .select({ status: analyticsRuntime.status })
-      .from(analyticsRuntime)
-      .limit(1);
-    const analyticsConfigured =
-      broadcaster.id === this.env.TWITCH_ANALYTICS_CHANNEL_ID &&
-      analytics !== undefined &&
-      analytics.status !== 'inactive';
     const desiredSubscriptions: readonly EventSubSubscriptionDefinition[] =
-      subscriberCount.value === 0 && !analyticsConfigured
-        ? []
-        : TWITCH_EVENTSUB_SUBSCRIPTIONS;
+      subscriberCount.value === 0 ? [] : TWITCH_EVENTSUB_SUBSCRIPTIONS;
     const client = new TwitchApiClient(this.env);
     const callback = new URL(
       `/twitch/eventsub/${broadcaster.id}`,
       this.env.PUBLIC_BASE_URL,
     ).toString();
-    const rows = (await this.db.select().from(eventSubSubscriptions)).filter(
-      (row) => !row.subscriptionKey.startsWith('analytics:'),
-    );
+    const rows = await this.db.select().from(eventSubSubscriptions);
 
     for (const row of rows) {
       if (
@@ -556,11 +534,6 @@ export class TwitchSubscription extends DurableObject<Env> {
   private async processEventSubMessageNow(
     delivery: TwitchEventSubDelivery,
   ): Promise<void> {
-    const analyticsRetirementTrigger =
-      delivery.message.messageType === 'notification' &&
-      delivery.message.eventType === TWITCH_EVENT_STREAM_ONLINE &&
-      delivery.message.subscription.broadcasterId ===
-        this.env.TWITCH_ANALYTICS_CHANNEL_ID;
     const [processed] = await this.db
       .select({ messageId: processedEventSubMessages.messageId })
       .from(processedEventSubMessages)
@@ -572,24 +545,17 @@ export class TwitchSubscription extends DurableObject<Env> {
       if (message.messageType === 'revocation') {
         await this.revokeEventSub(message.subscription.id);
       } else {
-        if (
-          message.subscription.broadcasterId !==
-            this.env.TWITCH_ANALYTICS_CHANNEL_ID ||
-          (await this.getBroadcaster()) !== undefined
-        ) {
-          switch (message.eventType) {
-            case 'channel.update':
-              await this.channelUpdate(message.event);
-              break;
-            case 'stream.online':
-              await this.streamOnline(message.event);
-              break;
-            case 'stream.offline':
-              await this.streamOffline(message.event, delivery.timestamp);
-              break;
-          }
+        switch (message.eventType) {
+          case 'channel.update':
+            await this.channelUpdate(message.event);
+            break;
+          case 'stream.online':
+            await this.streamOnline(message.event);
+            break;
+          case 'stream.offline':
+            await this.streamOffline(message.event, delivery.timestamp);
+            break;
         }
-        await this.analytics.processEventSub(delivery);
       }
 
       const processedAt = new Date();
@@ -607,10 +573,7 @@ export class TwitchSubscription extends DurableObject<Env> {
         );
     }
 
-    if (
-      delivery.message.messageType === 'notification' &&
-      !analyticsRetirementTrigger
-    ) {
+    if (delivery.message.messageType === 'notification') {
       await this.recordIncomingEventSubSubscription(delivery.message);
       await this.repairMissingEventSubSubscriptions();
       await this.auditEventSubSubscriptionsIfDue();
