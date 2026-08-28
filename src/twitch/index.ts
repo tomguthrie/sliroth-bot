@@ -2,10 +2,6 @@ export { TwitchApiClient, isTwitchApiErrorStatus } from './client';
 export { isTwitchBroadcasterId, resolveTwitchChannel } from './channel';
 export { twitchDiscordCommand } from './discord-command';
 export {
-  handleTwitchAnalyticsCallback,
-  handleTwitchAnalyticsSetup,
-} from './analytics';
-export {
   getEventSubMessageType,
   parseEventSubMessage,
   TWITCH_EVENTSUB_SUBSCRIPTIONS,
