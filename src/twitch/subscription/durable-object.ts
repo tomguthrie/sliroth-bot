@@ -31,6 +31,7 @@ import {
 } from '../client';
 import {
   TWITCH_EVENTSUB_SUBSCRIPTIONS,
+  TWITCH_EVENT_STREAM_ONLINE,
   type ChannelUpdateEvent,
   type EventSubNotification,
   type EventSubSubscriptionDefinition,
@@ -101,21 +102,7 @@ export class TwitchSubscription extends DurableObject<Env> {
     });
   }
 
-  /** Creates a one-time Twitch authorization URL for analytics setup. */
-  beginAnalyticsAuthorization(redirectUri: string): Promise<string> {
-    return this.analytics.beginAuthorization(redirectUri);
-  }
-
-  /** Exchanges a Twitch authorization response and starts analytics capture. */
-  completeAnalyticsAuthorization(
-    code: string,
-    state: string,
-    redirectUri: string,
-  ): Promise<{ readonly login: string }> {
-    return this.analytics.completeAuthorization(code, state, redirectUri);
-  }
-
-  /** Runs the next analytics sampling and maintenance tasks. */
+  /** Cancels analytics sampling while retirement awaits the next stream. */
   alarm(): Promise<void> {
     return this.analytics.alarm();
   }
@@ -569,6 +556,11 @@ export class TwitchSubscription extends DurableObject<Env> {
   private async processEventSubMessageNow(
     delivery: TwitchEventSubDelivery,
   ): Promise<void> {
+    const analyticsRetirementTrigger =
+      delivery.message.messageType === 'notification' &&
+      delivery.message.eventType === TWITCH_EVENT_STREAM_ONLINE &&
+      delivery.message.subscription.broadcasterId ===
+        this.env.TWITCH_ANALYTICS_CHANNEL_ID;
     const [processed] = await this.db
       .select({ messageId: processedEventSubMessages.messageId })
       .from(processedEventSubMessages)
@@ -579,7 +571,6 @@ export class TwitchSubscription extends DurableObject<Env> {
       const { message } = delivery;
       if (message.messageType === 'revocation') {
         await this.revokeEventSub(message.subscription.id);
-        await this.analytics.eventSubRevoked();
       } else {
         if (
           message.subscription.broadcasterId !==
@@ -616,7 +607,10 @@ export class TwitchSubscription extends DurableObject<Env> {
         );
     }
 
-    if (delivery.message.messageType === 'notification') {
+    if (
+      delivery.message.messageType === 'notification' &&
+      !analyticsRetirementTrigger
+    ) {
       await this.recordIncomingEventSubSubscription(delivery.message);
       await this.repairMissingEventSubSubscriptions();
       await this.auditEventSubSubscriptionsIfDue();
