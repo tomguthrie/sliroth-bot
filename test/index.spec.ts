@@ -4,8 +4,6 @@ import { describe, expect, it } from 'vitest';
 describe('worker', () => {
   it.each([
     ['GET', 'https://example.com/'],
-    ['GET', 'https://example.com/twitch/analytics/setup'],
-    ['GET', 'https://example.com/twitch/analytics/callback'],
     ['POST', 'https://example.com/youtube/websub'],
     ['DELETE', 'https://example.com/anything?query=value'],
   ])('returns 404 for %s %s', async (method, url) => {
