@@ -76,7 +76,6 @@ function createTwitchLiveMessage(
   const content = [
     mention.content,
     subscriber.message ?? `${broadcaster.displayName} ${DEFAULT_LIVE_MESSAGE}`,
-    channelUrl,
   ]
     .filter((part) => part !== undefined)
     .join(' ');

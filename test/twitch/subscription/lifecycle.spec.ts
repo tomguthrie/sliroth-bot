@@ -89,7 +89,7 @@ describe('Twitch stream lifecycle', () => {
           streamId: '9001',
         },
         message: {
-          content: '@here Sliroth is live now! https://twitch.tv/sliroth',
+          content: '@here Sliroth is live now!',
           allowedMentions: { everyone: true },
           embeds: [
             {
@@ -136,7 +136,7 @@ describe('Twitch stream lifecycle', () => {
         channelId: CHANNEL_ID,
         messageId: MESSAGE_ID,
         message: {
-          content: '@here Sliroth is live now! https://twitch.tv/sliroth',
+          content: '@here Sliroth is live now!',
           allowedMentions: { everyone: true },
           embeds: [
             {
