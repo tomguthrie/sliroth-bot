@@ -32,11 +32,13 @@ describe('Twitch stream lifecycle', () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(1780680480000);
     const batches: DiscordMessageDelivery[][] = [];
     const subscriptionEvents: unknown[] = [];
-    const sendSubscriptionEvent = vi.fn((body: unknown) => {
+    const sendSubscriptionEvent = vi.fn<(body: unknown) => Promise<QueueSendResponse>>((body) => {
       subscriptionEvents.push(body);
       return Promise.resolve(queueSendResponse());
     });
-    const sendBatch = vi.fn((messages: Iterable<MessageSendRequest<DiscordMessageDelivery>>) => {
+    const sendBatch = vi.fn<
+      (messages: Iterable<MessageSendRequest<DiscordMessageDelivery>>) => Promise<void>
+    >((messages) => {
       batches.push(Array.from(messages, ({ body }) => body));
       return Promise.resolve();
     });

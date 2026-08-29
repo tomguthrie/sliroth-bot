@@ -6,8 +6,8 @@ import { getAccessToken, refreshAccessToken } from '../../src/twitch/auth';
 import { TwitchApiClient } from '../../src/twitch/client';
 
 vi.mock('../../src/twitch/auth', () => ({
-  getAccessToken: vi.fn(),
-  refreshAccessToken: vi.fn(),
+  getAccessToken: vi.fn<typeof getAccessToken>(),
+  refreshAccessToken: vi.fn<typeof refreshAccessToken>(),
 }));
 
 const BROADCASTER_ID = '123';
@@ -42,8 +42,12 @@ const GAME = {
 };
 
 function requestUrl(input: RequestInfo | URL | undefined): string | undefined {
-  if (input instanceof Request) return input.url;
-  if (input instanceof URL) return input.toString();
+  if (input instanceof Request) {
+    return input.url;
+  }
+  if (input instanceof URL) {
+    return input.toString();
+  }
   return input;
 }
 
@@ -522,6 +526,6 @@ describe('TwitchApiClient EventSub methods', () => {
           secret: 'secret',
         },
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow('Twitch did not return an EventSub subscription');
   });
 });

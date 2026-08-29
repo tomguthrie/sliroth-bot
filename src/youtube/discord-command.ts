@@ -134,10 +134,14 @@ async function handleYouTubeCommand(
   ctx: ExecutionContext,
 ): Promise<Response> {
   const parsed = YouTubeCommand.safeParse(interaction.data);
-  if (!parsed.success) return unsupportedInteractionResponse();
+  if (!parsed.success) {
+    return unsupportedInteractionResponse();
+  }
 
   const context = getCommandContext(interaction);
-  if (context instanceof Response) return context;
+  if (context instanceof Response) {
+    return context;
+  }
   const command = parsed.data;
 
   switch (command.name) {
@@ -147,7 +151,9 @@ async function handleYouTubeCommand(
         return createEphemeralResponse(permissionError);
       }
       const ping = resolveNotificationPing(command.options, interaction, context.guildId);
-      if ('error' in ping) return createEphemeralResponse(ping.error);
+      if ('error' in ping) {
+        return createEphemeralResponse(ping.error);
+      }
 
       ctx.waitUntil(completeYouTubeAdd(env, context, command.options, ping.ping));
       return createDeferredResponse();

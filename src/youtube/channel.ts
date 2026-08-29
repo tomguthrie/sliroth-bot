@@ -39,7 +39,9 @@ export function isYouTubeChannelHandle(input: string): boolean {
 /** Extracts a channel ID from a bare ID or supported YouTube channel URL. */
 export function parseYouTubeChannelId(input: string): string | undefined {
   const value = input.trim();
-  if (isYouTubeChannelId(value)) return value;
+  if (isYouTubeChannelId(value)) {
+    return value;
+  }
 
   const pathname = parseYouTubeUrlPathname(value);
   const channelId =
@@ -52,7 +54,9 @@ export function parseYouTubeChannelId(input: string): string | undefined {
 export function parseYouTubeChannelHandle(input: string): string | undefined {
   const value = input.trim();
   const bareHandle = value.startsWith('@') ? value.slice(1) : value;
-  if (isYouTubeChannelHandle(bareHandle)) return bareHandle;
+  if (isYouTubeChannelHandle(bareHandle)) {
+    return bareHandle;
+  }
 
   const pathname = parseYouTubeUrlPathname(value);
   const handle = pathname === undefined ? undefined : /^\/@([^/]+)(?:\/|$)/.exec(pathname)?.[1];
@@ -85,7 +89,9 @@ export async function resolveYouTubeChannel(input: string): Promise<YouTubeChann
   const channelId = parseYouTubeChannelId(input);
   const handle = channelId === undefined ? parseYouTubeChannelHandle(input) : undefined;
   const id = channelId ?? (handle === undefined ? undefined : await resolveYouTubeHandle(handle));
-  if (id === undefined) return undefined;
+  if (id === undefined) {
+    return undefined;
+  }
 
   return { id, title: await fetchYouTubeChannelTitle(id) };
 }

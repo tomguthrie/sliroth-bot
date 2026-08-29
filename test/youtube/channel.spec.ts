@@ -152,7 +152,11 @@ describe('YouTube channel metadata', () => {
 });
 
 function requestUrl(input: RequestInfo | URL | undefined): string | undefined {
-  if (input instanceof Request) return input.url;
-  if (input instanceof URL) return input.toString();
+  if (input instanceof Request) {
+    return input.url;
+  }
+  if (input instanceof URL) {
+    return input.toString();
+  }
   return input;
 }

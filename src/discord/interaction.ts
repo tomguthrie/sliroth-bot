@@ -143,10 +143,14 @@ export async function editInteractionResponse(
     },
   );
   if (!response.ok) {
-    if (response.body !== null) await response.body.cancel();
+    if (response.body !== null) {
+      await response.body.cancel();
+    }
     throw new Error(`Discord interaction response returned HTTP ${response.status}`);
   }
-  if (response.body !== null) await response.body.cancel();
+  if (response.body !== null) {
+    await response.body.cancel();
+  }
 }
 
 export function logCommandFailure(

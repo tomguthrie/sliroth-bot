@@ -325,7 +325,9 @@ describe('YouTube WebSub webhook', () => {
       });
       return state.storage.get<string>(WEBSUB_SECRET_KEY);
     });
-    if (secret === undefined) throw new Error('Missing WebSub secret');
+    if (secret === undefined) {
+      throw new Error('Missing WebSub secret');
+    }
 
     const body = createNotification(youtubeChannelId);
     const response = await handleYouTubeWebSubNotification(

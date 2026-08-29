@@ -3,12 +3,21 @@ import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DiscordInteraction } from '../../src/discord/interaction';
+import type { resolveYouTubeChannel } from '../../src/youtube/channel';
 import { youtubeDiscordCommand } from '../../src/youtube/discord-command';
+import type {
+  listChannelYouTubeSubscriptions,
+  listGuildYouTubeSubscriptions,
+} from '../../src/youtube/subscription/index';
+
+type ResolveYouTubeChannel = typeof resolveYouTubeChannel;
+type ListChannelYouTubeSubscriptions = typeof listChannelYouTubeSubscriptions;
+type ListGuildYouTubeSubscriptions = typeof listGuildYouTubeSubscriptions;
 
 const mocks = vi.hoisted(() => ({
-  resolveYouTubeChannel: vi.fn(),
-  listChannelYouTubeSubscriptions: vi.fn(),
-  listGuildYouTubeSubscriptions: vi.fn(),
+  resolveYouTubeChannel: vi.fn<ResolveYouTubeChannel>(),
+  listChannelYouTubeSubscriptions: vi.fn<ListChannelYouTubeSubscriptions>(),
+  listGuildYouTubeSubscriptions: vi.fn<ListGuildYouTubeSubscriptions>(),
 }));
 
 vi.mock('../../src/youtube/channel', () => ({

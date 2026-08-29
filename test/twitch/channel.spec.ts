@@ -7,10 +7,11 @@ import {
   parseTwitchChannelLogin,
   resolveTwitchChannel,
 } from '../../src/twitch/channel';
+import type { TwitchApiClient } from '../../src/twitch/client';
 
 const { getUserById, getUserByLogin } = vi.hoisted(() => ({
-  getUserById: vi.fn(),
-  getUserByLogin: vi.fn(),
+  getUserById: vi.fn<TwitchApiClient['getUserById']>(),
+  getUserByLogin: vi.fn<TwitchApiClient['getUserByLogin']>(),
 }));
 
 vi.mock('../../src/twitch/client', () => ({
@@ -94,6 +95,9 @@ describe('resolveTwitchChannel', () => {
     const user = {
       id: '123',
       login: 'sliroth',
+      displayName: 'Sliroth',
+      profileImageUrl: 'https://example.com/profile.png',
+      offlineImageUrl: 'https://example.com/offline.png',
     };
 
     getUserById.mockResolvedValue(user);
@@ -108,6 +112,9 @@ describe('resolveTwitchChannel', () => {
     const user = {
       id: '123',
       login: 'sliroth',
+      displayName: 'Sliroth',
+      profileImageUrl: 'https://example.com/profile.png',
+      offlineImageUrl: 'https://example.com/offline.png',
     };
 
     getUserByLogin.mockResolvedValue(user);
@@ -122,6 +129,9 @@ describe('resolveTwitchChannel', () => {
     const user = {
       id: '123',
       login: 'sliroth',
+      displayName: 'Sliroth',
+      profileImageUrl: 'https://example.com/profile.png',
+      offlineImageUrl: 'https://example.com/offline.png',
     };
 
     getUserByLogin.mockResolvedValue(user);

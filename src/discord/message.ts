@@ -90,7 +90,9 @@ export function createNotificationList(
     .sort((left, right) => {
       const leftCurrent = left.channelId === currentChannelId;
       const rightCurrent = right.channelId === currentChannelId;
-      if (leftCurrent !== rightCurrent) return leftCurrent ? -1 : 1;
+      if (leftCurrent !== rightCurrent) {
+        return leftCurrent ? -1 : 1;
+      }
       return (
         left.name.localeCompare(right.name, 'en', { sensitivity: 'base' }) ||
         left.channelId.localeCompare(right.channelId) ||
@@ -120,8 +122,12 @@ export function createNotificationList(
 }
 
 export function describeDiscordMention(ping: DiscordMentionTarget | undefined): string {
-  if (ping === undefined) return '';
-  if (ping === 'everyone' || ping === 'here') return ` and mention @${ping}`;
+  if (ping === undefined) {
+    return '';
+  }
+  if (ping === 'everyone' || ping === 'here') {
+    return ` and mention @${ping}`;
+  }
   return ` and mention <@&${ping}>`;
 }
 

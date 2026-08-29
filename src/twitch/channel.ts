@@ -1,4 +1,4 @@
-import { TwitchApiClient, TwitchUser } from './client';
+import { TwitchApiClient, type TwitchUser } from './client';
 
 /** Returns whether the input is a numeric Twitch broadcaster ID. */
 export function isTwitchBroadcasterId(input: string): boolean {

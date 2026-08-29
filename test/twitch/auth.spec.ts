@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockInstance } from 'vitest';
+import * as z from 'zod';
 
 import { getAccessToken, refreshAccessToken } from '../../src/twitch/auth';
 
@@ -9,8 +10,12 @@ const ACCESS_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
 let tokenRequestLogger: MockInstance;
 
 function requestUrl(input: RequestInfo | URL | undefined): string | undefined {
-  if (input instanceof Request) return input.url;
-  if (input instanceof URL) return input.toString();
+  if (input instanceof Request) {
+    return input.url;
+  }
+  if (input instanceof URL) {
+    return input.toString();
+  }
   return input;
 }
 
@@ -99,14 +104,14 @@ describe('getAccessToken', () => {
   it('rejects invalid JSON without caching a value', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{not-json', { status: 200 }));
 
-    await expect(getAccessToken(env)).rejects.toThrow();
+    await expect(getAccessToken(env)).rejects.toThrow(SyntaxError);
     await expect(env.TOKEN_STORE.get(ACCESS_TOKEN_KEY)).resolves.toBeNull();
   });
 
   it('rejects a malformed token response without caching a value', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ access_token: 'new-token' }));
 
-    await expect(getAccessToken(env)).rejects.toThrow();
+    await expect(getAccessToken(env)).rejects.toThrow(z.ZodError);
     await expect(env.TOKEN_STORE.get(ACCESS_TOKEN_KEY)).resolves.toBeNull();
   });
 });

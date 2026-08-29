@@ -55,7 +55,9 @@ export async function enqueueDiscordMessages(
   queue: DiscordMessageQueue,
   deliveries: readonly DiscordMessageDelivery[],
 ): Promise<void> {
-  if (deliveries.length === 0) return;
+  if (deliveries.length === 0) {
+    return;
+  }
   await queue.sendBatch(deliveries.map((body) => ({ body })));
 }
 

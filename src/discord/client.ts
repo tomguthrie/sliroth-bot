@@ -191,7 +191,9 @@ async function executeDiscordMessageRequest(request: Request): Promise<DiscordMe
 }
 
 function parseRetryAfter(value: string | null): number | undefined {
-  if (value === null) return undefined;
+  if (value === null) {
+    return undefined;
+  }
   const seconds = Number.parseFloat(value);
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined;
 }

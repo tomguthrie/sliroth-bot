@@ -6,8 +6,14 @@ import {
   createDiscordMessageProcessor,
   enqueueDiscordMessages,
   type DiscordCreateMessageDelivery,
+  type DiscordMessageDelivery,
+  type DiscordMessageReceiptHandler,
 } from '../../src/discord/queue';
 import type { QueueMessageContext } from '../../src/queue/message';
+
+type SendBatch = (
+  messages: Iterable<MessageSendRequest<DiscordMessageDelivery>>,
+) => Promise<unknown>;
 
 const GUILD_ID = '123456789012345678';
 const CHANNEL_ID = '234567890123456789';
@@ -24,7 +30,7 @@ afterEach(() => {
 
 describe('Discord Queue producer', () => {
   it('does not send an empty batch', async () => {
-    const sendBatch = vi.fn();
+    const sendBatch = vi.fn<SendBatch>();
 
     await enqueueDiscordMessages({ sendBatch }, []);
 
@@ -32,7 +38,7 @@ describe('Discord Queue producer', () => {
   });
 
   it('sends deliveries in one batch', async () => {
-    const sendBatch = vi.fn().mockResolvedValue(undefined);
+    const sendBatch = vi.fn<SendBatch>().mockResolvedValue(undefined);
     const deliveries = [createDelivery('one'), createDelivery('two')];
 
     await enqueueDiscordMessages({ sendBatch }, deliveries);
@@ -56,7 +62,7 @@ describe('Discord Queue processor', () => {
 
   it('passes an optional receipt to its feature handler', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(discordReceipt());
-    const handle = vi.fn().mockResolvedValue(undefined);
+    const handle = vi.fn<DiscordMessageReceiptHandler['handle']>().mockResolvedValue(undefined);
     const processor = createDiscordMessageProcessor([{ type: 'test-receipt', handle }]);
     const delivery = {
       ...createDelivery('receipt'),
@@ -76,7 +82,7 @@ describe('Discord Queue processor', () => {
   it('rejects duplicate receipt handlers', () => {
     const handler = {
       type: 'duplicate',
-      handle: vi.fn().mockResolvedValue(undefined),
+      handle: vi.fn<DiscordMessageReceiptHandler['handle']>().mockResolvedValue(undefined),
     };
 
     expect(() => createDiscordMessageProcessor([handler, handler])).toThrow(

@@ -2,11 +2,11 @@ import { env, runInDurableObject } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import * as z from 'zod';
+import type * as z from 'zod';
 
 import { streams } from '../../../src/db/twitch-subscription/schema';
 import type { QueueMessageContext } from '../../../src/queue/message';
-import { TwitchVideo } from '../../../src/twitch/client';
+import { type TwitchVideo } from '../../../src/twitch/client';
 import {
   processTwitchSubscriptionEvent,
   type TwitchVodLookupDelivery,

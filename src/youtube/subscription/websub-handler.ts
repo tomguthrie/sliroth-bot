@@ -92,7 +92,9 @@ function isWebSubChallenge(value: string | null): value is string {
 }
 
 function parseWebSubLeaseSeconds(value: string | null): number | undefined {
-  if (value === null || !/^[1-9][0-9]*$/.test(value)) return undefined;
+  if (value === null || !/^[1-9][0-9]*$/.test(value)) {
+    return undefined;
+  }
   const leaseSeconds = Number(value);
   return Number.isSafeInteger(leaseSeconds) ? leaseSeconds : undefined;
 }

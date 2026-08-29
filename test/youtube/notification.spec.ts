@@ -88,7 +88,7 @@ describe('parseYouTubeVideoNotifications', () => {
       </feed>
     `;
 
-    expect(() => parseYouTubeVideoNotifications(xml)).toThrow();
+    expect(() => parseYouTubeVideoNotifications(xml)).toThrow(z.ZodError);
   });
 
   it('rejects XML without an Atom feed', () => {

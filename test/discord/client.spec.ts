@@ -179,6 +179,8 @@ function createOptions(message: DiscordMessage) {
 }
 
 function requireRequest(value: RequestInfo | URL | undefined): Request {
-  if (!(value instanceof Request)) throw new Error('Expected a Request');
+  if (!(value instanceof Request)) {
+    throw new Error('Expected a Request');
+  }
   return value;
 }

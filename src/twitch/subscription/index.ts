@@ -79,12 +79,16 @@ function parseGuildTwitchSubscriptionKey(
   prefix: string,
   metadata: unknown,
 ): GuildTwitchSubscription | undefined {
-  if (!key.startsWith(prefix)) return undefined;
+  if (!key.startsWith(prefix)) {
+    return undefined;
+  }
 
   const suffix = key.slice(prefix.length);
   const separator = ':twitch:';
   const separatorOffset = suffix.indexOf(separator);
-  if (separatorOffset === -1) return undefined;
+  if (separatorOffset === -1) {
+    return undefined;
+  }
 
   const discordChannelId = suffix.slice(0, separatorOffset);
   const twitchBroadcasterId = suffix.slice(separatorOffset + separator.length);

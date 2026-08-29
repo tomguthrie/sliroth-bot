@@ -199,7 +199,9 @@ export class TwitchSubscription extends DurableObject<Env> {
       })
       .onConflictDoNothing({ target: streams.id })
       .returning();
-    if (stream === undefined) return;
+    if (stream === undefined) {
+      return;
+    }
 
     try {
       const subscriberRows = await this.db.select().from(twitchSubscribers);
@@ -234,14 +236,18 @@ export class TwitchSubscription extends DurableObject<Env> {
     const broadcaster = await this.requireBroadcaster(event.broadcasterId);
     const client = new TwitchApiClient(this.env);
     const liveStream = await client.getStream(broadcaster.id);
-    if (liveStream === undefined) return;
+    if (liveStream === undefined) {
+      return;
+    }
 
     const [stream] = await this.db
       .select({ id: streams.id, revision: streams.revision })
       .from(streams)
       .where(and(eq(streams.id, liveStream.id), isNull(streams.endedAt)))
       .limit(1);
-    if (stream === undefined) return;
+    if (stream === undefined) {
+      return;
+    }
 
     const game = liveStream.gameId === '' ? undefined : await client.getGame(liveStream.gameId);
     const [updatedStream] = await this.db
@@ -277,7 +283,9 @@ export class TwitchSubscription extends DurableObject<Env> {
       .from(streams)
       .where(eq(streams.id, event.streamId))
       .limit(1);
-    if (stream === undefined) return;
+    if (stream === undefined) {
+      return;
+    }
 
     if (stream.endedAt === null) {
       const [updatedStream] = await this.db
@@ -328,7 +336,9 @@ export class TwitchSubscription extends DurableObject<Env> {
         ),
       )
       .returning({ id: streams.id });
-    if (updatedStream === undefined) return;
+    if (updatedStream === undefined) {
+      return;
+    }
     await this.queueStreamUpdates(updatedStream.id);
   }
 
@@ -353,7 +363,9 @@ export class TwitchSubscription extends DurableObject<Env> {
   /** Idempotently applies a queued EventSub message and repairs subscriptions. */
   processEventSubMessage(delivery: TwitchEventSubDelivery): Promise<void> {
     const existing = this.eventSubProcessing.get(delivery.messageId);
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) {
+      return existing;
+    }
 
     const processing = this.processEventSubMessageNow(delivery).finally(() => {
       if (this.eventSubProcessing.get(delivery.messageId) === processing) {
@@ -378,7 +390,9 @@ export class TwitchSubscription extends DurableObject<Env> {
 
   /** Makes remote subscriptions match the currently desired event types. */
   reconcile(): Promise<void> {
-    if (this.reconciliation !== undefined) return this.reconciliation;
+    if (this.reconciliation !== undefined) {
+      return this.reconciliation;
+    }
     const reconciliation = this.reconcileNow().finally(() => {
       if (this.reconciliation === reconciliation) {
         this.reconciliation = undefined;
@@ -390,7 +404,9 @@ export class TwitchSubscription extends DurableObject<Env> {
 
   private async reconcileNow(): Promise<void> {
     const broadcaster = await this.getBroadcaster();
-    if (broadcaster === undefined) return;
+    if (broadcaster === undefined) {
+      return;
+    }
     const [subscriberCount] = await this.db.select({ value: count() }).from(twitchSubscribers);
     if (subscriberCount === undefined) {
       throw new Error('Failed to count Twitch subscribers');
@@ -543,9 +559,13 @@ export class TwitchSubscription extends DurableObject<Env> {
 
   private async repairMissingEventSubSubscriptions(): Promise<void> {
     const broadcaster = await this.getBroadcaster();
-    if (broadcaster === undefined) return;
+    if (broadcaster === undefined) {
+      return;
+    }
     const [subscriberCount] = await this.db.select({ value: count() }).from(twitchSubscribers);
-    if (subscriberCount?.value === 0) return;
+    if (subscriberCount?.value === 0) {
+      return;
+    }
 
     const rows = await this.db.select().from(eventSubSubscriptions);
     const client = new TwitchApiClient(this.env);
@@ -554,7 +574,9 @@ export class TwitchSubscription extends DurableObject<Env> {
       this.env.PUBLIC_BASE_URL,
     ).toString();
     for (const desired of TWITCH_EVENTSUB_SUBSCRIPTIONS) {
-      if (rows.some((row) => row.type === desired.type)) continue;
+      if (rows.some((row) => row.type === desired.type)) {
+        continue;
+      }
       const created = await client.createEventSubSubscription({
         type: desired.type,
         version: desired.version,
@@ -649,7 +671,9 @@ export class TwitchSubscription extends DurableObject<Env> {
     const previewCacheBustMs = Date.now();
     const deliveredMessages = messages.flatMap((message) => {
       const subscriber = subscribersByChannel.get(message.channelId);
-      if (message.messageId === null || subscriber === undefined) return [];
+      if (message.messageId === null || subscriber === undefined) {
+        return [];
+      }
       return [
         {
           channelId: message.channelId,
@@ -703,7 +727,9 @@ async function getRemoteSubscription(
   try {
     return await client.getEventSubSubscription(id);
   } catch (error) {
-    if (isTwitchApiErrorStatus(error, 404)) return undefined;
+    if (isTwitchApiErrorStatus(error, 404)) {
+      return undefined;
+    }
     throw error;
   }
 }
@@ -712,7 +738,9 @@ async function deleteRemoteSubscription(client: TwitchApiClient, id: string): Pr
   try {
     await client.deleteEventSubSubscription(id);
   } catch (error) {
-    if (!isTwitchApiErrorStatus(error, 404)) throw error;
+    if (!isTwitchApiErrorStatus(error, 404)) {
+      throw error;
+    }
   }
 }
 

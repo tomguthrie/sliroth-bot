@@ -54,7 +54,9 @@ export function canPostInChannel(permissions: string | undefined): boolean {
 }
 
 export function hasDiscordPermission(value: string | undefined, permission: bigint): boolean {
-  if (value === undefined) return false;
+  if (value === undefined) {
+    return false;
+  }
   const permissions = BigInt(value);
   return (permissions & permission) !== 0n || (permissions & ADMINISTRATOR_PERMISSION) !== 0n;
 }
@@ -70,7 +72,9 @@ export function resolveNotificationPing(
       ? { ping: options.ping }
       : { error: 'I need Mention Everyone permission to use that ping.' };
   }
-  if (options.roleId === undefined) return {};
+  if (options.roleId === undefined) {
+    return {};
+  }
   if (options.roleId === guildId) {
     return hasDiscordPermission(interaction.app_permissions, MENTION_EVERYONE_PERMISSION)
       ? { ping: 'everyone' }

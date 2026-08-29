@@ -3,6 +3,7 @@ import { env } from 'cloudflare:workers';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as z from 'zod';
 
 import { subscribers, videos } from '../../../src/db/youtube-subscription/schema';
 import type { YouTubeSubscription } from '../../../src/youtube/subscription/durable-object';
@@ -95,7 +96,7 @@ describe('YouTubeSubscription', () => {
           title: 'A duplicate',
           publishedAt,
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(Error);
     });
   });
 
@@ -128,7 +129,7 @@ describe('YouTubeSubscription', () => {
           channelId: '123456789012345678',
           guildId: '345678901234567890',
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(Error);
 
       const [updated] = await database
         .update(subscribers)
@@ -153,6 +154,10 @@ describe('YouTubeSubscription', () => {
           '234567890123456789',
           ping,
         );
+        const [stored] = state.storage.sql
+          .exec<{ ping: string | null }>('SELECT ping FROM subscribers')
+          .toArray();
+        expect(stored?.ping).toBe(ping);
       });
     },
   );
@@ -270,7 +275,7 @@ describe('YouTubeSubscription', () => {
           channelTitle: 'YouTube channel',
         }),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(z.ZodError);
     await expect(
       runInDurableObject(subscription, (instance: YouTubeSubscription) =>
         instance.addSubscriber({
@@ -279,7 +284,7 @@ describe('YouTubeSubscription', () => {
           channelTitle: '   ',
         }),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(z.ZodError);
     await expect(
       runInDurableObject(subscription, (instance: YouTubeSubscription) =>
         instance.addSubscriber({
@@ -289,7 +294,7 @@ describe('YouTubeSubscription', () => {
           message: '   ',
         }),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(z.ZodError);
     await expect(
       runInDurableObject(subscription, (instance: YouTubeSubscription) =>
         instance.addSubscriber({
@@ -299,12 +304,12 @@ describe('YouTubeSubscription', () => {
           ping: 'not-a-role',
         }),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(z.ZodError);
     await expect(
       runInDurableObject(subscription, (instance: YouTubeSubscription) =>
         instance.removeSubscriber('not-a-channel'),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(z.ZodError);
     await expect(readSubscribers(subscription)).resolves.toEqual([]);
   });
 
@@ -405,7 +410,7 @@ describe('YouTubeSubscription', () => {
       });
 
       const queueCall = Promise.withResolvers<void>();
-      const sendBatch = vi.fn(() => queueCall.promise);
+      const sendBatch = vi.fn<() => Promise<void>>(() => queueCall.promise);
       Object.defineProperty(instance, 'env', {
         configurable: true,
         value: { DISCORD_MESSAGES: { sendBatch } },
@@ -440,7 +445,7 @@ describe('YouTubeSubscription', () => {
       });
 
       const sendBatch = vi
-        .fn()
+        .fn<() => Promise<void>>()
         .mockRejectedValueOnce(new Error('Queue unavailable'))
         .mockResolvedValueOnce(undefined);
       Object.defineProperty(instance, 'env', {

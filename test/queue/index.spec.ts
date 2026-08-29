@@ -15,7 +15,9 @@ describe('Queue message delivery', () => {
       createTestMessage('retry'),
     ]);
     const retryMessage = batch.messages[1];
-    if (retryMessage === undefined) throw new Error('Missing retry message');
+    if (retryMessage === undefined) {
+      throw new Error('Missing retry message');
+    }
     const retry = vi.spyOn(retryMessage, 'retry');
 
     await deliverQueueMessages(batch, env, (body) =>
@@ -23,7 +25,9 @@ describe('Queue message delivery', () => {
     );
 
     const result: unknown = await getQueueResult(batch, createExecutionContext());
-    if (!isQueueResult(result)) throw new Error('Invalid Queue result');
+    if (!isQueueResult(result)) {
+      throw new Error('Invalid Queue result');
+    }
     expect(result.explicitAcks).toEqual(['ack']);
     expect(result.retryMessages).toEqual([{ msgId: 'retry' }]);
     expect(retry).toHaveBeenCalledWith({ delaySeconds: 30 });
@@ -38,7 +42,9 @@ describe('Queue message delivery', () => {
     });
 
     const result: unknown = await getQueueResult(batch, createExecutionContext());
-    if (!isQueueResult(result)) throw new Error('Invalid Queue result');
+    if (!isQueueResult(result)) {
+      throw new Error('Invalid Queue result');
+    }
     expect(result.retryMessages).toEqual([{ msgId: 'bad', delaySeconds: undefined }]);
   });
 
@@ -65,7 +71,9 @@ describe('Queue message delivery', () => {
     await deliverQueueBatch(batch, env);
 
     const result: unknown = await getQueueResult(batch, createExecutionContext());
-    if (!isQueueResult(result)) throw new Error('Invalid Queue result');
+    if (!isQueueResult(result)) {
+      throw new Error('Invalid Queue result');
+    }
     expect(result.retryBatch.retry).toBe(true);
   });
 
@@ -92,7 +100,9 @@ describe('Queue message delivery', () => {
     await deliverQueueBatch(batch, env);
 
     const result: unknown = await getQueueResult(batch, createExecutionContext());
-    if (!isQueueResult(result)) throw new Error('Invalid Queue result');
+    if (!isQueueResult(result)) {
+      throw new Error('Invalid Queue result');
+    }
     expect(result.retryMessages).toEqual([{ msgId: 'misrouted', delaySeconds: undefined }]);
   });
 });

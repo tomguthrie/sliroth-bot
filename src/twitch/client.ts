@@ -214,17 +214,23 @@ export class TwitchApiClient {
       }
     }
 
+    const headers = new Headers(init?.headers);
+    if (!headers.has('Client-ID')) {
+      headers.set('Client-ID', this.env.TWITCH_CLIENT_ID);
+    }
+    if (!headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${accessToken}`);
+    }
+
     const response = await fetch(url, {
       ...init,
-      headers: {
-        'Client-ID': this.env.TWITCH_CLIENT_ID,
-        Authorization: `Bearer ${accessToken}`,
-        ...init?.headers,
-      },
+      headers,
     });
 
     if (response.status === 401 && retryOnUnauthorized) {
-      if (response.body !== null) await response.body.cancel();
+      if (response.body !== null) {
+        await response.body.cancel();
+      }
       this.accessToken = refreshAccessToken(this.env);
 
       return this.fetch(path, query, init, false);

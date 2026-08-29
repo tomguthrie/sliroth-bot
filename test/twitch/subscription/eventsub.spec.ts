@@ -2,6 +2,7 @@ import { createExecutionContext, env, runInDurableObject } from 'cloudflare:test
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as z from 'zod';
 
 import {
   eventSubSubscriptions,
@@ -41,7 +42,7 @@ describe('TwitchSubscription EventSub reconciliation', () => {
           { guildId: GUILD_ID, channelId: CHANNEL_ID },
         ),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(z.ZodError);
   });
   it('accepts a broadcaster without an offline banner', async () => {
     const requests: {
