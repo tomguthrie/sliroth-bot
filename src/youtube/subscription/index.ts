@@ -9,9 +9,7 @@ export const YouTubeSubscriptionMetadata = z.object({
   title: NonBlankString,
 });
 
-export type YouTubeSubscriptionMetadata = z.infer<
-  typeof YouTubeSubscriptionMetadata
->;
+export type YouTubeSubscriptionMetadata = z.infer<typeof YouTubeSubscriptionMetadata>;
 
 export interface GuildYouTubeSubscription {
   discordChannelId: DiscordSnowflake;
@@ -46,11 +44,7 @@ export async function listGuildYouTubeSubscriptions(
   const page = await index.list<YouTubeSubscriptionMetadata>({ prefix });
 
   return page.keys.flatMap((key) => {
-    const subscription = parseGuildSubscriptionKey(
-      key.name,
-      prefix,
-      key.metadata,
-    );
+    const subscription = parseGuildSubscriptionKey(key.name, prefix, key.metadata);
     if (subscription === undefined) {
       console.warn({
         event: 'youtube_subscription_index_key_invalid',

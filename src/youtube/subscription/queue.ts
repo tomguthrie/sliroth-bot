@@ -8,11 +8,10 @@ export interface YouTubeVideoDelivery {
 }
 
 /** Records a queued YouTube notification in its channel subscription. */
-export const processYouTubeSubscriptionEvent: QueueMessageProcessor<
-  YouTubeVideoDelivery
-> = async (delivery, env) => {
-  await env.YOUTUBE_SUBSCRIPTIONS.getByName(delivery.channelId).recordVideo(
-    delivery.notification,
-  );
+export const processYouTubeSubscriptionEvent: QueueMessageProcessor<YouTubeVideoDelivery> = async (
+  delivery,
+  env,
+) => {
+  await env.YOUTUBE_SUBSCRIPTIONS.getByName(delivery.channelId).recordVideo(delivery.notification);
   return { action: 'ack' };
 };

@@ -1,7 +1,8 @@
 import { toLoggableError } from '../log';
 
 export type QueueMessageDisposition =
-  { action: 'ack' } | { action: 'retry'; delaySeconds?: number };
+  | { action: 'ack' }
+  | { action: 'retry'; delaySeconds?: number };
 
 export interface QueueMessageContext {
   queue: string;
@@ -39,8 +40,7 @@ export async function deliverQueueMessages<T>(
         queueMessageId: message.id,
         attempt: message.attempts,
         action: disposition.action,
-        delaySeconds:
-          disposition.action === 'retry' ? disposition.delaySeconds : undefined,
+        delaySeconds: disposition.action === 'retry' ? disposition.delaySeconds : undefined,
         queueAgeMs: Math.max(0, startedAt - message.timestamp.getTime()),
         durationMs: Date.now() - startedAt,
       });

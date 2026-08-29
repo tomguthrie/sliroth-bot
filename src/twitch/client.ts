@@ -16,10 +16,7 @@ class TwitchApiError extends Error {
 }
 
 /** Returns whether an unknown value is a Twitch API error with this status. */
-export function isTwitchApiErrorStatus(
-  error: unknown,
-  status: number,
-): boolean {
+export function isTwitchApiErrorStatus(error: unknown, status: number): boolean {
   return error instanceof TwitchApiError && error.status === status;
 }
 
@@ -217,17 +214,23 @@ export class TwitchApiClient {
       }
     }
 
+    const headers = new Headers(init?.headers);
+    if (!headers.has('Client-ID')) {
+      headers.set('Client-ID', this.env.TWITCH_CLIENT_ID);
+    }
+    if (!headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${accessToken}`);
+    }
+
     const response = await fetch(url, {
       ...init,
-      headers: {
-        'Client-ID': this.env.TWITCH_CLIENT_ID,
-        Authorization: `Bearer ${accessToken}`,
-        ...init?.headers,
-      },
+      headers,
     });
 
     if (response.status === 401 && retryOnUnauthorized) {
-      if (response.body !== null) await response.body.cancel();
+      if (response.body !== null) {
+        await response.body.cancel();
+      }
       this.accessToken = refreshAccessToken(this.env);
 
       return this.fetch(path, query, init, false);
@@ -257,8 +260,7 @@ export class TwitchApiClient {
 
     const reset = response.headers.get('ratelimit-reset');
 
-    const retryAtMs =
-      reset !== null && /^\d+$/.test(reset) ? Number(reset) * 1000 : undefined;
+    const retryAtMs = reset !== null && /^\d+$/.test(reset) ? Number(reset) * 1000 : undefined;
 
     return new TwitchApiError(
       `Twitch API returned HTTP ${response.status}: ${message}`,
@@ -291,11 +293,7 @@ export class TwitchApiClient {
     return result;
   }
 
-  private async requestEmpty(
-    path: string,
-    query?: QueryParams,
-    init?: RequestInit,
-  ): Promise<void> {
+  private async requestEmpty(path: string, query?: QueryParams, init?: RequestInit): Promise<void> {
     await this.fetch(path, query, init);
   }
 
@@ -404,13 +402,9 @@ export class TwitchApiClient {
   async getEventSubSubscription(
     subscriptionId: string,
   ): Promise<TwitchEventSubSubscription | undefined> {
-    return this.requestOne(
-      'eventsub/subscriptions',
-      TwitchEventSubSubscription,
-      {
-        subscription_id: subscriptionId,
-      },
-    );
+    return this.requestOne('eventsub/subscriptions', TwitchEventSubSubscription, {
+      subscription_id: subscriptionId,
+    });
   }
 
   /**

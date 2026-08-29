@@ -75,9 +75,7 @@ export async function createDiscordMessageNonce(
 ): Promise<string> {
   const value = new TextEncoder().encode(`${sourceId}:${channelId}`);
   const digest = await crypto.subtle.digest('SHA-256', value);
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, '0'),
-  )
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0'))
     .join('')
     .slice(0, MAX_DISCORD_NONCE_LENGTH);
 }
@@ -92,7 +90,9 @@ export function createNotificationList(
     .sort((left, right) => {
       const leftCurrent = left.channelId === currentChannelId;
       const rightCurrent = right.channelId === currentChannelId;
-      if (leftCurrent !== rightCurrent) return leftCurrent ? -1 : 1;
+      if (leftCurrent !== rightCurrent) {
+        return leftCurrent ? -1 : 1;
+      }
       return (
         left.name.localeCompare(right.name, 'en', { sensitivity: 'base' }) ||
         left.channelId.localeCompare(right.channelId) ||
@@ -121,11 +121,13 @@ export function createNotificationList(
   return lines.join('\n');
 }
 
-export function describeDiscordMention(
-  ping: DiscordMentionTarget | undefined,
-): string {
-  if (ping === undefined) return '';
-  if (ping === 'everyone' || ping === 'here') return ` and mention @${ping}`;
+export function describeDiscordMention(ping: DiscordMentionTarget | undefined): string {
+  if (ping === undefined) {
+    return '';
+  }
+  if (ping === 'everyone' || ping === 'here') {
+    return ` and mention @${ping}`;
+  }
   return ` and mention <@&${ping}>`;
 }
 

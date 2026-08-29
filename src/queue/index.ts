@@ -1,12 +1,9 @@
-import {
-  createDiscordMessageProcessor,
-  type DiscordMessageDelivery,
-} from '../discord/queue';
+import { createDiscordMessageProcessor, type DiscordMessageDelivery } from '../discord/queue';
+import { twitchStreamMessageReceiptHandler } from '../twitch/subscription/message-receipt';
 import {
   processTwitchSubscriptionEvent,
   type TwitchSubscriptionEventDelivery,
 } from '../twitch/subscription/queue';
-import { twitchStreamMessageReceiptHandler } from '../twitch/subscription/message-receipt';
 import {
   processYouTubeSubscriptionEvent,
   type YouTubeVideoDelivery,
@@ -16,19 +13,17 @@ import { deliverQueueMessages, type QueueMessageProcessor } from './message';
 const DISCORD_MESSAGES_QUEUE = 'discord-messages';
 const SUBSCRIPTION_EVENTS_QUEUE = 'subscription-events';
 
-type SubscriptionEventDelivery =
-  TwitchSubscriptionEventDelivery | YouTubeVideoDelivery;
+type SubscriptionEventDelivery = TwitchSubscriptionEventDelivery | YouTubeVideoDelivery;
 
-export type WorkerQueueMessage =
-  DiscordMessageDelivery | SubscriptionEventDelivery;
+export type WorkerQueueMessage = DiscordMessageDelivery | SubscriptionEventDelivery;
 
-const processDiscordMessage = createDiscordMessageProcessor([
-  twitchStreamMessageReceiptHandler,
-]);
+const processDiscordMessage = createDiscordMessageProcessor([twitchStreamMessageReceiptHandler]);
 
-const processSubscriptionEvent: QueueMessageProcessor<
-  SubscriptionEventDelivery
-> = async (delivery, env, context) => {
+const processSubscriptionEvent: QueueMessageProcessor<SubscriptionEventDelivery> = async (
+  delivery,
+  env,
+  context,
+) => {
   switch (delivery.kind) {
     case 'twitch-eventsub':
     case 'twitch-vod-lookup':
@@ -56,18 +51,22 @@ export async function deliverQueueBatch(
   batch.retryAll();
 }
 
-const processDiscordQueueMessage: QueueMessageProcessor<
-  WorkerQueueMessage
-> = async (delivery, env, context) => {
+const processDiscordQueueMessage: QueueMessageProcessor<WorkerQueueMessage> = async (
+  delivery,
+  env,
+  context,
+) => {
   if ('operation' in delivery) {
     return processDiscordMessage(delivery, env, context);
   }
   throw new Error('Unsupported message in the Discord messages queue');
 };
 
-const processSubscriptionQueueMessage: QueueMessageProcessor<
-  WorkerQueueMessage
-> = async (delivery, env, context) => {
+const processSubscriptionQueueMessage: QueueMessageProcessor<WorkerQueueMessage> = async (
+  delivery,
+  env,
+  context,
+) => {
   if ('kind' in delivery) {
     return processSubscriptionEvent(delivery, env, context);
   }

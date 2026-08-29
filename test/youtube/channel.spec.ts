@@ -22,12 +22,9 @@ describe('isYouTubeChannelId', () => {
     expect(isYouTubeChannelId(CHANNEL_ID)).toBe(true);
   });
 
-  it.each(['channel', `UC${'a'.repeat(21)}`, `UC${'a'.repeat(23)}`, ''])(
-    'rejects %j',
-    (input) => {
-      expect(isYouTubeChannelId(input)).toBe(false);
-    },
-  );
+  it.each(['channel', `UC${'a'.repeat(21)}`, `UC${'a'.repeat(23)}`, ''])('rejects %j', (input) => {
+    expect(isYouTubeChannelId(input)).toBe(false);
+  });
 });
 
 describe('isYouTubeChannelHandle', () => {
@@ -99,19 +96,13 @@ describe('YouTube channel metadata', () => {
       new Response('<feed><title>Google for Developers</title></feed>'),
     );
 
-    await expect(fetchYouTubeChannelTitle(CHANNEL_ID)).resolves.toBe(
-      'Google for Developers',
-    );
+    await expect(fetchYouTubeChannelTitle(CHANNEL_ID)).resolves.toBe('Google for Developers');
   });
 
   it('rejects a malformed channel feed', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response('<feed><id>channel</id></feed>'),
-    );
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('<feed><id>channel</id></feed>'));
 
-    await expect(fetchYouTubeChannelTitle(CHANNEL_ID)).rejects.toBeInstanceOf(
-      z.ZodError,
-    );
+    await expect(fetchYouTubeChannelTitle(CHANNEL_ID)).rejects.toBeInstanceOf(z.ZodError);
   });
 
   it('resolves a channel ID and title', async () => {
@@ -129,9 +120,7 @@ describe('YouTube channel metadata', () => {
     const fetcher = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(new Response(`"externalId":"${CHANNEL_ID}"`))
-      .mockResolvedValueOnce(
-        new Response('<feed><title>Google for Developers</title></feed>'),
-      );
+      .mockResolvedValueOnce(new Response('<feed><title>Google for Developers</title></feed>'));
 
     await expect(resolveYouTubeChannel('@GoogleDevelopers')).resolves.toEqual({
       id: CHANNEL_ID,
@@ -150,15 +139,11 @@ describe('YouTube channel metadata', () => {
     expect(fetcher).not.toHaveBeenCalled();
 
     fetcher.mockResolvedValueOnce(new Response('<html></html>'));
-    await expect(
-      resolveYouTubeChannel('@missing-channel'),
-    ).resolves.toBeUndefined();
+    await expect(resolveYouTubeChannel('@missing-channel')).resolves.toBeUndefined();
   });
 
   it('propagates provider request failures', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(null, { status: 503 }),
-    );
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 503 }));
 
     await expect(resolveYouTubeChannel(CHANNEL_ID)).rejects.toThrow(
       'YouTube channel feed returned HTTP 503',
@@ -167,7 +152,11 @@ describe('YouTube channel metadata', () => {
 });
 
 function requestUrl(input: RequestInfo | URL | undefined): string | undefined {
-  if (input instanceof Request) return input.url;
-  if (input instanceof URL) return input.toString();
+  if (input instanceof Request) {
+    return input.url;
+  }
+  if (input instanceof URL) {
+    return input.toString();
+  }
   return input;
 }

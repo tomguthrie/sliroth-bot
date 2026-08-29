@@ -11,8 +11,7 @@ import { DISCORD_API_BASE_URL } from './client';
 import { DiscordSnowflake } from './snowflake';
 
 const PING_INTERACTION_TYPE: number = InteractionType.PING;
-const APPLICATION_COMMAND_INTERACTION_TYPE: number =
-  InteractionType.APPLICATION_COMMAND;
+const APPLICATION_COMMAND_INTERACTION_TYPE: number = InteractionType.APPLICATION_COMMAND;
 
 const DiscordPermissions = z.string().regex(/^\d+$/);
 const DiscordResolvedRole = z.object({ mentionable: z.boolean().optional() });
@@ -86,9 +85,7 @@ export function createDiscordInteractionHandler(
     }
 
     const command =
-      interaction.data === undefined
-        ? undefined
-        : commandsByName.get(interaction.data.name);
+      interaction.data === undefined ? undefined : commandsByName.get(interaction.data.name);
     return command === undefined
       ? unsupportedInteractionResponse()
       : command.handle(interaction, env, ctx);
@@ -97,9 +94,7 @@ export function createDiscordInteractionHandler(
 
 function parseInteraction(bytes: Uint8Array) {
   try {
-    const result = DiscordInteraction.safeParse(
-      JSON.parse(new TextDecoder().decode(bytes)),
-    );
+    const result = DiscordInteraction.safeParse(JSON.parse(new TextDecoder().decode(bytes)));
     return result.success ? result.data : undefined;
   } catch {
     return undefined;
@@ -148,12 +143,14 @@ export async function editInteractionResponse(
     },
   );
   if (!response.ok) {
-    if (response.body !== null) await response.body.cancel();
-    throw new Error(
-      `Discord interaction response returned HTTP ${response.status}`,
-    );
+    if (response.body !== null) {
+      await response.body.cancel();
+    }
+    throw new Error(`Discord interaction response returned HTTP ${response.status}`);
   }
-  if (response.body !== null) await response.body.cancel();
+  if (response.body !== null) {
+    await response.body.cancel();
+  }
 }
 
 export function logCommandFailure(

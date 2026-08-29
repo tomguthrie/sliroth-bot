@@ -1,14 +1,10 @@
-import { env } from 'cloudflare:workers';
 import { createExecutionContext } from 'cloudflare:test';
+import { env } from 'cloudflare:workers';
 import { describe, expect, it, vi } from 'vitest';
 
-import {
-  createDiscordInteractionHandler,
-  type DiscordCommandHandler,
-} from '../../src/discord';
+import { createDiscordInteractionHandler, type DiscordCommandHandler } from '../../src/discord';
 
-const PRIVATE_KEY_SEED =
-  '9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60';
+const PRIVATE_KEY_SEED = '9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60';
 const PRIVATE_KEY_PREFIX = '302e020100300506032b657004220420';
 
 describe('Discord interaction boundary', () => {
@@ -131,8 +127,7 @@ describe('Discord interaction boundary', () => {
 });
 
 function createHandler(
-  handle: DiscordCommandHandler['handle'] = () =>
-    Promise.resolve(new Response()),
+  handle: DiscordCommandHandler['handle'] = () => Promise.resolve(new Response()),
 ) {
   return createDiscordInteractionHandler([{ name: 'youtube', handle }]);
 }
@@ -162,9 +157,7 @@ async function createSignedRequestFromText(body: string): Promise<Request> {
   const timestamp = '1754654400';
   const encodedBody = new TextEncoder().encode(body);
   const encodedTimestamp = new TextEncoder().encode(timestamp);
-  const signedContent = new Uint8Array(
-    encodedTimestamp.byteLength + encodedBody.byteLength,
-  );
+  const signedContent = new Uint8Array(encodedTimestamp.byteLength + encodedBody.byteLength);
   signedContent.set(encodedTimestamp);
   signedContent.set(encodedBody, encodedTimestamp.byteLength);
   const key = await crypto.subtle.importKey(
@@ -196,7 +189,5 @@ function hexToBytes(value: string): Uint8Array<ArrayBuffer> {
 }
 
 function bytesToHex(value: Uint8Array): string {
-  return Array.from(value, (byte) => byte.toString(16).padStart(2, '0')).join(
-    '',
-  );
+  return Array.from(value, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }

@@ -32,19 +32,17 @@ describe('Twitch stream lifecycle', () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(1780680480000);
     const batches: DiscordMessageDelivery[][] = [];
     const subscriptionEvents: unknown[] = [];
-    const sendSubscriptionEvent = vi.fn((body: unknown) => {
+    const sendSubscriptionEvent = vi.fn<(body: unknown) => Promise<QueueSendResponse>>((body) => {
       subscriptionEvents.push(body);
       return Promise.resolve(queueSendResponse());
     });
-    const sendBatch = vi.fn(
-      (messages: Iterable<MessageSendRequest<DiscordMessageDelivery>>) => {
-        batches.push(Array.from(messages, ({ body }) => body));
-        return Promise.resolve();
-      },
-    );
-    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(
-      `lifecycle-${crypto.randomUUID()}`,
-    );
+    const sendBatch = vi.fn<
+      (messages: Iterable<MessageSendRequest<DiscordMessageDelivery>>) => Promise<void>
+    >((messages) => {
+      batches.push(Array.from(messages, ({ body }) => body));
+      return Promise.resolve();
+    });
+    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(`lifecycle-${crypto.randomUUID()}`);
 
     await runInDurableObject(subscription, async (instance, state) => {
       const database = drizzle(state.storage);
@@ -200,15 +198,11 @@ describe('Twitch stream lifecycle', () => {
           streamId: '9001',
         },
       ]);
-      expect(sendSubscriptionEvent).toHaveBeenCalledWith(
-        subscriptionEvents[0],
-        { delaySeconds: 30 },
-      );
+      expect(sendSubscriptionEvent).toHaveBeenCalledWith(subscriptionEvents[0], {
+        delaySeconds: 30,
+      });
 
-      await instance.recordStreamVod(
-        '9001',
-        'https://twitch.tv/videos/1234567890',
-      );
+      await instance.recordStreamVod('9001', 'https://twitch.tv/videos/1234567890');
 
       expect(batches).toHaveLength(4);
       expect(batches[3]?.[0]).toMatchObject({
@@ -254,9 +248,7 @@ describe('Twitch stream lifecycle', () => {
     ['a different stream', createMockTwitchStream({ id: '9002' })],
   ] as const)('ignores a channel update for %s', async (_name, liveStream) => {
     mockTwitchApi(() => liveStream);
-    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(
-      `inactive-${crypto.randomUUID()}`,
-    );
+    const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(`inactive-${crypto.randomUUID()}`);
     await runInDurableObject(subscription, async (_instance, state) => {
       const database = drizzle(state.storage);
       await database.insert(broadcasters).values({
@@ -279,9 +271,8 @@ describe('Twitch stream lifecycle', () => {
 
     await subscription.channelUpdate(channelUpdateEvent());
 
-    const [storedStream] = await runInDurableObject(
-      subscription,
-      async (_instance, state) => drizzle(state.storage).select().from(streams),
+    const [storedStream] = await runInDurableObject(subscription, async (_instance, state) =>
+      drizzle(state.storage).select().from(streams),
     );
     expect(storedStream).toMatchObject({
       id: '9001',
@@ -304,9 +295,7 @@ interface MockTwitchStream {
   thumbnail_url: string;
 }
 
-function createMockTwitchStream(
-  overrides: Partial<MockTwitchStream> = {},
-): MockTwitchStream {
+function createMockTwitchStream(overrides: Partial<MockTwitchStream> = {}): MockTwitchStream {
   return {
     id: '9001',
     user_id: BROADCASTER_ID,
@@ -340,9 +329,7 @@ function mockTwitchApi(getStream: () => MockTwitchStream | undefined): void {
     const request = new Request(input, init);
     const url = new URL(request.url);
     if (url.hostname === 'id.twitch.tv') {
-      return Promise.resolve(
-        Response.json({ access_token: 'token', expires_in: 3600 }),
-      );
+      return Promise.resolve(Response.json({ access_token: 'token', expires_in: 3600 }));
     }
     if (url.pathname.endsWith('/streams')) {
       const stream = getStream();

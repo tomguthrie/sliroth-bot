@@ -19,11 +19,7 @@ export async function handleTwitchEventSub(
   const messageId = getEventSubMessageId(request);
   const messageType = getEventSubMessageType(request);
   const timestamp = getEventSubMessageTimestamp(request);
-  if (
-    messageId === undefined ||
-    messageType === undefined ||
-    timestamp === undefined
-  ) {
+  if (messageId === undefined || messageType === undefined || timestamp === undefined) {
     return new Response('Missing EventSub headers', { status: 400 });
   }
 
@@ -33,9 +29,7 @@ export async function handleTwitchEventSub(
   }
 
   const body = await request.text();
-  if (
-    !(await verifyEventSubRequest(request, body, env.TWITCH_EVENTSUB_SECRET))
-  ) {
+  if (!(await verifyEventSubRequest(request, body, env.TWITCH_EVENTSUB_SECRET))) {
     return new Response('Invalid EventSub signature', { status: 403 });
   }
 
@@ -46,10 +40,7 @@ export async function handleTwitchEventSub(
     return new Response('Invalid EventSub payload', { status: 400 });
   }
 
-  const routeBroadcasterId = new URL(request.url).pathname
-    .split('/')
-    .filter(Boolean)
-    .at(-1);
+  const routeBroadcasterId = new URL(request.url).pathname.split('/').filter(Boolean).at(-1);
   if (message.subscription.broadcasterId !== routeBroadcasterId) {
     return new Response('EventSub broadcaster mismatch', { status: 400 });
   }

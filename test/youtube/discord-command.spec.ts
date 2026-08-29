@@ -1,17 +1,23 @@
+import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
-import {
-  createExecutionContext,
-  waitOnExecutionContext,
-} from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DiscordInteraction } from '../../src/discord/interaction';
+import type { resolveYouTubeChannel } from '../../src/youtube/channel';
 import { youtubeDiscordCommand } from '../../src/youtube/discord-command';
+import type {
+  listChannelYouTubeSubscriptions,
+  listGuildYouTubeSubscriptions,
+} from '../../src/youtube/subscription/index';
+
+type ResolveYouTubeChannel = typeof resolveYouTubeChannel;
+type ListChannelYouTubeSubscriptions = typeof listChannelYouTubeSubscriptions;
+type ListGuildYouTubeSubscriptions = typeof listGuildYouTubeSubscriptions;
 
 const mocks = vi.hoisted(() => ({
-  resolveYouTubeChannel: vi.fn(),
-  listChannelYouTubeSubscriptions: vi.fn(),
-  listGuildYouTubeSubscriptions: vi.fn(),
+  resolveYouTubeChannel: vi.fn<ResolveYouTubeChannel>(),
+  listChannelYouTubeSubscriptions: vi.fn<ListChannelYouTubeSubscriptions>(),
+  listGuildYouTubeSubscriptions: vi.fn<ListGuildYouTubeSubscriptions>(),
 }));
 
 vi.mock('../../src/youtube/channel', () => ({
@@ -59,14 +65,9 @@ describe('/youtube command', () => {
       id: YOUTUBE_CHANNEL_ID,
       title: 'Google Developers',
     });
-    const subscription =
-      env.YOUTUBE_SUBSCRIPTIONS.getByName(YOUTUBE_CHANNEL_ID);
-    const addSubscriber = vi
-      .spyOn(subscription, 'addSubscriber')
-      .mockResolvedValue(undefined);
-    vi.spyOn(env.YOUTUBE_SUBSCRIPTIONS, 'getByName').mockReturnValue(
-      subscription,
-    );
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(YOUTUBE_CHANNEL_ID);
+    const addSubscriber = vi.spyOn(subscription, 'addSubscriber').mockResolvedValue(undefined);
+    vi.spyOn(env.YOUTUBE_SUBSCRIPTIONS, 'getByName').mockReturnValue(subscription);
     const requests = mockInteractionEdits();
     const ctx = createExecutionContext();
 
@@ -105,17 +106,12 @@ describe('/youtube command', () => {
   });
 
   it('removes subscriptions after the bot loses posting access', async () => {
-    mocks.listChannelYouTubeSubscriptions.mockResolvedValue([
-      YOUTUBE_CHANNEL_ID,
-    ]);
-    const subscription =
-      env.YOUTUBE_SUBSCRIPTIONS.getByName(YOUTUBE_CHANNEL_ID);
+    mocks.listChannelYouTubeSubscriptions.mockResolvedValue([YOUTUBE_CHANNEL_ID]);
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(YOUTUBE_CHANNEL_ID);
     const removeSubscriber = vi
       .spyOn(subscription, 'removeSubscriber')
       .mockResolvedValue(undefined);
-    vi.spyOn(env.YOUTUBE_SUBSCRIPTIONS, 'getByName').mockReturnValue(
-      subscription,
-    );
+    vi.spyOn(env.YOUTUBE_SUBSCRIPTIONS, 'getByName').mockReturnValue(subscription);
     mockInteractionEdits();
     const ctx = createExecutionContext();
 
@@ -149,20 +145,14 @@ describe('/youtube command', () => {
       })),
     ]);
 
-    const response = await handleYouTubeCommand(
-      interaction('list'),
-      env,
-      createExecutionContext(),
-    );
+    const response = await handleYouTubeCommand(interaction('list'), env, createExecutionContext());
     const list = await content(response);
 
     expect(list.length).toBeLessThanOrEqual(2_000);
     expect(list).toContain(`Current channel → <#${CHANNEL_ID}>*`);
     expect(list).not.toContain('https://');
     expect(list).toMatch(/…and \d+ more\.$/);
-    expect(list.indexOf('Current channel')).toBeLessThan(
-      list.indexOf('Long channel'),
-    );
+    expect(list.indexOf('Current channel')).toBeLessThan(list.indexOf('Long channel'));
   });
 
   it('rejects duplicate add options before starting background work', async () => {
@@ -176,24 +166,16 @@ describe('/youtube command', () => {
       ctx,
     );
 
-    await expect(content(response)).resolves.toBe(
-      'This interaction is not supported.',
-    );
+    await expect(content(response)).resolves.toBe('This interaction is not supported.');
     expect(mocks.resolveYouTubeChannel).not.toHaveBeenCalled();
   });
 
   it('logs provider and action context when listing fails', async () => {
     const error = new Error('KV unavailable');
     mocks.listGuildYouTubeSubscriptions.mockRejectedValue(error);
-    const logger = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => undefined);
+    const logger = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-    await handleYouTubeCommand(
-      interaction('list'),
-      env,
-      createExecutionContext(),
-    );
+    await handleYouTubeCommand(interaction('list'), env, createExecutionContext());
 
     expect(logger).toHaveBeenCalledWith(
       expect.objectContaining({

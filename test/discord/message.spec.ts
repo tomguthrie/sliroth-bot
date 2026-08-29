@@ -43,11 +43,9 @@ describe('Discord notification messages', () => {
     const nonce = await createDiscordMessageNonce('source-id', ROLE_ID);
 
     expect(nonce).toHaveLength(25);
-    await expect(createDiscordMessageNonce('source-id', ROLE_ID)).resolves.toBe(
+    await expect(createDiscordMessageNonce('source-id', ROLE_ID)).resolves.toBe(nonce);
+    await expect(createDiscordMessageNonce('source-id', '234567890123456789')).resolves.not.toBe(
       nonce,
     );
-    await expect(
-      createDiscordMessageNonce('source-id', '234567890123456789'),
-    ).resolves.not.toBe(nonce);
   });
 });

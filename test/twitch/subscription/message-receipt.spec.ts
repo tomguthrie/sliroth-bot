@@ -2,6 +2,7 @@ import { env, runInDurableObject } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { describe, expect, it } from 'vitest';
+import * as z from 'zod';
 
 import { streamMessages } from '../../../src/db/twitch-subscription/schema';
 import { DiscordSnowflake } from '../../../src/discord';
@@ -35,13 +36,11 @@ describe('Twitch stream message receipts', () => {
       env,
     );
 
-    const [stored] = await runInDurableObject(
-      subscription,
-      async (_instance, state) =>
-        drizzle(state.storage)
-          .select()
-          .from(streamMessages)
-          .where(eq(streamMessages.streamId, streamId)),
+    const [stored] = await runInDurableObject(subscription, async (_instance, state) =>
+      drizzle(state.storage)
+        .select()
+        .from(streamMessages)
+        .where(eq(streamMessages.streamId, streamId)),
     );
     expect(stored?.messageId).toBe(MESSAGE_ID);
   });
@@ -57,6 +56,6 @@ describe('Twitch stream message receipts', () => {
         { channelId: CHANNEL_ID, messageId: MESSAGE_ID },
         env,
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(z.ZodError);
   });
 });

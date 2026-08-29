@@ -10,9 +10,7 @@ export const TwitchSubscriptionMetadata = z.object({
   displayName: NonBlankString,
 });
 
-export type TwitchSubscriptionMetadata = z.infer<
-  typeof TwitchSubscriptionMetadata
->;
+export type TwitchSubscriptionMetadata = z.infer<typeof TwitchSubscriptionMetadata>;
 
 export interface GuildTwitchSubscription {
   discordChannelId: DiscordSnowflake;
@@ -48,11 +46,7 @@ export async function listGuildTwitchSubscriptions(
   const page = await index.list<TwitchSubscriptionMetadata>({ prefix });
 
   return page.keys.flatMap((key) => {
-    const subscription = parseGuildTwitchSubscriptionKey(
-      key.name,
-      prefix,
-      key.metadata,
-    );
+    const subscription = parseGuildTwitchSubscriptionKey(key.name, prefix, key.metadata);
     if (subscription === undefined) {
       logInvalidIndexKey(key.name);
       return [];
@@ -85,12 +79,16 @@ function parseGuildTwitchSubscriptionKey(
   prefix: string,
   metadata: unknown,
 ): GuildTwitchSubscription | undefined {
-  if (!key.startsWith(prefix)) return undefined;
+  if (!key.startsWith(prefix)) {
+    return undefined;
+  }
 
   const suffix = key.slice(prefix.length);
   const separator = ':twitch:';
   const separatorOffset = suffix.indexOf(separator);
-  if (separatorOffset === -1) return undefined;
+  if (separatorOffset === -1) {
+    return undefined;
+  }
 
   const discordChannelId = suffix.slice(0, separatorOffset);
   const twitchBroadcasterId = suffix.slice(separatorOffset + separator.length);

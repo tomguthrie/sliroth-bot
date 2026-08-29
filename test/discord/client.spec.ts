@@ -21,9 +21,7 @@ describe('Discord message client', () => {
   it('creates an authenticated, idempotent role-mention message', async () => {
     const fetcher = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(
-        Response.json({ id: MESSAGE_ID, channel_id: CHANNEL_ID }),
-      );
+      .mockResolvedValue(Response.json({ id: MESSAGE_ID, channel_id: CHANNEL_ID }));
 
     await expect(
       sendDiscordMessage(
@@ -37,13 +35,9 @@ describe('Discord message client', () => {
 
     const request = requireRequest(fetcher.mock.calls[0]?.[0]);
     expect(request.method).toBe('POST');
-    expect(request.url).toBe(
-      `https://discord.com/api/v10/channels/${CHANNEL_ID}/messages`,
-    );
+    expect(request.url).toBe(`https://discord.com/api/v10/channels/${CHANNEL_ID}/messages`);
     expect(request.headers.get('authorization')).toBe(`Bot ${BOT_TOKEN}`);
-    expect(request.headers.get('user-agent')).toBe(
-      'DiscordBot (https://bot.example.com, 0.0.0)',
-    );
+    expect(request.headers.get('user-agent')).toBe('DiscordBot (https://bot.example.com, 0.0.0)');
     await expect(request.json()).resolves.toEqual({
       content: `<@&${ROLE_ID}> A new video is available`,
       nonce: 'dQw4w9WgXcQ',
@@ -55,16 +49,10 @@ describe('Discord message client', () => {
   it('suppresses mentions unless explicitly enabled', async () => {
     const fetcher = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(
-        Response.json({ id: MESSAGE_ID, channel_id: CHANNEL_ID }),
-      );
+      .mockResolvedValue(Response.json({ id: MESSAGE_ID, channel_id: CHANNEL_ID }));
 
-    await sendDiscordMessage(
-      createOptions({ content: '@everyone This is plain text' }),
-    );
-    await expect(
-      requireRequest(fetcher.mock.calls[0]?.[0]).json(),
-    ).resolves.toEqual({
+    await sendDiscordMessage(createOptions({ content: '@everyone This is plain text' }));
+    await expect(requireRequest(fetcher.mock.calls[0]?.[0]).json()).resolves.toEqual({
       content: '@everyone This is plain text',
       allowed_mentions: { parse: [] },
     });
@@ -73,9 +61,7 @@ describe('Discord message client', () => {
   it('serializes the embed and link button features used by Twitch', async () => {
     const fetcher = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(
-        Response.json({ id: MESSAGE_ID, channel_id: CHANNEL_ID }),
-      );
+      .mockResolvedValue(Response.json({ id: MESSAGE_ID, channel_id: CHANNEL_ID }));
     const message: DiscordMessage = {
       content: '@here Sliroth is live!',
       allowedMentions: { everyone: true },
@@ -95,16 +81,12 @@ describe('Discord message client', () => {
           timestamp: '2026-06-05T17:28:00.000Z',
         },
       ],
-      linkButtons: [
-        { label: 'Watch Stream', url: 'https://twitch.tv/sliroth' },
-      ],
+      linkButtons: [{ label: 'Watch Stream', url: 'https://twitch.tv/sliroth' }],
     };
 
     await sendDiscordMessage(createOptions(message));
 
-    await expect(
-      requireRequest(fetcher.mock.calls[0]?.[0]).json(),
-    ).resolves.toEqual({
+    await expect(requireRequest(fetcher.mock.calls[0]?.[0]).json()).resolves.toEqual({
       content: '@here Sliroth is live!',
       allowed_mentions: { parse: ['everyone'] },
       embeds: [
@@ -142,9 +124,7 @@ describe('Discord message client', () => {
   it('edits the requested message', async () => {
     const fetcher = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(
-        Response.json({ id: MESSAGE_ID, channel_id: CHANNEL_ID }),
-      );
+      .mockResolvedValue(Response.json({ id: MESSAGE_ID, channel_id: CHANNEL_ID }));
 
     await editDiscordMessage({
       ...createOptions({ content: 'Stream ended' }),
@@ -163,9 +143,9 @@ describe('Discord message client', () => {
       Response.json({ id: 123, channel_id: CHANNEL_ID }),
     );
 
-    await expect(
-      sendDiscordMessage(createOptions({ content: 'Message' })),
-    ).rejects.toBeInstanceOf(z.ZodError);
+    await expect(sendDiscordMessage(createOptions({ content: 'Message' }))).rejects.toBeInstanceOf(
+      z.ZodError,
+    );
   });
 
   it('exposes Discord error details and retry timing', async () => {
@@ -176,9 +156,9 @@ describe('Discord message client', () => {
       }),
     );
 
-    const error = await sendDiscordMessage(
-      createOptions({ content: 'Message' }),
-    ).catch((caught: unknown) => caught);
+    const error = await sendDiscordMessage(createOptions({ content: 'Message' })).catch(
+      (caught: unknown) => caught,
+    );
 
     expect(error).toBeInstanceOf(DiscordApiError);
     expect(error).toMatchObject({
@@ -199,6 +179,8 @@ function createOptions(message: DiscordMessage) {
 }
 
 function requireRequest(value: RequestInfo | URL | undefined): Request {
-  if (!(value instanceof Request)) throw new Error('Expected a Request');
+  if (!(value instanceof Request)) {
+    throw new Error('Expected a Request');
+  }
   return value;
 }

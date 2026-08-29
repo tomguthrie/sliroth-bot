@@ -1,6 +1,5 @@
 import * as z from 'zod';
 
-import { DiscordSnowflake } from '../discord/snowflake';
 import {
   createDeferredResponse,
   createEphemeralResponse,
@@ -8,10 +7,7 @@ import {
   logCommandFailure,
   unsupportedInteractionResponse,
 } from '../discord/interaction';
-import type {
-  DiscordCommandHandler,
-  DiscordInteraction,
-} from '../discord/interaction';
+import type { DiscordCommandHandler, DiscordInteraction } from '../discord/interaction';
 import {
   createNotificationList,
   describeDiscordMention,
@@ -26,12 +22,10 @@ import {
   resolveNotificationPing,
 } from '../discord/permission';
 import type { DiscordCommandContext } from '../discord/permission';
+import { DiscordSnowflake } from '../discord/snowflake';
 import { resolveTwitchChannel } from './channel';
-import {
-  listChannelTwitchSubscriptions,
-  listGuildTwitchSubscriptions,
-} from './subscription/index';
 import twitchCommand from './discord-command.json';
+import { listChannelTwitchSubscriptions, listGuildTwitchSubscriptions } from './subscription/index';
 
 const TWITCH_COMMAND_NAME = twitchCommand.name;
 
@@ -96,10 +90,8 @@ const TwitchAddOptions = z
     const offlineOption = options.find(({ name }) => name === 'offline');
     const pingOption = options.find(({ name }) => name === 'ping');
     const roleOption = options.find(({ name }) => name === 'role');
-    const message =
-      messageOption?.name === 'message' ? messageOption.value : undefined;
-    const offline =
-      offlineOption?.name === 'offline' ? offlineOption.value : undefined;
+    const message = messageOption?.name === 'message' ? messageOption.value : undefined;
+    const offline = offlineOption?.name === 'offline' ? offlineOption.value : undefined;
     const ping = pingOption?.name === 'ping' ? pingOption.value : undefined;
     const roleId = roleOption?.name === 'role' ? roleOption.value : undefined;
     return {
@@ -138,9 +130,7 @@ const TwitchRemoveCommand = z
 const TwitchCommand = z
   .object({
     name: z.literal(TWITCH_COMMAND_NAME),
-    options: z.tuple([
-      z.union([TwitchAddCommand, TwitchListCommand, TwitchRemoveCommand]),
-    ]),
+    options: z.tuple([z.union([TwitchAddCommand, TwitchListCommand, TwitchRemoveCommand])]),
   })
   .transform(({ options: [command] }) => command);
 
@@ -151,10 +141,14 @@ async function handleTwitchCommand(
   ctx: ExecutionContext,
 ): Promise<Response> {
   const parsed = TwitchCommand.safeParse(interaction.data);
-  if (!parsed.success) return unsupportedInteractionResponse();
+  if (!parsed.success) {
+    return unsupportedInteractionResponse();
+  }
 
   const context = getCommandContext(interaction);
-  if (context instanceof Response) return context;
+  if (context instanceof Response) {
+    return context;
+  }
   const command = parsed.data;
 
   switch (command.name) {
@@ -163,16 +157,12 @@ async function handleTwitchCommand(
       if (permissionError !== undefined) {
         return createEphemeralResponse(permissionError);
       }
-      const ping = resolveNotificationPing(
-        command.options,
-        interaction,
-        context.guildId,
-      );
-      if ('error' in ping) return createEphemeralResponse(ping.error);
+      const ping = resolveNotificationPing(command.options, interaction, context.guildId);
+      if ('error' in ping) {
+        return createEphemeralResponse(ping.error);
+      }
 
-      ctx.waitUntil(
-        completeTwitchAdd(env, context, command.options, ping.ping),
-      );
+      ctx.waitUntil(completeTwitchAdd(env, context, command.options, ping.ping));
       return createDeferredResponse();
     }
     case 'remove':
@@ -188,18 +178,14 @@ export const twitchDiscordCommand: DiscordCommandHandler = {
   handle: handleTwitchCommand,
 };
 
-function validateTwitchAdd(
-  interaction: DiscordInteraction,
-): string | undefined {
+function validateTwitchAdd(interaction: DiscordInteraction): string | undefined {
   if (!isNotificationChannel(interaction)) {
     return 'Twitch notifications can only be added in a text or announcement channel.';
   }
   if (!canPostInChannel(interaction.app_permissions)) {
     return 'I need View Channel and Send Messages permissions in this channel.';
   }
-  if (
-    !hasDiscordPermission(interaction.app_permissions, EMBED_LINKS_PERMISSION)
-  ) {
+  if (!hasDiscordPermission(interaction.app_permissions, EMBED_LINKS_PERMISSION)) {
     return 'I need Embed Links permission in this channel.';
   }
   return undefined;
@@ -221,16 +207,13 @@ async function completeTwitchAdd(
       );
       return;
     }
-    await env.TWITCH_SUBSCRIPTIONS.getByName(broadcaster.id).addSubscriber(
-      broadcaster,
-      {
-        guildId: context.guildId,
-        channelId: context.channelId,
-        message: options.message,
-        offline: options.offline,
-        ping,
-      },
-    );
+    await env.TWITCH_SUBSCRIPTIONS.getByName(broadcaster.id).addSubscriber(broadcaster, {
+      guildId: context.guildId,
+      channelId: context.channelId,
+      message: options.message,
+      offline: options.offline,
+      ping,
+    });
     await editInteractionResponse(
       context.applicationId,
       context.token,
@@ -246,10 +229,7 @@ async function completeTwitchAdd(
   }
 }
 
-async function completeTwitchRemove(
-  env: Env,
-  context: DiscordCommandContext,
-): Promise<void> {
+async function completeTwitchRemove(env: Env, context: DiscordCommandContext): Promise<void> {
   try {
     const broadcasterIds = await listChannelTwitchSubscriptions(
       env.TWITCH_SUBSCRIPTIONS_INDEX,
@@ -257,20 +237,14 @@ async function completeTwitchRemove(
     );
     await Promise.all(
       broadcasterIds.map((broadcasterId) =>
-        env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId).removeSubscriber(
-          context.channelId,
-        ),
+        env.TWITCH_SUBSCRIPTIONS.getByName(broadcasterId).removeSubscriber(context.channelId),
       ),
     );
     const content =
       broadcasterIds.length === 0
         ? `No Twitch notifications were configured for <#${context.channelId}>.`
         : `Removed ${broadcasterIds.length} Twitch notification${broadcasterIds.length === 1 ? '' : 's'} from <#${context.channelId}>.`;
-    await editInteractionResponse(
-      context.applicationId,
-      context.token,
-      content,
-    );
+    await editInteractionResponse(context.applicationId, context.token, content);
   } catch (error) {
     await reportTwitchFailure(
       context,
@@ -291,9 +265,7 @@ async function listTwitchSubscriptions(
       context.guildId,
     );
     if (subscriptions.length === 0) {
-      return createEphemeralResponse(
-        'No Twitch notifications are configured for this server.',
-      );
+      return createEphemeralResponse('No Twitch notifications are configured for this server.');
     }
     return createEphemeralResponse(
       createNotificationList(
@@ -308,9 +280,7 @@ async function listTwitchSubscriptions(
     );
   } catch (error) {
     logCommandFailure('twitch', 'list', context, error);
-    return createEphemeralResponse(
-      'Twitch notifications could not be loaded. Please try again.',
-    );
+    return createEphemeralResponse('Twitch notifications could not be loaded. Please try again.');
   }
 }
 
@@ -322,11 +292,7 @@ async function reportTwitchFailure(
 ): Promise<void> {
   logCommandFailure('twitch', action, context, error);
   try {
-    await editInteractionResponse(
-      context.applicationId,
-      context.token,
-      message,
-    );
+    await editInteractionResponse(context.applicationId, context.token, message);
   } catch (responseError) {
     logCommandFailure('twitch', action, context, responseError);
   }

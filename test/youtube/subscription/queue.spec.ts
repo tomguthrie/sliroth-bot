@@ -23,24 +23,16 @@ describe('YouTube subscription Queue processing', () => {
         publishedAt: '2026-08-07T12:34:56.789Z',
       },
     };
-    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
-      delivery.channelId,
-    );
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(delivery.channelId);
 
-    const result = await processYouTubeSubscriptionEvent(
-      delivery,
-      env,
-      CONTEXT,
-    );
+    const result = await processYouTubeSubscriptionEvent(delivery, env, CONTEXT);
 
     expect(result).toEqual({ action: 'ack' });
-    const [stored] = await runInDurableObject(
-      subscription,
-      async (_instance, state) =>
-        drizzle(state.storage)
-          .select()
-          .from(videos)
-          .where(eq(videos.id, delivery.notification.videoId)),
+    const [stored] = await runInDurableObject(subscription, async (_instance, state) =>
+      drizzle(state.storage)
+        .select()
+        .from(videos)
+        .where(eq(videos.id, delivery.notification.videoId)),
     );
     expect(stored?.title).toBe(delivery.notification.title);
   });

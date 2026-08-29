@@ -1,17 +1,10 @@
-import type {
-  broadcasters,
-  streams,
-  twitchSubscribers,
-} from '../../db/twitch-subscription/schema';
+import type { broadcasters, streams, twitchSubscribers } from '../../db/twitch-subscription/schema';
 import {
   createDiscordMentionPayload,
   createDiscordMessageNonce,
   type DiscordMessage,
 } from '../../discord/message';
-import type {
-  DiscordCreateMessageDelivery,
-  DiscordEditMessageDelivery,
-} from '../../discord/queue';
+import type { DiscordCreateMessageDelivery, DiscordEditMessageDelivery } from '../../discord/queue';
 import { TWITCH_STREAM_MESSAGE_RECEIPT } from './message-receipt';
 
 const TWITCH_COLOR = 0x9146ff;
@@ -67,12 +60,7 @@ export function createTwitchLiveUpdateDelivery(
     guildId: subscriber.guildId,
     channelId: subscriber.channelId,
     messageId,
-    message: createTwitchLiveMessage(
-      broadcaster,
-      stream,
-      subscriber,
-      previewCacheBustMs,
-    ),
+    message: createTwitchLiveMessage(broadcaster, stream, subscriber, previewCacheBustMs),
   };
 }
 
@@ -95,9 +83,7 @@ function createTwitchLiveMessage(
   const message: DiscordMessage = {
     content,
     ...(nonce === undefined ? {} : { nonce }),
-    ...(mention.allowedMentions === undefined
-      ? {}
-      : { allowedMentions: mention.allowedMentions }),
+    ...(mention.allowedMentions === undefined ? {} : { allowedMentions: mention.allowedMentions }),
     embeds: [
       {
         author: broadcasterAuthor(broadcaster),
@@ -144,9 +130,7 @@ export function createTwitchOfflineDelivery(
   const channelUrl = twitchChannelUrl(broadcaster.login);
   const watchUrl = stream.vodUrl ?? channelUrl;
   const message: DiscordMessage = {
-    content:
-      subscriber.offline ??
-      `${broadcaster.displayName} ${DEFAULT_OFFLINE_MESSAGE}`,
+    content: subscriber.offline ?? `${broadcaster.displayName} ${DEFAULT_OFFLINE_MESSAGE}`,
     embeds: [
       {
         author: broadcasterAuthor(broadcaster),
@@ -188,9 +172,7 @@ export function createTwitchOfflineDelivery(
 function broadcasterAuthor(broadcaster: Broadcaster) {
   return {
     name: broadcaster.displayName,
-    ...(broadcaster.profileImageUrl === ''
-      ? {}
-      : { iconUrl: broadcaster.profileImageUrl }),
+    ...(broadcaster.profileImageUrl === '' ? {} : { iconUrl: broadcaster.profileImageUrl }),
   };
 }
 
@@ -199,9 +181,7 @@ function twitchChannelUrl(login: string): string {
 }
 
 function resizeTwitchImage(url: string, width: number, height: number): string {
-  return url
-    .replaceAll('{width}', String(width))
-    .replaceAll('{height}', String(height));
+  return url.replaceAll('{width}', String(width)).replaceAll('{height}', String(height));
 }
 
 function cacheBustPreview(url: string, cacheBustMs: number): string {
@@ -212,10 +192,7 @@ function cacheBustPreview(url: string, cacheBustMs: number): string {
 }
 
 function formatDuration(endedAt: Date, startedAt: Date): string {
-  let seconds = Math.max(
-    0,
-    Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000),
-  );
+  let seconds = Math.max(0, Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000));
   const hours = Math.floor(seconds / 3600);
   seconds %= 3600;
   const minutes = Math.floor(seconds / 60);

@@ -6,8 +6,14 @@ import {
   createDiscordMessageProcessor,
   enqueueDiscordMessages,
   type DiscordCreateMessageDelivery,
+  type DiscordMessageDelivery,
+  type DiscordMessageReceiptHandler,
 } from '../../src/discord/queue';
 import type { QueueMessageContext } from '../../src/queue/message';
+
+type SendBatch = (
+  messages: Iterable<MessageSendRequest<DiscordMessageDelivery>>,
+) => Promise<unknown>;
 
 const GUILD_ID = '123456789012345678';
 const CHANNEL_ID = '234567890123456789';
@@ -24,7 +30,7 @@ afterEach(() => {
 
 describe('Discord Queue producer', () => {
   it('does not send an empty batch', async () => {
-    const sendBatch = vi.fn();
+    const sendBatch = vi.fn<SendBatch>();
 
     await enqueueDiscordMessages({ sendBatch }, []);
 
@@ -32,15 +38,12 @@ describe('Discord Queue producer', () => {
   });
 
   it('sends deliveries in one batch', async () => {
-    const sendBatch = vi.fn().mockResolvedValue(undefined);
+    const sendBatch = vi.fn<SendBatch>().mockResolvedValue(undefined);
     const deliveries = [createDelivery('one'), createDelivery('two')];
 
     await enqueueDiscordMessages({ sendBatch }, deliveries);
 
-    expect(sendBatch).toHaveBeenCalledWith([
-      { body: deliveries[0] },
-      { body: deliveries[1] },
-    ]);
+    expect(sendBatch).toHaveBeenCalledWith([{ body: deliveries[0] }, { body: deliveries[1] }]);
   });
 });
 
@@ -59,10 +62,8 @@ describe('Discord Queue processor', () => {
 
   it('passes an optional receipt to its feature handler', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(discordReceipt());
-    const handle = vi.fn().mockResolvedValue(undefined);
-    const processor = createDiscordMessageProcessor([
-      { type: 'test-receipt', handle },
-    ]);
+    const handle = vi.fn<DiscordMessageReceiptHandler['handle']>().mockResolvedValue(undefined);
+    const processor = createDiscordMessageProcessor([{ type: 'test-receipt', handle }]);
     const delivery = {
       ...createDelivery('receipt'),
       receipt: { type: 'test-receipt', ownerId: 'owner' },
@@ -81,7 +82,7 @@ describe('Discord Queue processor', () => {
   it('rejects duplicate receipt handlers', () => {
     const handler = {
       type: 'duplicate',
-      handle: vi.fn().mockResolvedValue(undefined),
+      handle: vi.fn<DiscordMessageReceiptHandler['handle']>().mockResolvedValue(undefined),
     };
 
     expect(() => createDiscordMessageProcessor([handler, handler])).toThrow(
@@ -89,23 +90,18 @@ describe('Discord Queue processor', () => {
     );
   });
 
-  it.each([400, 401, 403, 404])(
-    'acknowledges permanent HTTP %i failures',
-    async (status) => {
-      vi.spyOn(console, 'error').mockImplementation(() => undefined);
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-        new Response('Permanent failure', { status }),
-      );
+  it.each([400, 401, 403, 404])('acknowledges permanent HTTP %i failures', async (status) => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('Permanent failure', { status }));
 
-      const result = await createDiscordMessageProcessor([])(
-        createDelivery(`http-${status}`),
-        TEST_ENV,
-        CONTEXT,
-      );
+    const result = await createDiscordMessageProcessor([])(
+      createDelivery(`http-${status}`),
+      TEST_ENV,
+      CONTEXT,
+    );
 
-      expect(result).toEqual({ action: 'ack' });
-    },
-  );
+    expect(result).toEqual({ action: 'ack' });
+  });
 
   it('uses Discord Retry-After for rate limits', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -127,9 +123,7 @@ describe('Discord Queue processor', () => {
 
   it('retries transient failures', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
-      new TypeError('Network error'),
-    );
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Network error'));
 
     const result = await createDiscordMessageProcessor([])(
       createDelivery('transient'),

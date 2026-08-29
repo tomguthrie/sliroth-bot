@@ -88,9 +88,7 @@ export async function editDiscordMessage(
   options: EditDiscordMessageOptions,
 ): Promise<DiscordMessageReceipt> {
   DiscordSnowflake.parse(options.messageId);
-  return executeDiscordMessageRequest(
-    createDiscordMessageRequest(options, options.messageId),
-  );
+  return executeDiscordMessageRequest(createDiscordMessageRequest(options, options.messageId));
 }
 
 function createDiscordMessageRequest(
@@ -99,10 +97,7 @@ function createDiscordMessageRequest(
 ): Request {
   const channelId = DiscordSnowflake.parse(options.channelId);
   const applicationUrl = new URL(options.applicationUrl);
-  if (
-    applicationUrl.protocol !== 'http:' &&
-    applicationUrl.protocol !== 'https:'
-  ) {
+  if (applicationUrl.protocol !== 'http:' && applicationUrl.protocol !== 'https:') {
     throw new Error('Discord application URL must use HTTP or HTTPS');
   }
 
@@ -168,9 +163,7 @@ function createEmbedPayload(
       : {
           author: {
             name: embed.author.name,
-            ...(embed.author.iconUrl === undefined
-              ? {}
-              : { icon_url: embed.author.iconUrl }),
+            ...(embed.author.iconUrl === undefined ? {} : { icon_url: embed.author.iconUrl }),
           },
         }),
     ...(embed.title === undefined ? {} : { title: embed.title }),
@@ -184,9 +177,7 @@ function createEmbedPayload(
   };
 }
 
-async function executeDiscordMessageRequest(
-  request: Request,
-): Promise<DiscordMessageReceipt> {
+async function executeDiscordMessageRequest(request: Request): Promise<DiscordMessageReceipt> {
   const response = await fetch(request);
   if (!response.ok) {
     const body = await response.text();
@@ -200,7 +191,9 @@ async function executeDiscordMessageRequest(
 }
 
 function parseRetryAfter(value: string | null): number | undefined {
-  if (value === null) return undefined;
+  if (value === null) {
+    return undefined;
+  }
   const seconds = Number.parseFloat(value);
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined;
 }

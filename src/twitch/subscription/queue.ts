@@ -1,9 +1,6 @@
-import type { EventSubNotification, EventSubRevocation } from '../eventsub';
-import type {
-  QueueMessageDisposition,
-  QueueMessageProcessor,
-} from '../../queue/message';
+import type { QueueMessageDisposition, QueueMessageProcessor } from '../../queue/message';
 import { TwitchApiClient } from '../client';
+import type { EventSubNotification, EventSubRevocation } from '../eventsub';
 
 export interface TwitchEventSubDelivery {
   kind: 'twitch-eventsub';
@@ -18,8 +15,7 @@ export interface TwitchVodLookupDelivery {
   streamId: string;
 }
 
-export type TwitchSubscriptionEventDelivery =
-  TwitchEventSubDelivery | TwitchVodLookupDelivery;
+export type TwitchSubscriptionEventDelivery = TwitchEventSubDelivery | TwitchVodLookupDelivery;
 
 /** Processes a Twitch subscription event and applies provider retry policy. */
 export const processTwitchSubscriptionEvent: QueueMessageProcessor<
@@ -33,13 +29,12 @@ export const processTwitchSubscriptionEvent: QueueMessageProcessor<
   }
 
   const vods = await new TwitchApiClient(env).getVideos(delivery.broadcasterId);
-  const vod = vods.find(
-    (candidate) => candidate.streamId === delivery.streamId,
-  );
+  const vod = vods.find((candidate) => candidate.streamId === delivery.streamId);
   if (vod !== undefined) {
-    await env.TWITCH_SUBSCRIPTIONS.getByName(
-      delivery.broadcasterId,
-    ).recordStreamVod(delivery.streamId, vod.url);
+    await env.TWITCH_SUBSCRIPTIONS.getByName(delivery.broadcasterId).recordStreamVod(
+      delivery.streamId,
+      vod.url,
+    );
     return { action: 'ack' };
   }
 

@@ -1,9 +1,4 @@
-import {
-  createExecutionContext,
-  createMessageBatch,
-  env,
-  getQueueResult,
-} from 'cloudflare:test';
+import { createExecutionContext, createMessageBatch, env, getQueueResult } from 'cloudflare:test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { deliverQueueBatch, type WorkerQueueMessage } from '../../src/queue';
@@ -20,22 +15,19 @@ describe('Queue message delivery', () => {
       createTestMessage('retry'),
     ]);
     const retryMessage = batch.messages[1];
-    if (retryMessage === undefined) throw new Error('Missing retry message');
+    if (retryMessage === undefined) {
+      throw new Error('Missing retry message');
+    }
     const retry = vi.spyOn(retryMessage, 'retry');
 
     await deliverQueueMessages(batch, env, (body) =>
-      Promise.resolve(
-        body === 'ack'
-          ? { action: 'ack' }
-          : { action: 'retry', delaySeconds: 30 },
-      ),
+      Promise.resolve(body === 'ack' ? { action: 'ack' } : { action: 'retry', delaySeconds: 30 }),
     );
 
-    const result: unknown = await getQueueResult(
-      batch,
-      createExecutionContext(),
-    );
-    if (!isQueueResult(result)) throw new Error('Invalid Queue result');
+    const result: unknown = await getQueueResult(batch, createExecutionContext());
+    if (!isQueueResult(result)) {
+      throw new Error('Invalid Queue result');
+    }
     expect(result.explicitAcks).toEqual(['ack']);
     expect(result.retryMessages).toEqual([{ msgId: 'retry' }]);
     expect(retry).toHaveBeenCalledWith({ delaySeconds: 30 });
@@ -49,14 +41,11 @@ describe('Queue message delivery', () => {
       throw new Error('Invalid message');
     });
 
-    const result: unknown = await getQueueResult(
-      batch,
-      createExecutionContext(),
-    );
-    if (!isQueueResult(result)) throw new Error('Invalid Queue result');
-    expect(result.retryMessages).toEqual([
-      { msgId: 'bad', delaySeconds: undefined },
-    ]);
+    const result: unknown = await getQueueResult(batch, createExecutionContext());
+    if (!isQueueResult(result)) {
+      throw new Error('Invalid Queue result');
+    }
+    expect(result.retryMessages).toEqual([{ msgId: 'bad', delaySeconds: undefined }]);
   });
 
   it('retries an unknown physical queue as a batch', async () => {
@@ -81,11 +70,10 @@ describe('Queue message delivery', () => {
 
     await deliverQueueBatch(batch, env);
 
-    const result: unknown = await getQueueResult(
-      batch,
-      createExecutionContext(),
-    );
-    if (!isQueueResult(result)) throw new Error('Invalid Queue result');
+    const result: unknown = await getQueueResult(batch, createExecutionContext());
+    if (!isQueueResult(result)) {
+      throw new Error('Invalid Queue result');
+    }
     expect(result.retryBatch.retry).toBe(true);
   });
 
@@ -111,14 +99,11 @@ describe('Queue message delivery', () => {
 
     await deliverQueueBatch(batch, env);
 
-    const result: unknown = await getQueueResult(
-      batch,
-      createExecutionContext(),
-    );
-    if (!isQueueResult(result)) throw new Error('Invalid Queue result');
-    expect(result.retryMessages).toEqual([
-      { msgId: 'misrouted', delaySeconds: undefined },
-    ]);
+    const result: unknown = await getQueueResult(batch, createExecutionContext());
+    if (!isQueueResult(result)) {
+      throw new Error('Invalid Queue result');
+    }
+    expect(result.retryMessages).toEqual([{ msgId: 'misrouted', delaySeconds: undefined }]);
   });
 });
 

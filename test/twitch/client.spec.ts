@@ -6,8 +6,8 @@ import { getAccessToken, refreshAccessToken } from '../../src/twitch/auth';
 import { TwitchApiClient } from '../../src/twitch/client';
 
 vi.mock('../../src/twitch/auth', () => ({
-  getAccessToken: vi.fn(),
-  refreshAccessToken: vi.fn(),
+  getAccessToken: vi.fn<typeof getAccessToken>(),
+  refreshAccessToken: vi.fn<typeof refreshAccessToken>(),
 }));
 
 const BROADCASTER_ID = '123';
@@ -42,8 +42,12 @@ const GAME = {
 };
 
 function requestUrl(input: RequestInfo | URL | undefined): string | undefined {
-  if (input instanceof Request) return input.url;
-  if (input instanceof URL) return input.toString();
+  if (input instanceof Request) {
+    return input.url;
+  }
+  if (input instanceof URL) {
+    return input.toString();
+  }
   return input;
 }
 
@@ -86,9 +90,7 @@ describe('TwitchApiClient GET methods', () => {
       Response.json({ data: [{ ...USER, offline_image_url: '' }] }),
     );
 
-    await expect(
-      new TwitchApiClient(env).getUserById(BROADCASTER_ID),
-    ).resolves.toMatchObject({
+    await expect(new TwitchApiClient(env).getUserById(BROADCASTER_ID)).resolves.toMatchObject({
       id: BROADCASTER_ID,
       offlineImageUrl: '',
     });
@@ -139,13 +141,9 @@ describe('TwitchApiClient GET methods', () => {
   });
 
   it('returns undefined when a broadcaster has no live stream', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      Response.json({ data: [] }),
-    );
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ data: [] }));
 
-    await expect(
-      new TwitchApiClient(env).getStream('offline'),
-    ).resolves.toBeUndefined();
+    await expect(new TwitchApiClient(env).getStream('offline')).resolves.toBeUndefined();
   });
 
   it('gets and transforms a complete game by ID', async () => {
@@ -169,9 +167,7 @@ describe('TwitchApiClient GET methods', () => {
       Response.json({ data: [{ ...USER, display_name: 123 }] }),
     );
 
-    await expect(
-      new TwitchApiClient(env).getUserById('123'),
-    ).rejects.toBeInstanceOf(z.ZodError);
+    await expect(new TwitchApiClient(env).getUserById('123')).rejects.toBeInstanceOf(z.ZodError);
   });
 
   it('reuses one access token across GET requests from the same client', async () => {
@@ -220,9 +216,9 @@ describe('TwitchApiClient GET methods', () => {
     expect(getAccessToken).toHaveBeenCalledOnce();
     expect(refreshAccessToken).toHaveBeenCalledOnce();
     expect(refreshAccessToken).toHaveBeenCalledWith(env);
-    expect(
-      new Headers(fetcher.mock.calls[1]?.[1]?.headers).get('authorization'),
-    ).toBe('Bearer fresh-token');
+    expect(new Headers(fetcher.mock.calls[1]?.[1]?.headers).get('authorization')).toBe(
+      'Bearer fresh-token',
+    );
   });
 
   it('does not retry more than once after repeated 401 responses', async () => {
@@ -233,9 +229,7 @@ describe('TwitchApiClient GET methods', () => {
       .mockResolvedValueOnce(new Response(null, { status: 401 }))
       .mockResolvedValueOnce(new Response(null, { status: 401 }));
 
-    await expect(
-      new TwitchApiClient(env).getUserById('123'),
-    ).rejects.toMatchObject({
+    await expect(new TwitchApiClient(env).getUserById('123')).rejects.toMatchObject({
       status: 401,
     });
 
@@ -248,27 +242,23 @@ describe('TwitchApiClient GET methods', () => {
     vi.mocked(getAccessToken)
       .mockResolvedValueOnce('expired-token')
       .mockResolvedValueOnce('recovered-token');
-    vi.mocked(refreshAccessToken).mockRejectedValueOnce(
-      new Error('Failed to refresh token'),
-    );
+    vi.mocked(refreshAccessToken).mockRejectedValueOnce(new Error('Failed to refresh token'));
     const fetcher = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(new Response(null, { status: 401 }))
       .mockResolvedValueOnce(Response.json({ data: [USER] }));
     const client = new TwitchApiClient(env);
 
-    await expect(client.getUserById('123')).rejects.toThrow(
-      'Failed to refresh token',
-    );
+    await expect(client.getUserById('123')).rejects.toThrow('Failed to refresh token');
     await expect(client.getUserById('123')).resolves.toMatchObject({
       id: '123',
     });
 
     expect(getAccessToken).toHaveBeenCalledTimes(2);
     expect(refreshAccessToken).toHaveBeenCalledOnce();
-    expect(
-      new Headers(fetcher.mock.calls[1]?.[1]?.headers).get('authorization'),
-    ).toBe('Bearer recovered-token');
+    expect(new Headers(fetcher.mock.calls[1]?.[1]?.headers).get('authorization')).toBe(
+      'Bearer recovered-token',
+    );
   });
 
   it('falls back to HTTP status text when Twitch error JSON is malformed', async () => {
@@ -279,9 +269,7 @@ describe('TwitchApiClient GET methods', () => {
       }),
     );
 
-    await expect(
-      new TwitchApiClient(env).getUserById('123'),
-    ).rejects.toMatchObject({
+    await expect(new TwitchApiClient(env).getUserById('123')).rejects.toMatchObject({
       message: 'Twitch API returned HTTP 500: Internal Server Error',
       status: 500,
     });
@@ -336,9 +324,7 @@ describe('TwitchApiClient GET methods', () => {
       }),
     );
 
-    await expect(
-      new TwitchApiClient(env).getVideos(BROADCASTER_ID),
-    ).resolves.toEqual([
+    await expect(new TwitchApiClient(env).getVideos(BROADCASTER_ID)).resolves.toEqual([
       {
         id: 'video-1',
         streamId: 'stream-1',
@@ -390,9 +376,7 @@ describe('TwitchApiClient GET methods', () => {
       }),
     );
 
-    await expect(
-      new TwitchApiClient(env).getVideos(BROADCASTER_ID, 1),
-    ).resolves.toHaveLength(1);
+    await expect(new TwitchApiClient(env).getVideos(BROADCASTER_ID, 1)).resolves.toHaveLength(1);
 
     expect(requestUrl(fetcher.mock.calls[0]?.[0])).toBe(
       'https://api.twitch.tv/helix/videos?user_id=123&type=archive&first=1',
@@ -400,13 +384,9 @@ describe('TwitchApiClient GET methods', () => {
   });
 
   it('returns an empty array when the broadcaster has no archive videos', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      Response.json({ data: [] }),
-    );
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ data: [] }));
 
-    await expect(
-      new TwitchApiClient(env).getVideos(BROADCASTER_ID, 1),
-    ).resolves.toEqual([]);
+    await expect(new TwitchApiClient(env).getVideos(BROADCASTER_ID, 1)).resolves.toEqual([]);
   });
 });
 
@@ -455,9 +435,7 @@ describe('TwitchApiClient EventSub methods', () => {
 
     const [input, init] = fetcher.mock.calls[0] ?? [];
 
-    expect(requestUrl(input)).toBe(
-      'https://api.twitch.tv/helix/eventsub/subscriptions',
-    );
+    expect(requestUrl(input)).toBe('https://api.twitch.tv/helix/eventsub/subscriptions');
 
     expect(init?.method).toBe('POST');
 
@@ -493,9 +471,7 @@ describe('TwitchApiClient EventSub methods', () => {
 
     const client = new TwitchApiClient(env);
 
-    await expect(
-      client.getEventSubSubscription('sub-123'),
-    ).resolves.toMatchObject({
+    await expect(client.getEventSubSubscription('sub-123')).resolves.toMatchObject({
       id: 'sub-123',
       type: 'stream.online',
       version: '1',
@@ -507,9 +483,7 @@ describe('TwitchApiClient EventSub methods', () => {
   });
 
   it('returns undefined when an EventSub subscription does not exist', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      Response.json({ data: [] }),
-    );
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ data: [] }));
 
     await expect(
       new TwitchApiClient(env).getEventSubSubscription('missing'),
@@ -523,15 +497,11 @@ describe('TwitchApiClient EventSub methods', () => {
 
     const client = new TwitchApiClient(env);
 
-    await expect(
-      client.deleteEventSubSubscription('sub-123'),
-    ).resolves.toBeUndefined();
+    await expect(client.deleteEventSubSubscription('sub-123')).resolves.toBeUndefined();
 
     const [input, init] = fetcher.mock.calls[0] ?? [];
 
-    expect(requestUrl(input)).toBe(
-      'https://api.twitch.tv/helix/eventsub/subscriptions?id=sub-123',
-    );
+    expect(requestUrl(input)).toBe('https://api.twitch.tv/helix/eventsub/subscriptions?id=sub-123');
 
     expect(init?.method).toBe('DELETE');
 
@@ -541,9 +511,7 @@ describe('TwitchApiClient EventSub methods', () => {
   });
 
   it('rejects when Twitch creates no EventSub subscription', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      Response.json({ data: [] }),
-    );
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ data: [] }));
 
     await expect(
       new TwitchApiClient(env).createEventSubSubscription({
@@ -558,6 +526,6 @@ describe('TwitchApiClient EventSub methods', () => {
           secret: 'secret',
         },
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow('Twitch did not return an EventSub subscription');
   });
 });

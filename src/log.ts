@@ -4,8 +4,9 @@ export function toLoggableError(error: unknown): unknown {
     return error;
   }
 
+  const properties = Object.fromEntries(Object.entries(error));
   return {
-    ...error,
+    ...properties,
     name: error.name,
     message: error.message,
     stack: error.stack,
@@ -15,7 +16,7 @@ export function toLoggableError(error: unknown): unknown {
           cause:
             error.cause instanceof Error
               ? {
-                  ...error.cause,
+                  ...Object.fromEntries(Object.entries(error.cause)),
                   name: error.cause.name,
                   message: error.cause.message,
                   stack: error.cause.stack,

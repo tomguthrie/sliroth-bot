@@ -1,13 +1,11 @@
-import { env } from 'cloudflare:workers';
 import { runInDurableObject } from 'cloudflare:test';
+import { env } from 'cloudflare:workers';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as z from 'zod';
 
-import {
-  subscribers,
-  videos,
-} from '../../../src/db/youtube-subscription/schema';
+import { subscribers, videos } from '../../../src/db/youtube-subscription/schema';
 import type { YouTubeSubscription } from '../../../src/youtube/subscription/durable-object';
 
 const GUILD_ID = '123456789012345678';
@@ -16,9 +14,7 @@ const CHANNEL_ID = '345678901234567890';
 const ROLE_ID = '456789012345678901' as const;
 
 beforeEach(() => {
-  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-    new Response(null, { status: 202 }),
-  );
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 202 }));
 });
 
 afterEach(() => {
@@ -27,46 +23,37 @@ afterEach(() => {
 
 describe('YouTubeSubscription', () => {
   it('initializes Drizzle migrations before handling events', async () => {
-    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
-      crypto.randomUUID(),
-    );
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(crypto.randomUUID());
 
-    const migrationTables = await runInDurableObject(
-      subscription,
-      (_instance, state) =>
-        state.storage.sql
-          .exec<{ name: string }>(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
-            '__drizzle_migrations',
-          )
-          .toArray(),
+    const migrationTables = await runInDurableObject(subscription, (_instance, state) =>
+      state.storage.sql
+        .exec<{ name: string }>(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+          '__drizzle_migrations',
+        )
+        .toArray(),
     );
 
     expect(migrationTables).toEqual([{ name: '__drizzle_migrations' }]);
   });
 
   it('creates camelCase models backed by snake_case columns', async () => {
-    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
-      crypto.randomUUID(),
-    );
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(crypto.randomUUID());
 
-    const schema = await runInDurableObject(
-      subscription,
-      (_instance, state) => ({
-        subscriberColumns: state.storage.sql
-          .exec<{ name: string }>("PRAGMA table_info('subscribers')")
-          .toArray()
-          .map(({ name }) => name),
-        videoColumns: state.storage.sql
-          .exec<{ name: string }>("PRAGMA table_info('videos')")
-          .toArray()
-          .map(({ name }) => name),
-        subscriberIndexes: state.storage.sql
-          .exec<{ name: string }>("PRAGMA index_list('subscribers')")
-          .toArray()
-          .map(({ name }) => name),
-      }),
-    );
+    const schema = await runInDurableObject(subscription, (_instance, state) => ({
+      subscriberColumns: state.storage.sql
+        .exec<{ name: string }>("PRAGMA table_info('subscribers')")
+        .toArray()
+        .map(({ name }) => name),
+      videoColumns: state.storage.sql
+        .exec<{ name: string }>("PRAGMA table_info('videos')")
+        .toArray()
+        .map(({ name }) => name),
+      subscriberIndexes: state.storage.sql
+        .exec<{ name: string }>("PRAGMA index_list('subscribers')")
+        .toArray()
+        .map(({ name }) => name),
+    }));
 
     expect(schema.subscriberColumns).toEqual([
       'channel_id',
@@ -81,9 +68,7 @@ describe('YouTubeSubscription', () => {
   });
 
   it('stores videos with Date timestamps and unique IDs', async () => {
-    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
-      crypto.randomUUID(),
-    );
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(crypto.randomUUID());
     const publishedAt = new Date('2026-08-07T12:34:56.789Z');
 
     await runInDurableObject(subscription, async (_instance, state) => {
@@ -111,14 +96,12 @@ describe('YouTubeSubscription', () => {
           title: 'A duplicate',
           publishedAt,
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(Error);
     });
   });
 
   it('stores subscriber defaults and refreshes updatedAt', async () => {
-    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
-      crypto.randomUUID(),
-    );
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(crypto.randomUUID());
 
     await runInDurableObject(subscription, async (_instance, state) => {
       const database = drizzle(state.storage);
@@ -146,7 +129,7 @@ describe('YouTubeSubscription', () => {
           channelId: '123456789012345678',
           guildId: '345678901234567890',
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(Error);
 
       const [updated] = await database
         .update(subscribers)
@@ -155,18 +138,14 @@ describe('YouTubeSubscription', () => {
         .returning();
 
       expect(updated?.message).toBe('A custom message');
-      expect(updated?.updatedAt.getTime()).toBeGreaterThan(
-        initialUpdatedAt.getTime(),
-      );
+      expect(updated?.updatedAt.getTime()).toBeGreaterThan(initialUpdatedAt.getTime());
     });
   });
 
   it.each([null, 'everyone', 'here', '345678901234567890'])(
     'accepts the subscriber ping value %s',
     async (ping) => {
-      const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
-        crypto.randomUUID(),
-      );
+      const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(crypto.randomUUID());
 
       await runInDurableObject(subscription, (_instance, state) => {
         state.storage.sql.exec(
@@ -175,6 +154,10 @@ describe('YouTubeSubscription', () => {
           '234567890123456789',
           ping,
         );
+        const [stored] = state.storage.sql
+          .exec<{ ping: string | null }>('SELECT ping FROM subscribers')
+          .toArray();
+        expect(stored?.ping).toBe(ping);
       });
     },
   );
@@ -204,11 +187,7 @@ describe('YouTubeSubscription', () => {
     ]);
     await expect(
       env.YOUTUBE_SUBSCRIPTIONS_INDEX.getWithMetadata(
-        createGuildYouTubeSubscriptionKey(
-          GUILD_ID,
-          CHANNEL_ID,
-          youtubeChannelId,
-        ),
+        createGuildYouTubeSubscriptionKey(GUILD_ID, CHANNEL_ID, youtubeChannelId),
       ),
     ).resolves.toMatchObject({
       value: '1',
@@ -248,11 +227,7 @@ describe('YouTubeSubscription', () => {
     ]);
     await expect(
       env.YOUTUBE_SUBSCRIPTIONS_INDEX.getWithMetadata(
-        createGuildYouTubeSubscriptionKey(
-          GUILD_ID,
-          CHANNEL_ID,
-          youtubeChannelId,
-        ),
+        createGuildYouTubeSubscriptionKey(GUILD_ID, CHANNEL_ID, youtubeChannelId),
       ),
     ).resolves.toMatchObject({
       value: '1',
@@ -260,11 +235,7 @@ describe('YouTubeSubscription', () => {
     });
     await expect(
       env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(
-        createGuildYouTubeSubscriptionKey(
-          OTHER_GUILD_ID,
-          CHANNEL_ID,
-          youtubeChannelId,
-        ),
+        createGuildYouTubeSubscriptionKey(OTHER_GUILD_ID, CHANNEL_ID, youtubeChannelId),
       ),
     ).resolves.toBeNull();
     await expect(
@@ -277,41 +248,24 @@ describe('YouTubeSubscription', () => {
   it('removes a subscriber and both global lookup indexes', async () => {
     const youtubeChannelId = randomYouTubeChannelId();
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId);
-    const guildKey = createGuildYouTubeSubscriptionKey(
-      GUILD_ID,
-      CHANNEL_ID,
-      youtubeChannelId,
-    );
-    const channelKey = createChannelYouTubeSubscriptionKey(
-      CHANNEL_ID,
-      youtubeChannelId,
-    );
+    const guildKey = createGuildYouTubeSubscriptionKey(GUILD_ID, CHANNEL_ID, youtubeChannelId);
+    const channelKey = createChannelYouTubeSubscriptionKey(CHANNEL_ID, youtubeChannelId);
 
     await subscription.addSubscriber({
       guildId: GUILD_ID,
       channelId: CHANNEL_ID,
       channelTitle: 'YouTube channel',
     });
-    await expect(
-      subscription.removeSubscriber(CHANNEL_ID),
-    ).resolves.toBeUndefined();
+    await expect(subscription.removeSubscriber(CHANNEL_ID)).resolves.toBeUndefined();
 
     await expect(readSubscribers(subscription)).resolves.toEqual([]);
-    await expect(
-      env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(guildKey),
-    ).resolves.toBeNull();
-    await expect(
-      env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(channelKey),
-    ).resolves.toBeNull();
-    await expect(
-      subscription.removeSubscriber(CHANNEL_ID),
-    ).resolves.toBeUndefined();
+    await expect(env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(guildKey)).resolves.toBeNull();
+    await expect(env.YOUTUBE_SUBSCRIPTIONS_INDEX.get(channelKey)).resolves.toBeNull();
+    await expect(subscription.removeSubscriber(CHANNEL_ID)).resolves.toBeUndefined();
   });
 
   it('validates subscriber registrations before changing storage', async () => {
-    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(
-      `youtube-${crypto.randomUUID()}`,
-    );
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(`youtube-${crypto.randomUUID()}`);
 
     await expect(
       runInDurableObject(subscription, (instance: YouTubeSubscription) =>
@@ -321,7 +275,7 @@ describe('YouTubeSubscription', () => {
           channelTitle: 'YouTube channel',
         }),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(z.ZodError);
     await expect(
       runInDurableObject(subscription, (instance: YouTubeSubscription) =>
         instance.addSubscriber({
@@ -330,7 +284,7 @@ describe('YouTubeSubscription', () => {
           channelTitle: '   ',
         }),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(z.ZodError);
     await expect(
       runInDurableObject(subscription, (instance: YouTubeSubscription) =>
         instance.addSubscriber({
@@ -340,7 +294,7 @@ describe('YouTubeSubscription', () => {
           message: '   ',
         }),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(z.ZodError);
     await expect(
       runInDurableObject(subscription, (instance: YouTubeSubscription) =>
         instance.addSubscriber({
@@ -350,12 +304,12 @@ describe('YouTubeSubscription', () => {
           ping: 'not-a-role',
         }),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(z.ZodError);
     await expect(
       runInDurableObject(subscription, (instance: YouTubeSubscription) =>
         instance.removeSubscriber('not-a-channel'),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(z.ZodError);
     await expect(readSubscribers(subscription)).resolves.toEqual([]);
   });
 
@@ -388,9 +342,8 @@ describe('YouTubeSubscription', () => {
       }),
     ).resolves.toBeUndefined();
 
-    const storedVideos = await runInDurableObject(
-      subscription,
-      async (_instance, state) => drizzle(state.storage).select().from(videos),
+    const storedVideos = await runInDurableObject(subscription, async (_instance, state) =>
+      drizzle(state.storage).select().from(videos),
     );
     expect(storedVideos).toEqual([
       {
@@ -414,9 +367,8 @@ describe('YouTubeSubscription', () => {
       }),
     ).resolves.toBeUndefined();
 
-    const storedVideos = await runInDurableObject(
-      subscription,
-      async (_instance, state) => drizzle(state.storage).select().from(videos),
+    const storedVideos = await runInDurableObject(subscription, async (_instance, state) =>
+      drizzle(state.storage).select().from(videos),
     );
     expect(storedVideos).toHaveLength(1);
   });
@@ -433,13 +385,10 @@ describe('YouTubeSubscription', () => {
 
     await subscription.recordVideo(notification);
 
-    await expect(
-      subscription.recordVideo(notification),
-    ).resolves.toBeUndefined();
+    await expect(subscription.recordVideo(notification)).resolves.toBeUndefined();
 
-    const storedVideos = await runInDurableObject(
-      subscription,
-      async (_instance, state) => drizzle(state.storage).select().from(videos),
+    const storedVideos = await runInDurableObject(subscription, async (_instance, state) =>
+      drizzle(state.storage).select().from(videos),
     );
     expect(storedVideos).toHaveLength(1);
   });
@@ -461,7 +410,7 @@ describe('YouTubeSubscription', () => {
       });
 
       const queueCall = Promise.withResolvers<void>();
-      const sendBatch = vi.fn(() => queueCall.promise);
+      const sendBatch = vi.fn<() => Promise<void>>(() => queueCall.promise);
       Object.defineProperty(instance, 'env', {
         configurable: true,
         value: { DISCORD_MESSAGES: { sendBatch } },
@@ -496,7 +445,7 @@ describe('YouTubeSubscription', () => {
       });
 
       const sendBatch = vi
-        .fn()
+        .fn<() => Promise<void>>()
         .mockRejectedValueOnce(new Error('Queue unavailable'))
         .mockResolvedValueOnce(undefined);
       Object.defineProperty(instance, 'env', {
@@ -504,9 +453,7 @@ describe('YouTubeSubscription', () => {
         value: { DISCORD_MESSAGES: { sendBatch } },
       });
 
-      await expect(instance.recordVideo(notification)).rejects.toThrow(
-        'Queue unavailable',
-      );
+      await expect(instance.recordVideo(notification)).rejects.toThrow('Queue unavailable');
       await expect(database.select().from(videos)).resolves.toEqual([]);
 
       await expect(instance.recordVideo(notification)).resolves.toBeUndefined();
@@ -552,9 +499,6 @@ function createGuildYouTubeSubscriptionKey(
   return `guild:${guildId}:channel:${channelId}:youtube:${youtubeChannelId}`;
 }
 
-function createChannelYouTubeSubscriptionKey(
-  channelId: string,
-  youtubeChannelId: string,
-): string {
+function createChannelYouTubeSubscriptionKey(channelId: string, youtubeChannelId: string): string {
   return `channel:${channelId}:youtube:${youtubeChannelId}`;
 }

@@ -1,4 +1,4 @@
-import { TwitchApiClient, TwitchUser } from './client';
+import { TwitchApiClient, type TwitchUser } from './client';
 
 /** Returns whether the input is a numeric Twitch broadcaster ID. */
 export function isTwitchBroadcasterId(input: string): boolean {
@@ -23,8 +23,7 @@ export function parseTwitchChannelLogin(input: string): string | undefined {
     return input;
   }
 
-  const match =
-    /^https?:\/\/(?:www\.)?twitch\.tv\/([a-zA-Z0-9_]{3,25})\/?$/.exec(input);
+  const match = /^https?:\/\/(?:www\.)?twitch\.tv\/([a-zA-Z0-9_]{3,25})\/?$/.exec(input);
 
   return match?.[1];
 }

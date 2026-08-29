@@ -41,16 +41,8 @@ describe('YouTube Discord message', () => {
   });
 
   it.each([
-    [
-      'everyone',
-      '@everyone A custom message https://youtu.be/dQw4w9WgXcQ',
-      { everyone: true },
-    ],
-    [
-      'here',
-      '@here A custom message https://youtu.be/dQw4w9WgXcQ',
-      { everyone: true },
-    ],
+    ['everyone', '@everyone A custom message https://youtu.be/dQw4w9WgXcQ', { everyone: true }],
+    ['here', '@here A custom message https://youtu.be/dQw4w9WgXcQ', { everyone: true }],
     [
       ROLE_ID,
       `<@&${ROLE_ID}> A custom message https://youtu.be/dQw4w9WgXcQ`,
