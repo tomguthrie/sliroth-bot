@@ -1,4 +1,4 @@
-import { env, runInDurableObject } from 'cloudflare:test';
+import { env, runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -115,6 +115,8 @@ describe('Twitch stream lifecycle', () => {
         },
       });
 
+      expect(await state.storage.getAlarm()).not.toBeNull();
+
       currentStream = createMockTwitchStream({
         game_id: '84',
         game_name: 'Science & Technology',
@@ -124,6 +126,7 @@ describe('Twitch stream lifecycle', () => {
       now.mockReturnValue(1780680540000);
       await instance.channelUpdate(channelUpdateEvent());
       expect(batches).toHaveLength(1);
+      expect(await state.storage.getAlarm()).not.toBeNull();
 
       await instance.recordDiscordMessage('9001', {
         channelId: CHANNEL_ID,
@@ -178,6 +181,7 @@ describe('Twitch stream lifecycle', () => {
         '2026-06-05T23:51:08.000Z',
       );
 
+      expect(await state.storage.getAlarm()).toBeNull();
       expect(batches).toHaveLength(3);
       expect(batches[2]?.[0]).toMatchObject({
         operation: 'edit',
@@ -240,6 +244,156 @@ describe('Twitch stream lifecycle', () => {
       const [storedMessage] = await database.select().from(streamMessages);
       expect(storedStream?.revision).toBe(4);
       expect(storedMessage?.enqueuedRevision).toBe(4);
+    });
+  });
+
+  it('refreshes unchanged live previews repeatedly and catches up pending receipts', async () => {
+    let currentStream = createMockTwitchStream();
+    mockTwitchApi(() => currentStream);
+    const { subscription, sendBatch } = await seedRefresh();
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+    await subscription.channelUpdate(channelUpdateEvent());
+    const first = sendBatch.mock.calls[0]?.[0][0]?.body;
+    now.mockReturnValue(Date.now() + 15 * 60_000);
+    currentStream = createMockTwitchStream({ viewer_count: 10 });
+    await expect(runDurableObjectAlarm(subscription)).resolves.toBe(true);
+    const second = sendBatch.mock.calls[1]?.[0][0]?.body;
+    expect(second).toMatchObject({
+      operation: 'edit',
+      messageId: MESSAGE_ID,
+      message: {
+        embeds: [
+          {
+            title: currentStream.title,
+            image: { url: `https://static.example.com/1280x720.jpg?t=${Date.now()}` },
+            fields: [
+              { name: 'Game', value: 'Special Events', inline: true },
+              { name: 'Viewers', value: '10', inline: true },
+            ],
+          },
+        ],
+      },
+    });
+    expect(second?.message.embeds?.[0]?.image?.url).not.toBe(
+      first?.message.embeds?.[0]?.image?.url,
+    );
+    await runInDurableObject(subscription, async (_instance, state) => {
+      expect(await state.storage.getAlarm()).toBe(Date.now() + 15 * 60_000);
+      await drizzle(state.storage).update(streamMessages).set({ messageId: null });
+    });
+    now.mockReturnValue(Date.now() + 15 * 60_000);
+    await runDurableObjectAlarm(subscription);
+    expect(sendBatch).toHaveBeenCalledTimes(2);
+    await subscription.recordDiscordMessage('9001', {
+      channelId: CHANNEL_ID,
+      messageId: MESSAGE_ID,
+    });
+    expect(sendBatch).toHaveBeenCalledTimes(3);
+    expect(sendBatch.mock.calls[2]?.[0][0]?.body.message.embeds?.[0]?.image?.url).toBe(
+      `https://static.example.com/1280x720.jpg?t=${Date.now()}`,
+    );
+  });
+
+  it.each(['offline', 'untracked', 'ended', 'unsubscribed'] as const)(
+    'stops scheduled refreshes when %s',
+    async (status) => {
+      mockTwitchApi(() =>
+        status === 'offline'
+          ? undefined
+          : createMockTwitchStream({
+              id: status === 'untracked' ? '9002' : '9001',
+            }),
+      );
+      const { subscription, sendBatch } = await seedRefresh();
+      await runInDurableObject(subscription, async (_instance, state) => {
+        const database = drizzle(state.storage);
+        if (status === 'ended') {
+          await database.update(streams).set({ endedAt: new Date() });
+        }
+        if (status === 'unsubscribed') {
+          await database.delete(twitchSubscribers);
+        }
+      });
+      await expect(runDurableObjectAlarm(subscription)).resolves.toBe(true);
+      expect(sendBatch).not.toHaveBeenCalled();
+      await runInDurableObject(subscription, async (_instance, state) => {
+        expect(await state.storage.getAlarm()).toBeNull();
+      });
+    },
+  );
+
+  it.each(['Twitch', 'queue'] as const)('retries after a %s failure', async (source) => {
+    mockTwitchApi(() => createMockTwitchStream());
+    const { subscription, sendBatch } = await seedRefresh();
+    const failure = new Error('Temporary outage');
+    if (source === 'Twitch') {
+      vi.mocked(fetch).mockRejectedValueOnce(failure);
+    } else {
+      sendBatch.mockRejectedValueOnce(failure);
+    }
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+    await runDurableObjectAlarm(subscription);
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'twitch_live_refresh_failed',
+        error: expect.objectContaining({ message: failure.message }),
+      }),
+    );
+    await runInDurableObject(subscription, async (_instance, state) => {
+      expect(await state.storage.getAlarm()).toBe(Date.now() + 15 * 60_000);
+    });
+    now.mockReturnValue(Date.now() + 15 * 60_000);
+    await runDurableObjectAlarm(subscription);
+    expect(sendBatch).toHaveLastReturnedWith(expect.any(Promise));
+    expect(sendBatch.mock.calls.at(-1)?.[0][0]?.body.operation).toBe('edit');
+  });
+
+  it('resets the timer on channel updates and cancels it after the last unsubscribe', async () => {
+    mockTwitchApi(() => createMockTwitchStream());
+    const { subscription } = await seedRefresh();
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 60_000);
+    await subscription.channelUpdate(channelUpdateEvent());
+    await runInDurableObject(subscription, async (instance, state) => {
+      expect(await state.storage.getAlarm()).toBe(Date.now() + 15 * 60_000);
+      vi.spyOn(instance, 'reconcile').mockResolvedValue(undefined);
+      await instance.removeSubscriber(CHANNEL_ID);
+      expect(await state.storage.getAlarm()).toBeNull();
+    });
+  });
+
+  it('does not revive a stream that ends during a refresh', async () => {
+    const { subscription, sendBatch } = await seedRefresh();
+    await runInDurableObject(subscription, async (instance, state) => {
+      mockTwitchApi(() => createMockTwitchStream());
+      const fetchMock = vi.mocked(fetch);
+      const fetchApi = fetchMock.getMockImplementation();
+      fetchMock.mockImplementation(async (input, init) => {
+        const request = new Request(input, init);
+        if (new URL(request.url).pathname.endsWith('/games')) {
+          await instance.streamOffline(
+            {
+              streamId: '9001',
+              broadcasterId: BROADCASTER_ID,
+              broadcasterLogin: 'sliroth',
+              broadcasterName: 'Sliroth',
+            },
+            new Date().toISOString(),
+          );
+        }
+        if (fetchApi === undefined) {
+          throw new Error('Missing fetch mock');
+        }
+        return fetchApi(input, init);
+      });
+      await instance.alarm();
+      expect(await state.storage.getAlarm()).toBeNull();
+      const [stream] = await drizzle(state.storage).select().from(streams);
+      expect(stream?.endedAt).not.toBeNull();
+      expect(sendBatch).toHaveBeenCalledTimes(1);
+      expect(sendBatch.mock.calls[0]?.[0][0]?.body.message.embeds?.[0]?.footer?.text).toBe(
+        'Last online',
+      );
     });
   });
 
@@ -381,4 +535,45 @@ function mockTwitchApi(getStream: () => MockTwitchStream | undefined): void {
 
 function queueSendResponse(): QueueSendResponse {
   return { metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } };
+}
+
+async function seedRefresh() {
+  const subscription = env.TWITCH_SUBSCRIPTIONS.getByName(`refresh-${crypto.randomUUID()}`);
+  const sendBatch = vi
+    .fn<(messages: MessageSendRequest<DiscordMessageDelivery>[]) => Promise<void>>()
+    .mockResolvedValue(undefined);
+  await runInDurableObject(subscription, async (instance, state) => {
+    const database = drizzle(state.storage);
+    await database.insert(broadcasters).values({
+      id: BROADCASTER_ID,
+      login: 'sliroth',
+      displayName: 'Sliroth',
+      profileImageUrl: 'https://static.example.com/profile.png',
+      offlineImageUrl: 'https://static.example.com/offline.png',
+    });
+    await database.insert(twitchSubscribers).values({ guildId: GUILD_ID, channelId: CHANNEL_ID });
+    await database.insert(streams).values({
+      id: '9001',
+      title: 'Original title',
+      gameName: 'Special Events',
+      viewerCount: 3,
+      previewImageUrl: 'https://static.example.com/{width}x{height}.jpg',
+      startedAt: new Date(),
+    });
+    await database
+      .insert(streamMessages)
+      .values({ streamId: '9001', channelId: CHANNEL_ID, messageId: MESSAGE_ID });
+    Object.defineProperty(instance, 'env', {
+      configurable: true,
+      value: {
+        ...env,
+        DISCORD_MESSAGES: { sendBatch },
+        SUBSCRIPTION_EVENTS: {
+          send: vi.fn<() => Promise<QueueSendResponse>>().mockResolvedValue(queueSendResponse()),
+        },
+      },
+    });
+    await state.storage.setAlarm(Date.now() + 15 * 60_000);
+  });
+  return { subscription, sendBatch };
 }
