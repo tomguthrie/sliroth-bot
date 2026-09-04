@@ -19,14 +19,12 @@ export interface DiscordMessageReceiptTarget {
   readonly [field: string]: unknown;
 }
 
-export interface DiscordMessageReceiptHandler {
-  readonly type: string;
-  readonly handle: (
-    target: DiscordMessageReceiptTarget,
-    receipt: DiscordMessageReceipt,
-    env: Env,
-  ) => Promise<void>;
-}
+/** Records a created message's receipt for its feature-owned target. */
+export type DiscordMessageReceiptHandler = (
+  target: DiscordMessageReceiptTarget,
+  receipt: DiscordMessageReceipt,
+  env: Env,
+) => Promise<void>;
 
 interface DiscordMessageDeliveryBase {
   guildId: string;
@@ -61,18 +59,10 @@ export async function enqueueDiscordMessages(
   await queue.sendBatch(deliveries.map((body) => ({ body })));
 }
 
-/** Creates a Discord message processor with feature-owned receipt handlers. */
+/** Creates a Discord message processor with a feature-owned receipt callback. */
 export function createDiscordMessageProcessor(
-  receiptHandlers: readonly DiscordMessageReceiptHandler[],
+  handleReceipt: DiscordMessageReceiptHandler,
 ): QueueMessageProcessor<DiscordMessageDelivery> {
-  const receiptsByType = new Map<string, DiscordMessageReceiptHandler>();
-  for (const handler of receiptHandlers) {
-    if (receiptsByType.has(handler.type)) {
-      throw new Error(`Duplicate Discord message receipt: ${handler.type}`);
-    }
-    receiptsByType.set(handler.type, handler);
-  }
-
   return async (delivery, env, context) => {
     try {
       const options = {
@@ -87,12 +77,8 @@ export function createDiscordMessageProcessor(
         const receipt = await sendDiscordMessage(options);
         const discordDurationMs = Date.now() - discordStartedAt;
         if (delivery.receipt !== undefined) {
-          const handler = receiptsByType.get(delivery.receipt.type);
-          if (handler === undefined) {
-            throw new Error(`Unsupported Discord message receipt: ${delivery.receipt.type}`);
-          }
           const receiptStartedAt = Date.now();
-          await handler.handle(delivery.receipt, receipt, env);
+          await handleReceipt(delivery.receipt, receipt, env);
           receiptDurationMs = Date.now() - receiptStartedAt;
         }
         logDeliverySuccess(delivery, context, discordDurationMs, receiptDurationMs);
