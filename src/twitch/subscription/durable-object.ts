@@ -440,38 +440,7 @@ export class TwitchSubscription extends DurableObject<Env> {
         await this.deleteLocalSubscription(desired.type);
       }
 
-      const created = await client.createEventSubSubscription({
-        type: desired.type,
-        version: desired.version,
-        condition: { broadcaster_user_id: broadcaster.id },
-        transport: {
-          method: 'webhook',
-          callback,
-          secret: this.env.TWITCH_EVENTSUB_SECRET,
-        },
-      });
-      await this.db
-        .insert(eventSubSubscriptions)
-        .values({
-          subscriptionKey: desired.type,
-          type: desired.type,
-          version: desired.version,
-          conditionJson: JSON.stringify({
-            broadcaster_user_id: broadcaster.id,
-          }),
-          subscriptionId: created.id,
-        })
-        .onConflictDoUpdate({
-          target: eventSubSubscriptions.subscriptionKey,
-          set: {
-            type: desired.type,
-            version: desired.version,
-            conditionJson: JSON.stringify({
-              broadcaster_user_id: broadcaster.id,
-            }),
-            subscriptionId: created.id,
-          },
-        });
+      await this.createAndStoreEventSubSubscription(client, desired, broadcaster.id, callback);
     }
 
     await this.db
@@ -577,39 +546,40 @@ export class TwitchSubscription extends DurableObject<Env> {
       if (rows.some((row) => row.type === desired.type)) {
         continue;
       }
-      const created = await client.createEventSubSubscription({
-        type: desired.type,
-        version: desired.version,
-        condition: { broadcaster_user_id: broadcaster.id },
-        transport: {
-          method: 'webhook',
-          callback,
-          secret: this.env.TWITCH_EVENTSUB_SECRET,
-        },
-      });
-      await this.db
-        .insert(eventSubSubscriptions)
-        .values({
-          subscriptionKey: desired.type,
-          type: desired.type,
-          version: desired.version,
-          conditionJson: JSON.stringify({
-            broadcaster_user_id: broadcaster.id,
-          }),
-          subscriptionId: created.id,
-        })
-        .onConflictDoUpdate({
-          target: eventSubSubscriptions.subscriptionKey,
-          set: {
-            type: desired.type,
-            version: desired.version,
-            conditionJson: JSON.stringify({
-              broadcaster_user_id: broadcaster.id,
-            }),
-            subscriptionId: created.id,
-          },
-        });
+      await this.createAndStoreEventSubSubscription(client, desired, broadcaster.id, callback);
     }
+  }
+
+  private async createAndStoreEventSubSubscription(
+    client: TwitchApiClient,
+    desired: EventSubSubscriptionDefinition,
+    broadcasterId: string,
+    callback: string,
+  ): Promise<void> {
+    const condition = { broadcaster_user_id: broadcasterId };
+    const created = await client.createEventSubSubscription({
+      type: desired.type,
+      version: desired.version,
+      condition,
+      transport: {
+        method: 'webhook',
+        callback,
+        secret: this.env.TWITCH_EVENTSUB_SECRET,
+      },
+    });
+    const fields = {
+      type: desired.type,
+      version: desired.version,
+      conditionJson: JSON.stringify(condition),
+      subscriptionId: created.id,
+    };
+    await this.db
+      .insert(eventSubSubscriptions)
+      .values({ subscriptionKey: desired.type, ...fields })
+      .onConflictDoUpdate({
+        target: eventSubSubscriptions.subscriptionKey,
+        set: fields,
+      });
   }
 
   private async auditEventSubSubscriptionsIfDue(): Promise<void> {
