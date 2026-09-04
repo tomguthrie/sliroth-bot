@@ -5,6 +5,7 @@ import {
   createEphemeralResponse,
   editInteractionResponse,
   logCommandFailure,
+  reportCommandFailure,
   unsupportedInteractionResponse,
 } from '../discord/interaction';
 import type { DiscordCommandHandler, DiscordInteraction } from '../discord/interaction';
@@ -210,7 +211,8 @@ async function completeYouTubeAdd(
       `Uploads from **${escapeDiscordMarkdown(channel.title)}** will be posted in <#${context.channelId}>${describeDiscordMention(ping)}.`,
     );
   } catch (error) {
-    await reportYouTubeFailure(
+    await reportCommandFailure(
+      'youtube',
       context,
       'add',
       'The YouTube notification could not be added. Please try again.',
@@ -236,7 +238,8 @@ async function completeYouTubeRemove(env: Env, context: DiscordCommandContext): 
         : `Removed ${channelIds.length} YouTube notification${channelIds.length === 1 ? '' : 's'} from <#${context.channelId}>.`;
     await editInteractionResponse(context.applicationId, context.token, content);
   } catch (error) {
-    await reportYouTubeFailure(
+    await reportCommandFailure(
+      'youtube',
       context,
       'remove',
       'The YouTube notifications could not be removed. Please try again.',
@@ -271,19 +274,5 @@ async function listYouTubeSubscriptions(
   } catch (error) {
     logCommandFailure('youtube', 'list', context, error);
     return createEphemeralResponse('YouTube notifications could not be loaded. Please try again.');
-  }
-}
-
-async function reportYouTubeFailure(
-  context: DiscordCommandContext,
-  action: 'add' | 'remove',
-  message: string,
-  error: unknown,
-): Promise<void> {
-  logCommandFailure('youtube', action, context, error);
-  try {
-    await editInteractionResponse(context.applicationId, context.token, message);
-  } catch (responseError) {
-    logCommandFailure('youtube', action, context, responseError);
   }
 }

@@ -8,6 +8,7 @@ import * as z from 'zod';
 
 import { toLoggableError } from '../log';
 import { DISCORD_API_BASE_URL } from './client';
+import type { DiscordCommandContext } from './permission';
 import { DiscordSnowflake } from './snowflake';
 
 const PING_INTERACTION_TYPE: number = InteractionType.PING;
@@ -167,4 +168,20 @@ export function logCommandFailure(
     channelId: context.channelId,
     error: toLoggableError(error),
   });
+}
+
+/** Logs a command failure and reports it to the invoker, logging response failures without rethrowing. */
+export async function reportCommandFailure(
+  provider: string,
+  context: DiscordCommandContext,
+  action: 'add' | 'remove',
+  message: string,
+  error: unknown,
+): Promise<void> {
+  logCommandFailure(provider, action, context, error);
+  try {
+    await editInteractionResponse(context.applicationId, context.token, message);
+  } catch (responseError) {
+    logCommandFailure(provider, action, context, responseError);
+  }
 }
