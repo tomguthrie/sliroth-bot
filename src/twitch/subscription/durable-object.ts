@@ -18,6 +18,7 @@ import type { DiscordMessageReceipt } from '../../discord/client';
 import { DiscordMentionTarget } from '../../discord/message';
 import { enqueueDiscordMessages } from '../../discord/queue';
 import { DiscordSnowflake } from '../../discord/snowflake';
+import { toLoggableError } from '../../log';
 import { isTwitchApiErrorStatus, TwitchApiClient, type TwitchUser } from '../client';
 import {
   TWITCH_EVENTSUB_SUBSCRIPTIONS,
@@ -39,6 +40,7 @@ import {
 } from './index';
 import { type TwitchEventSubDelivery, type TwitchVodLookupDelivery } from './queue';
 
+const LIVE_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 const ACTIVE_EVENTSUB_STATUSES = new Set(['enabled', 'webhook_callback_verification_pending']);
 const EVENTSUB_AUDIT_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const EVENTSUB_MESSAGE_RETENTION_MS = 24 * 60 * 60 * 1000;
@@ -170,6 +172,9 @@ export class TwitchSubscription extends DurableObject<Env> {
         ),
       ]);
     }
+    if (!this.hasLiveSubscribers()) {
+      await this.ctx.storage.deleteAlarm();
+    }
     await this.reconcile();
     return removed !== undefined;
   }
@@ -229,11 +234,33 @@ export class TwitchSubscription extends DurableObject<Env> {
       await this.db.delete(streams).where(eq(streams.id, stream.id));
       throw error;
     }
+    await this.scheduleLiveRefresh();
   }
 
   /** Refreshes delivered notifications from Twitch's current live stream. */
   async channelUpdate(event: ChannelUpdateEvent): Promise<void> {
     const broadcaster = await this.requireBroadcaster(event.broadcasterId);
+    await this.refreshLiveStream(broadcaster);
+  }
+
+  /** Refreshes live Discord previews after 15 minutes without an update. */
+  async alarm(): Promise<void> {
+    if (!this.hasLiveSubscribers()) {
+      return;
+    }
+    try {
+      const broadcaster = await this.getBroadcaster();
+      if (broadcaster !== undefined) {
+        await this.refreshLiveStream(broadcaster);
+      }
+    } catch (error) {
+      console.error({ event: 'twitch_live_refresh_failed', error: toLoggableError(error) });
+      // Keep refreshing after outages that outlast the platform alarm retries.
+      await this.scheduleLiveRefresh();
+    }
+  }
+
+  private async refreshLiveStream(broadcaster: TwitchUser): Promise<void> {
     const client = new TwitchApiClient(this.env);
     const liveStream = await client.getStream(broadcaster.id);
     if (liveStream === undefined) {
@@ -271,6 +298,29 @@ export class TwitchSubscription extends DurableObject<Env> {
       .returning({ id: streams.id });
     if (updatedStream !== undefined) {
       await this.queueStreamUpdates(updatedStream.id);
+      await this.scheduleLiveRefresh();
+    }
+  }
+
+  private hasLiveSubscribers(): boolean {
+    return (
+      this.db
+        .select({ id: streams.id })
+        .from(streams)
+        .where(isNull(streams.endedAt))
+        .limit(1)
+        .get() !== undefined &&
+      this.db
+        .select({ channelId: twitchSubscribers.channelId })
+        .from(twitchSubscribers)
+        .limit(1)
+        .get() !== undefined
+    );
+  }
+
+  private async scheduleLiveRefresh(): Promise<void> {
+    if (this.hasLiveSubscribers()) {
+      await this.ctx.storage.setAlarm(Date.now() + LIVE_REFRESH_INTERVAL_MS);
     }
   }
 
@@ -296,6 +346,10 @@ export class TwitchSubscription extends DurableObject<Env> {
       if (updatedStream !== undefined) {
         await this.queueStreamUpdates(updatedStream.id);
       }
+    }
+
+    if (!this.hasLiveSubscribers()) {
+      await this.ctx.storage.deleteAlarm();
     }
 
     if (stream.vodUrl === null) {
