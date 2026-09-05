@@ -5,6 +5,7 @@ import {
   createEphemeralResponse,
   editInteractionResponse,
   logCommandFailure,
+  reportCommandFailure,
   unsupportedInteractionResponse,
 } from '../discord/interaction';
 import type { DiscordCommandHandler, DiscordInteraction } from '../discord/interaction';
@@ -220,7 +221,8 @@ async function completeTwitchAdd(
       `Streams from **${escapeDiscordMarkdown(broadcaster.displayName)}** will be posted in <#${context.channelId}>${describeDiscordMention(ping)}.`,
     );
   } catch (error) {
-    await reportTwitchFailure(
+    await reportCommandFailure(
+      'twitch',
       context,
       'add',
       'The Twitch notification could not be added. Please try again.',
@@ -246,7 +248,8 @@ async function completeTwitchRemove(env: Env, context: DiscordCommandContext): P
         : `Removed ${broadcasterIds.length} Twitch notification${broadcasterIds.length === 1 ? '' : 's'} from <#${context.channelId}>.`;
     await editInteractionResponse(context.applicationId, context.token, content);
   } catch (error) {
-    await reportTwitchFailure(
+    await reportCommandFailure(
+      'twitch',
       context,
       'remove',
       'The Twitch notifications could not be removed. Please try again.',
@@ -281,19 +284,5 @@ async function listTwitchSubscriptions(
   } catch (error) {
     logCommandFailure('twitch', 'list', context, error);
     return createEphemeralResponse('Twitch notifications could not be loaded. Please try again.');
-  }
-}
-
-async function reportTwitchFailure(
-  context: DiscordCommandContext,
-  action: 'add' | 'remove',
-  message: string,
-  error: unknown,
-): Promise<void> {
-  logCommandFailure('twitch', action, context, error);
-  try {
-    await editInteractionResponse(context.applicationId, context.token, message);
-  } catch (responseError) {
-    logCommandFailure('twitch', action, context, responseError);
   }
 }

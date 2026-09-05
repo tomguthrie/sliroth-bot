@@ -1,11 +1,75 @@
 import { createExecutionContext } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createDiscordInteractionHandler, type DiscordCommandHandler } from '../../src/discord';
+import { reportCommandFailure } from '../../src/discord/interaction';
 
 const PRIVATE_KEY_SEED = '9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60';
 const PRIVATE_KEY_PREFIX = '302e020100300506032b657004220420';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe.each(['twitch', 'youtube'])('%s command failure reporting', (provider) => {
+  const context = {
+    applicationId: '123456789012345678',
+    token: 'interaction-token',
+    guildId: '234567890123456789',
+    channelId: '345678901234567890',
+  };
+
+  it('logs the failure and edits the response with the supplied message', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response());
+
+    await reportCommandFailure(provider, context, 'add', 'Please try again.', new Error('Failed'));
+
+    expect(log).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        event: 'discord_interaction_failed',
+        provider,
+        action: 'add',
+        guildId: context.guildId,
+        channelId: context.channelId,
+        error: expect.objectContaining({ name: 'Error', message: 'Failed' }),
+      }),
+    );
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(
+      new URL(
+        `https://discord.com/api/v10/webhooks/${context.applicationId}/${context.token}/messages/@original`,
+      ),
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ content: 'Please try again.', allowed_mentions: { parse: [] } }),
+      }),
+    );
+  });
+
+  it('logs a response failure without rejecting', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Response failed'));
+
+    await expect(
+      reportCommandFailure(provider, context, 'remove', 'Please try again.', new Error('Failed')),
+    ).resolves.toBeUndefined();
+
+    expect(log).toHaveBeenCalledTimes(2);
+    for (const [index, message] of ['Failed', 'Response failed'].entries()) {
+      expect(log).toHaveBeenNthCalledWith(
+        index + 1,
+        expect.objectContaining({
+          provider,
+          action: 'remove',
+          guildId: context.guildId,
+          channelId: context.channelId,
+          error: expect.objectContaining({ name: 'Error', message }),
+        }),
+      );
+    }
+  });
+});
 
 describe('Discord interaction boundary', () => {
   it('responds to an authenticated ping', async () => {
