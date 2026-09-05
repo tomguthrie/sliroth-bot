@@ -437,6 +437,24 @@ describe('Twitch EventSub webhook', () => {
 
     expect(createdTypes).toEqual(['stream.online']);
     expect(eventSubReads).toBe(0);
+    const stored = await runInDurableObject(subscription, async (_instance, state) =>
+      drizzle(state.storage).select().from(eventSubSubscriptions),
+    );
+    expect(stored).toEqual(
+      expect.arrayContaining(
+        [
+          { type: 'channel.update', version: '2' },
+          { type: 'stream.online', version: '1' },
+          { type: 'stream.offline', version: '1' },
+        ].map(({ type, version }) => ({
+          subscriptionKey: type,
+          type,
+          version,
+          conditionJson: JSON.stringify({ broadcaster_user_id: RECONCILE_BROADCASTER_ID }),
+          subscriptionId: `subscription-${type}`,
+        })),
+      ),
+    );
   });
 
   it('deduplicates processed Twitch message IDs in SQLite', async () => {
