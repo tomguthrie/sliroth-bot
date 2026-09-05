@@ -26,7 +26,7 @@ describe('Twitch stream message receipts', () => {
       });
     });
 
-    await twitchStreamMessageReceiptHandler.handle(
+    await twitchStreamMessageReceiptHandler(
       {
         type: TWITCH_STREAM_MESSAGE_RECEIPT,
         broadcasterId: BROADCASTER_ID,
@@ -47,7 +47,7 @@ describe('Twitch stream message receipts', () => {
 
   it('rejects malformed Twitch receipt targets', async () => {
     await expect(
-      twitchStreamMessageReceiptHandler.handle(
+      twitchStreamMessageReceiptHandler(
         {
           type: TWITCH_STREAM_MESSAGE_RECEIPT,
           broadcasterId: 'not-a-broadcaster',

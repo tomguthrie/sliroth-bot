@@ -51,19 +51,21 @@ describe('Discord Queue processor', () => {
   it('acknowledges a successful create', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(discordReceipt());
 
-    const result = await createDiscordMessageProcessor([])(
+    const handle = vi.fn<DiscordMessageReceiptHandler>();
+    const result = await createDiscordMessageProcessor(handle)(
       createDelivery('success'),
       TEST_ENV,
       CONTEXT,
     );
 
     expect(result).toEqual({ action: 'ack' });
+    expect(handle).not.toHaveBeenCalled();
   });
 
   it('passes an optional receipt to its feature handler', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(discordReceipt());
-    const handle = vi.fn<DiscordMessageReceiptHandler['handle']>().mockResolvedValue(undefined);
-    const processor = createDiscordMessageProcessor([{ type: 'test-receipt', handle }]);
+    const handle = vi.fn<DiscordMessageReceiptHandler>().mockResolvedValue(undefined);
+    const processor = createDiscordMessageProcessor(handle);
     const delivery = {
       ...createDelivery('receipt'),
       receipt: { type: 'test-receipt', ownerId: 'owner' },
@@ -79,22 +81,28 @@ describe('Discord Queue processor', () => {
     );
   });
 
-  it('rejects duplicate receipt handlers', () => {
-    const handler = {
-      type: 'duplicate',
-      handle: vi.fn<DiscordMessageReceiptHandler['handle']>().mockResolvedValue(undefined),
-    };
+  it('retries when the receipt callback rejects', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(discordReceipt());
+    const handle = vi
+      .fn<DiscordMessageReceiptHandler>()
+      .mockRejectedValue(new Error('Receipt failed'));
+    const delivery = {
+      ...createDelivery('receipt-failure'),
+      receipt: { type: 'test-receipt', ownerId: 'owner' },
+    } satisfies DiscordCreateMessageDelivery;
 
-    expect(() => createDiscordMessageProcessor([handler, handler])).toThrow(
-      'Duplicate Discord message receipt: duplicate',
-    );
+    const result = await createDiscordMessageProcessor(handle)(delivery, TEST_ENV, CONTEXT);
+
+    expect(result).toEqual({ action: 'retry' });
+    expect(handle).toHaveBeenCalledOnce();
   });
 
   it.each([400, 401, 403, 404])('acknowledges permanent HTTP %i failures', async (status) => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('Permanent failure', { status }));
 
-    const result = await createDiscordMessageProcessor([])(
+    const result = await createDiscordMessageProcessor(vi.fn<DiscordMessageReceiptHandler>())(
       createDelivery(`http-${status}`),
       TEST_ENV,
       CONTEXT,
@@ -112,7 +120,7 @@ describe('Discord Queue processor', () => {
       }),
     );
 
-    const result = await createDiscordMessageProcessor([])(
+    const result = await createDiscordMessageProcessor(vi.fn<DiscordMessageReceiptHandler>())(
       createDelivery('rate-limited'),
       TEST_ENV,
       CONTEXT,
@@ -125,7 +133,7 @@ describe('Discord Queue processor', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Network error'));
 
-    const result = await createDiscordMessageProcessor([])(
+    const result = await createDiscordMessageProcessor(vi.fn<DiscordMessageReceiptHandler>())(
       createDelivery('transient'),
       TEST_ENV,
       CONTEXT,

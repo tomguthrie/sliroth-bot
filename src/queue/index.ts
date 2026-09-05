@@ -17,7 +17,7 @@ type SubscriptionEventDelivery = TwitchSubscriptionEventDelivery | YouTubeVideoD
 
 export type WorkerQueueMessage = DiscordMessageDelivery | SubscriptionEventDelivery;
 
-const processDiscordMessage = createDiscordMessageProcessor([twitchStreamMessageReceiptHandler]);
+const processDiscordMessage = createDiscordMessageProcessor(twitchStreamMessageReceiptHandler);
 
 const processSubscriptionEvent: QueueMessageProcessor<SubscriptionEventDelivery> = async (
   delivery,
