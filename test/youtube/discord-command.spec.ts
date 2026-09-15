@@ -162,7 +162,9 @@ describe('/youtube command', () => {
         })),
       );
       const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(YOUTUBE_CHANNEL_ID);
-      const getStatus = vi.spyOn(subscription, 'getWebSubStatus').mockResolvedValue(status);
+      const getStatus = vi
+        .spyOn(subscription, 'getWebSubStatus')
+        .mockResolvedValue({ status, nextAlarmAt: null, [Symbol.dispose]: vi.fn<() => void>() });
       const getByName = vi
         .spyOn(env.YOUTUBE_SUBSCRIPTIONS, 'getByName')
         .mockReturnValue(subscription);
@@ -178,11 +180,44 @@ describe('/youtube command', () => {
       expect(getByName).toHaveBeenCalledExactlyOnceWith(YOUTUBE_CHANNEL_ID);
       expect(getStatus).toHaveBeenCalledOnce();
       await expect(requests[0]?.json()).resolves.toEqual({
-        content: `**YouTube notifications in this server**\nGoogle Developers → <#${CHANNEL_ID}>* — WebSub: ${status ?? 'no state'}\nGoogle Developers → <#${OTHER_CHANNEL_ID}> — WebSub: ${status ?? 'no state'}`,
+        content: `**YouTube notifications in this server**\nGoogle Developers → <#${CHANNEL_ID}>* — WebSub: ${status ?? 'no state'} — no alarm scheduled\nGoogle Developers → <#${OTHER_CHANNEL_ID}> — WebSub: ${status ?? 'no state'} — no alarm scheduled`,
         allowed_mentions: { parse: [] },
       });
     },
   );
+
+  it.each([
+    ['subscribed', 'renewal'],
+    ['subscribing', 'next retry'],
+    ['unsubscribing', 'next retry'],
+    [null, 'next alarm'],
+  ] as const)('shows the scheduled alarm for %s as %s', async (status, label) => {
+    mocks.listGuildYouTubeSubscriptions.mockResolvedValue([
+      {
+        discordChannelId: CHANNEL_ID,
+        youtubeChannelId: YOUTUBE_CHANNEL_ID,
+        youtubeChannelTitle: 'Google Developers',
+      },
+    ]);
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(YOUTUBE_CHANNEL_ID);
+    vi.spyOn(subscription, 'getWebSubStatus').mockResolvedValue({
+      status,
+      nextAlarmAt: 1_800_000_000_123,
+      [Symbol.dispose]: vi.fn<() => void>(),
+    });
+    vi.spyOn(env.YOUTUBE_SUBSCRIPTIONS, 'getByName').mockReturnValue(subscription);
+    const requests = mockInteractionEdits();
+    const ctx = createExecutionContext();
+    await handleYouTubeCommand(
+      interaction('list', [{ type: 5, name: 'status', value: true }]),
+      env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    await expect(requests[0]?.json()).resolves.toMatchObject({
+      content: `**YouTube notifications in this server**\nGoogle Developers → <#${CHANNEL_ID}>* — WebSub: ${status ?? 'no state'} — ${label} <t:1800000000:R>`,
+    });
+  });
 
   it('preserves successful statuses when another lookup fails', async () => {
     const otherYouTubeChannelId = 'UCbbbbbbbbbbbbbbbbbbbbbb';
@@ -195,7 +230,11 @@ describe('/youtube command', () => {
     );
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(YOUTUBE_CHANNEL_ID);
     const otherSubscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(otherYouTubeChannelId);
-    vi.spyOn(subscription, 'getWebSubStatus').mockResolvedValue('subscribed');
+    vi.spyOn(subscription, 'getWebSubStatus').mockResolvedValue({
+      status: 'subscribed',
+      nextAlarmAt: null,
+      [Symbol.dispose]: vi.fn<() => void>(),
+    });
     vi.spyOn(otherSubscription, 'getWebSubStatus').mockRejectedValue(
       new Error('Storage unavailable'),
     );

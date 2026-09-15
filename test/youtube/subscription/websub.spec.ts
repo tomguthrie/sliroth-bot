@@ -48,11 +48,29 @@ describe('YouTubeSubscription WebSub status', () => {
         await state.storage.setAlarm(Date.now() + 60_000);
       });
       const before = await readWebSubState(subscription);
-      await expect(subscription.getWebSubStatus()).resolves.toBe(status);
+      await expect(subscription.getWebSubStatus()).resolves.toEqual({
+        status,
+        nextAlarmAt: before.alarm,
+      });
       await expect(readWebSubState(subscription)).resolves.toEqual(before);
       expect(fetchSpy).not.toHaveBeenCalled();
     },
   );
+
+  it('reports no scheduled alarm without creating one', async () => {
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(randomYouTubeChannelId());
+    await runInDurableObject(subscription, async (_instance, state) => {
+      await state.storage.put({
+        [WEBSUB_SECRET_KEY]: 'private-secret',
+        [WEBSUB_STATUS_KEY]: 'subscribed',
+      });
+    });
+    await expect(subscription.getWebSubStatus()).resolves.toEqual({
+      status: 'subscribed',
+      nextAlarmAt: null,
+    });
+    expect((await readWebSubState(subscription)).alarm).toBeNull();
+  });
 
   it('rejects invalid stored status', async () => {
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(randomYouTubeChannelId());
