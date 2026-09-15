@@ -41,10 +41,12 @@ export interface DiscordMentionPayload {
   allowedMentions?: DiscordMessage['allowedMentions'];
 }
 
+/** A subscription list entry with an optional plain-text detail suffix. */
 export interface NotificationListItem {
   name: string;
   channelId: string;
   providerId: string;
+  detail?: string;
 }
 
 /** Derives notification content and the matching Discord mention allowlist. */
@@ -100,8 +102,8 @@ export function createNotificationList(
       );
     })
     .map(
-      ({ name, channelId }) =>
-        `${escapeDiscordMarkdown(name)} → <#${channelId}>${channelId === currentChannelId ? '*' : ''}`,
+      ({ name, channelId, detail }) =>
+        `${escapeDiscordMarkdown(name)} → <#${channelId}>${channelId === currentChannelId ? '*' : ''}${detail === undefined ? '' : ` — ${escapeDiscordMarkdown(detail)}`}`,
     );
 
   const lines = [heading];

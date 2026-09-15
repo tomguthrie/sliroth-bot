@@ -33,6 +33,41 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('YouTubeSubscription WebSub status', () => {
+  it.each(['subscribing', 'subscribed', 'unsubscribing', null] as const)(
+    'reads %s without exposing the secret or changing state',
+    async (status) => {
+      const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(randomYouTubeChannelId());
+      await runInDurableObject(subscription, async (_instance, state) => {
+        if (status !== null) {
+          await state.storage.put({
+            [WEBSUB_SECRET_KEY]: 'private-secret',
+            [WEBSUB_STATUS_KEY]: status,
+          });
+        }
+        await state.storage.setAlarm(Date.now() + 60_000);
+      });
+      const before = await readWebSubState(subscription);
+      await expect(subscription.getWebSubStatus()).resolves.toBe(status);
+      await expect(readWebSubState(subscription)).resolves.toEqual(before);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects invalid stored status', async () => {
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(randomYouTubeChannelId());
+    await runInDurableObject(subscription, async (_instance, state) => {
+      await state.storage.put({
+        [WEBSUB_SECRET_KEY]: 'private-secret',
+        [WEBSUB_STATUS_KEY]: 'invalid',
+      });
+    });
+    await runInDurableObject(subscription, async (instance: YouTubeSubscription) => {
+      await expect(instance.getWebSubStatus()).rejects.toThrow(/status/);
+    });
+  });
+});
+
 describe('YouTubeSubscription WebSub lifecycle', () => {
   it('subscribes once when the first subscriber is added', async () => {
     const youtubeChannelId = randomYouTubeChannelId();
