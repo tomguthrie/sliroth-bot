@@ -14,6 +14,7 @@ import {
   describeDiscordMention,
   escapeDiscordMarkdown,
 } from '../discord/message';
+import type { NotificationListItem } from '../discord/message';
 import {
   canPostInChannel,
   getCommandContext,
@@ -302,22 +303,27 @@ async function createYouTubeSubscriptionList(
     return 'No YouTube notifications are configured for this server.';
   }
 
-  const statuses = new Map<string, string>();
+  const statuses = new Map<string, Pick<NotificationListItem, 'detail' | 'detailTimestamp'>>();
   if (includeStatus) {
     const channelIds = new Set(subscriptions.map((subscription) => subscription.youtubeChannelId));
     await Promise.all(
       [...channelIds].map(async (youtubeChannelId) => {
         try {
-          const status =
+          const { status, nextAlarmAt } =
             await env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId).getWebSubStatus();
-          statuses.set(youtubeChannelId, status ?? 'no state');
+          const alarmLabel =
+            status === 'subscribed' ? 'renewal' : status === null ? 'next alarm' : 'next retry';
+          statuses.set(youtubeChannelId, {
+            detail: `WebSub: ${status ?? 'no state'} — ${nextAlarmAt === null ? 'no alarm scheduled' : alarmLabel}`,
+            ...(nextAlarmAt === null ? {} : { detailTimestamp: nextAlarmAt }),
+          });
         } catch (error) {
           console.error({
             event: 'youtube_websub_status_failed',
             youtubeChannelId,
             error: toLoggableError(error),
           });
-          statuses.set(youtubeChannelId, 'unavailable');
+          statuses.set(youtubeChannelId, { detail: 'WebSub: unavailable' });
         }
       }),
     );
@@ -329,9 +335,7 @@ async function createYouTubeSubscriptionList(
       name: subscription.youtubeChannelTitle,
       channelId: subscription.discordChannelId,
       providerId: subscription.youtubeChannelId,
-      ...(includeStatus
-        ? { detail: `WebSub: ${statuses.get(subscription.youtubeChannelId)}` }
-        : {}),
+      ...statuses.get(subscription.youtubeChannelId),
     })),
     context.channelId,
   );

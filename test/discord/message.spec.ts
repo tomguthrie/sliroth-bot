@@ -67,14 +67,15 @@ describe('notification lists', () => {
       name: `Channel ${String(index).padStart(2, '0')}`,
       channelId: ROLE_ID,
       providerId: String(index),
-      detail: 'WebSub: subscribed',
+      detail: 'WebSub: subscribed — renewal',
+      detailTimestamp: 1_800_000_000_123,
     }));
     const result = createNotificationList('Heading', items.toReversed(), ROLE_ID);
     const lines = result.split('\n');
     const visible = lines.length - 2;
     expect(result.length).toBeLessThanOrEqual(2_000);
     expect(lines[1]).toContain('Channel 00');
-    expect(lines[1]).toContain('WebSub: subscribed');
+    expect(lines[1]).toContain('WebSub: subscribed — renewal <t:1800000000:R>');
     expect(lines.at(-1)).toBe(`…and ${80 - visible} more.`);
   });
 });
