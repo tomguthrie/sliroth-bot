@@ -47,6 +47,8 @@ export interface NotificationListItem {
   channelId: string;
   providerId: string;
   detail?: string;
+  /** Epoch milliseconds rendered as a Discord relative timestamp after the detail. */
+  detailTimestamp?: number;
 }
 
 /** Derives notification content and the matching Discord mention allowlist. */
@@ -102,8 +104,8 @@ export function createNotificationList(
       );
     })
     .map(
-      ({ name, channelId, detail }) =>
-        `${escapeDiscordMarkdown(name)} → <#${channelId}>${channelId === currentChannelId ? '*' : ''}${detail === undefined ? '' : ` — ${escapeDiscordMarkdown(detail)}`}`,
+      ({ name, channelId, detail, detailTimestamp }) =>
+        `${escapeDiscordMarkdown(name)} → <#${channelId}>${channelId === currentChannelId ? '*' : ''}${detail === undefined ? '' : ` — ${escapeDiscordMarkdown(detail)}`}${detailTimestamp === undefined ? '' : ` <t:${Math.floor(detailTimestamp / 1000)}:R>`}`,
     );
 
   const lines = [heading];
