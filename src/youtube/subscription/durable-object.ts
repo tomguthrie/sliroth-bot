@@ -70,6 +70,11 @@ export class YouTubeSubscription extends DurableObject<Env> {
     });
   }
 
+  /** Returns the stored WebSub status, not delivery health, without exposing its secret. */
+  async getWebSubStatus(): Promise<WebSubStatus | null> {
+    return (await this.readWebSubState()).status ?? null;
+  }
+
   /** Adds or updates a Discord subscriber and its global lookup indexes. */
   async addSubscriber(registration: YouTubeSubscriberRegistrationInput): Promise<void> {
     const validated = YouTubeSubscriberRegistration.parse(registration);

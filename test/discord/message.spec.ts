@@ -6,6 +6,7 @@ import {
   DiscordMentionTarget,
   isDiscordSnowflake,
 } from '../../src/discord';
+import { createNotificationList } from '../../src/discord/message';
 
 const ROLE_ID = '123456789012345678';
 
@@ -47,5 +48,33 @@ describe('Discord notification messages', () => {
     await expect(createDiscordMessageNonce('source-id', '234567890123456789')).resolves.not.toBe(
       nonce,
     );
+  });
+});
+
+describe('notification lists', () => {
+  it('escapes optional details and preserves rows without details', () => {
+    const item = { name: 'Channel *name*', channelId: ROLE_ID, providerId: 'provider' };
+    expect(createNotificationList('Heading', [item], ROLE_ID)).toBe(
+      `Heading\nChannel \\*name\\* → <#${ROLE_ID}>*`,
+    );
+    expect(
+      createNotificationList('Heading', [{ ...item, detail: '*subscribed*' }], ROLE_ID),
+    ).toContain(' — \\*subscribed\\*');
+  });
+
+  it('includes details in the message limit while preserving sorting and omitted counts', () => {
+    const items = Array.from({ length: 80 }, (_, index) => ({
+      name: `Channel ${String(index).padStart(2, '0')}`,
+      channelId: ROLE_ID,
+      providerId: String(index),
+      detail: 'WebSub: subscribed',
+    }));
+    const result = createNotificationList('Heading', items.toReversed(), ROLE_ID);
+    const lines = result.split('\n');
+    const visible = lines.length - 2;
+    expect(result.length).toBeLessThanOrEqual(2_000);
+    expect(lines[1]).toContain('Channel 00');
+    expect(lines[1]).toContain('WebSub: subscribed');
+    expect(lines.at(-1)).toBe(`…and ${80 - visible} more.`);
   });
 });

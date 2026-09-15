@@ -174,7 +174,7 @@ export function logCommandFailure(
 export async function reportCommandFailure(
   provider: string,
   context: DiscordCommandContext,
-  action: 'add' | 'remove',
+  action: 'add' | 'remove' | 'list',
   message: string,
   error: unknown,
 ): Promise<void> {

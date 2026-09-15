@@ -126,6 +126,137 @@ describe('/youtube command', () => {
     expect(removeSubscriber).toHaveBeenCalledWith(CHANNEL_ID);
   });
 
+  it.each([undefined, false])('does not fetch status when status is %s', async (status) => {
+    mocks.listGuildYouTubeSubscriptions.mockResolvedValue([
+      {
+        discordChannelId: CHANNEL_ID,
+        youtubeChannelId: YOUTUBE_CHANNEL_ID,
+        youtubeChannelTitle: 'Google Developers',
+      },
+    ]);
+    const getByName = vi.spyOn(env.YOUTUBE_SUBSCRIPTIONS, 'getByName');
+    const options = status === undefined ? [] : [{ type: 5, name: 'status', value: status }];
+    const response = await handleYouTubeCommand(
+      interaction('list', options),
+      env,
+      createExecutionContext(),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      type: 4,
+      data: {
+        flags: 64,
+        content: `**YouTube notifications in this server**\nGoogle Developers → <#${CHANNEL_ID}>*`,
+      },
+    });
+    expect(getByName).not.toHaveBeenCalled();
+  });
+
+  it.each(['subscribed', 'subscribing', 'unsubscribing', null] as const)(
+    'shows %s through a deferred response and looks up each YouTube channel once',
+    async (status) => {
+      mocks.listGuildYouTubeSubscriptions.mockResolvedValue(
+        [CHANNEL_ID, OTHER_CHANNEL_ID].map((discordChannelId) => ({
+          discordChannelId,
+          youtubeChannelId: YOUTUBE_CHANNEL_ID,
+          youtubeChannelTitle: 'Google Developers',
+        })),
+      );
+      const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(YOUTUBE_CHANNEL_ID);
+      const getStatus = vi.spyOn(subscription, 'getWebSubStatus').mockResolvedValue(status);
+      const getByName = vi
+        .spyOn(env.YOUTUBE_SUBSCRIPTIONS, 'getByName')
+        .mockReturnValue(subscription);
+      const requests = mockInteractionEdits();
+      const ctx = createExecutionContext();
+      const response = await handleYouTubeCommand(
+        interaction('list', [{ type: 5, name: 'status', value: true }]),
+        env,
+        ctx,
+      );
+      await expect(response.json()).resolves.toEqual({ type: 5, data: { flags: 64 } });
+      await waitOnExecutionContext(ctx);
+      expect(getByName).toHaveBeenCalledExactlyOnceWith(YOUTUBE_CHANNEL_ID);
+      expect(getStatus).toHaveBeenCalledOnce();
+      await expect(requests[0]?.json()).resolves.toEqual({
+        content: `**YouTube notifications in this server**\nGoogle Developers → <#${CHANNEL_ID}>* — WebSub: ${status ?? 'no state'}\nGoogle Developers → <#${OTHER_CHANNEL_ID}> — WebSub: ${status ?? 'no state'}`,
+        allowed_mentions: { parse: [] },
+      });
+    },
+  );
+
+  it('preserves successful statuses when another lookup fails', async () => {
+    const otherYouTubeChannelId = 'UCbbbbbbbbbbbbbbbbbbbbbb';
+    mocks.listGuildYouTubeSubscriptions.mockResolvedValue(
+      [YOUTUBE_CHANNEL_ID, otherYouTubeChannelId].map((youtubeChannelId) => ({
+        discordChannelId: CHANNEL_ID,
+        youtubeChannelId,
+        youtubeChannelTitle: youtubeChannelId,
+      })),
+    );
+    const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(YOUTUBE_CHANNEL_ID);
+    const otherSubscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(otherYouTubeChannelId);
+    vi.spyOn(subscription, 'getWebSubStatus').mockResolvedValue('subscribed');
+    vi.spyOn(otherSubscription, 'getWebSubStatus').mockRejectedValue(
+      new Error('Storage unavailable'),
+    );
+    vi.spyOn(env.YOUTUBE_SUBSCRIPTIONS, 'getByName').mockImplementation((name) =>
+      name === YOUTUBE_CHANNEL_ID ? subscription : otherSubscription,
+    );
+    const logger = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const requests = mockInteractionEdits();
+    const ctx = createExecutionContext();
+    await handleYouTubeCommand(
+      interaction('list', [{ type: 5, name: 'status', value: true }]),
+      env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    const body = await requests[0]?.json<{ content: string }>();
+    expect(body?.content).toContain('WebSub: subscribed');
+    expect(body?.content).toContain('WebSub: unavailable');
+    expect(logger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'youtube_websub_status_failed',
+        youtubeChannelId: otherYouTubeChannelId,
+        error: expect.objectContaining({ message: 'Storage unavailable' }),
+      }),
+    );
+  });
+
+  it('handles an empty status list without accessing Durable Objects', async () => {
+    const getByName = vi.spyOn(env.YOUTUBE_SUBSCRIPTIONS, 'getByName');
+    const requests = mockInteractionEdits();
+    const ctx = createExecutionContext();
+    await handleYouTubeCommand(
+      interaction('list', [{ type: 5, name: 'status', value: true }]),
+      env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    expect(getByName).not.toHaveBeenCalled();
+    await expect(requests[0]?.json()).resolves.toMatchObject({
+      content: 'No YouTube notifications are configured for this server.',
+    });
+  });
+
+  it.each([
+    [{ type: 5, name: 'status', value: 'true' }],
+    [{ type: 3, name: 'status', value: true }],
+    [{ type: 5, name: 'other', value: true }],
+    [
+      { type: 5, name: 'status', value: true },
+      { type: 5, name: 'status', value: false },
+    ],
+  ])('rejects invalid list options: %j', async (...options) => {
+    const response = await handleYouTubeCommand(
+      interaction('list', options),
+      env,
+      createExecutionContext(),
+    );
+    await expect(content(response)).resolves.toBe('This interaction is not supported.');
+    expect(mocks.listGuildYouTubeSubscriptions).not.toHaveBeenCalled();
+  });
+
   it('renders a stable, preview-free, bounded list', async () => {
     mocks.listGuildYouTubeSubscriptions.mockResolvedValue([
       {
@@ -168,6 +299,23 @@ describe('/youtube command', () => {
 
     await expect(content(response)).resolves.toBe('This interaction is not supported.');
     expect(mocks.resolveYouTubeChannel).not.toHaveBeenCalled();
+  });
+
+  it('reports a failed status list through the deferred response', async () => {
+    mocks.listGuildYouTubeSubscriptions.mockRejectedValue(new Error('KV unavailable'));
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const requests = mockInteractionEdits();
+    const ctx = createExecutionContext();
+    const response = await handleYouTubeCommand(
+      interaction('list', [{ type: 5, name: 'status', value: true }]),
+      env,
+      ctx,
+    );
+    await expect(response.json()).resolves.toMatchObject({ type: 5 });
+    await waitOnExecutionContext(ctx);
+    await expect(requests[0]?.json()).resolves.toMatchObject({
+      content: 'YouTube notifications could not be loaded. Please try again.',
+    });
   });
 
   it('logs provider and action context when listing fails', async () => {
