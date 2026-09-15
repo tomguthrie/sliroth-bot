@@ -10,7 +10,7 @@
     "db:check:youtube-subscription": "drizzle-kit check --config=drizzle/youtube-subscription.config.ts",
     "db:generate:twitch-subscription": "drizzle-kit generate --config=drizzle/twitch-subscription.config.ts",
     "db:generate:youtube-subscription": "drizzle-kit generate --config=drizzle/youtube-subscription.config.ts",
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler deploy && pnpm run discord:sync-commands",
     "dev": "wrangler dev",
     "discord:sync-commands": "node scripts/sync-discord-commands.mjs",
     "fmt": "oxfmt",
