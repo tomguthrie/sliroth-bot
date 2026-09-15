@@ -22,6 +22,7 @@ import {
 } from '../discord/permission';
 import type { DiscordCommandContext } from '../discord/permission';
 import { DiscordSnowflake } from '../discord/snowflake';
+import { toLoggableError } from '../log';
 import { resolveYouTubeChannel } from './channel';
 import youtubeCommand from './discord-command.json';
 import {
@@ -109,9 +110,18 @@ const YouTubeListCommand = z
   .object({
     type: z.literal(1),
     name: z.literal('list'),
-    options: z.array(z.never()).max(0).optional(),
+    options: z
+      .array(
+        z.object({
+          type: z.literal(5),
+          name: z.literal('status'),
+          value: z.boolean(),
+        }),
+      )
+      .max(1)
+      .optional(),
   })
-  .transform(({ name }) => ({ name }));
+  .transform(({ name, options }) => ({ name, status: options?.[0]?.value ?? false }));
 
 const YouTubeRemoveCommand = z
   .object({
@@ -163,6 +173,10 @@ async function handleYouTubeCommand(
       ctx.waitUntil(completeYouTubeRemove(env, context));
       return createDeferredResponse();
     case 'list':
+      if (command.status) {
+        ctx.waitUntil(completeYouTubeStatusList(env, context));
+        return createDeferredResponse();
+      }
       return listYouTubeSubscriptions(env, context);
   }
 }
@@ -253,26 +267,72 @@ async function listYouTubeSubscriptions(
   context: DiscordCommandContext,
 ): Promise<Response> {
   try {
-    const subscriptions = await listGuildYouTubeSubscriptions(
-      env.YOUTUBE_SUBSCRIPTIONS_INDEX,
-      context.guildId,
-    );
-    if (subscriptions.length === 0) {
-      return createEphemeralResponse('No YouTube notifications are configured for this server.');
-    }
-    return createEphemeralResponse(
-      createNotificationList(
-        '**YouTube notifications in this server**',
-        subscriptions.map((subscription) => ({
-          name: subscription.youtubeChannelTitle,
-          channelId: subscription.discordChannelId,
-          providerId: subscription.youtubeChannelId,
-        })),
-        context.channelId,
-      ),
-    );
+    return createEphemeralResponse(await createYouTubeSubscriptionList(env, context));
   } catch (error) {
     logCommandFailure('youtube', 'list', context, error);
     return createEphemeralResponse('YouTube notifications could not be loaded. Please try again.');
   }
+}
+
+async function completeYouTubeStatusList(env: Env, context: DiscordCommandContext): Promise<void> {
+  try {
+    const content = await createYouTubeSubscriptionList(env, context, true);
+    await editInteractionResponse(context.applicationId, context.token, content);
+  } catch (error) {
+    await reportCommandFailure(
+      'youtube',
+      context,
+      'list',
+      'YouTube notifications could not be loaded. Please try again.',
+      error,
+    );
+  }
+}
+
+async function createYouTubeSubscriptionList(
+  env: Env,
+  context: DiscordCommandContext,
+  includeStatus = false,
+): Promise<string> {
+  const subscriptions = await listGuildYouTubeSubscriptions(
+    env.YOUTUBE_SUBSCRIPTIONS_INDEX,
+    context.guildId,
+  );
+  if (subscriptions.length === 0) {
+    return 'No YouTube notifications are configured for this server.';
+  }
+
+  const statuses = new Map<string, string>();
+  if (includeStatus) {
+    const channelIds = new Set(subscriptions.map((subscription) => subscription.youtubeChannelId));
+    await Promise.all(
+      [...channelIds].map(async (youtubeChannelId) => {
+        try {
+          const status =
+            await env.YOUTUBE_SUBSCRIPTIONS.getByName(youtubeChannelId).getWebSubStatus();
+          statuses.set(youtubeChannelId, status ?? 'no state');
+        } catch (error) {
+          console.error({
+            event: 'youtube_websub_status_failed',
+            youtubeChannelId,
+            error: toLoggableError(error),
+          });
+          statuses.set(youtubeChannelId, 'unavailable');
+        }
+      }),
+    );
+  }
+
+  return createNotificationList(
+    '**YouTube notifications in this server**',
+    subscriptions.map((subscription) => ({
+      name: subscription.youtubeChannelTitle,
+      channelId: subscription.discordChannelId,
+      providerId: subscription.youtubeChannelId,
+      ...(includeStatus
+        ? { detail: `WebSub: ${statuses.get(subscription.youtubeChannelId)}` }
+        : {}),
+    })),
+    context.channelId,
+  );
 }

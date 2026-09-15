@@ -43,7 +43,14 @@
     {
       "type": 1,
       "name": "list",
-      "description": "List YouTube upload notifications in this server"
+      "description": "List YouTube upload notifications in this server",
+      "options": [
+        {
+          "type": 5,
+          "name": "status",
+          "description": "Include stored WebSub subscription status"
+        }
+      ]
     },
     {
       "type": 1,
