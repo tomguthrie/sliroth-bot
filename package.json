@@ -29,7 +29,7 @@
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.0.0",
     "@types/node": "^26.2.0",
-    "drizzle-kit": "^1.0.0-rc.4",
+    "drizzle-kit": "^1.0.0-rc.5-5935859",
     "oxfmt": "^0.64.0",
     "oxlint": "~1.79.0",
     "oxlint-tsgolint": "^7.0.2001",
