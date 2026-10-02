@@ -4,20 +4,21 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "cf-typegen": "wrangler types",
+    "build": "cf build",
+    "cf-typegen": "cf workers types",
     "check": "oxfmt --check && pnpm run lint && pnpm run typecheck",
     "db:check:twitch-subscription": "drizzle-kit check --config=drizzle/twitch-subscription.config.ts",
     "db:check:youtube-subscription": "drizzle-kit check --config=drizzle/youtube-subscription.config.ts",
     "db:generate:twitch-subscription": "drizzle-kit generate --config=drizzle/twitch-subscription.config.ts",
     "db:generate:youtube-subscription": "drizzle-kit generate --config=drizzle/youtube-subscription.config.ts",
-    "deploy": "wrangler deploy && pnpm run discord:sync-commands",
-    "dev": "wrangler dev",
+    "deploy": "cf deploy",
+    "dev": "cf dev",
     "discord:sync-commands": "node scripts/sync-discord-commands.mjs",
     "fmt": "oxfmt",
     "lint": "oxlint --deny-warnings src test drizzle scripts",
-    "test": "WRANGLER_LOG=error vitest run",
-    "test:watch": "WRANGLER_LOG=error vitest",
-    "typecheck": "wrangler types --check && tsc --noEmit && tsc --project test/tsconfig.json --noEmit"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "pnpm run cf-typegen && tsc --noEmit && tsc --project test/tsconfig.json --noEmit"
   },
   "dependencies": {
     "discord-interactions": "^4.4.0",
@@ -27,15 +28,17 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "^1.0.0",
+    "@cloudflare/vite-plugin": "2.0.0-beta.sha-52b0dc0e9",
+    "@cloudflare/vitest-plugin": "^1.3.5",
     "@types/node": "^26.2.0",
+    "cf": "1.0.0-beta.10",
     "drizzle-kit": "^1.0.0-rc.4",
     "oxfmt": "^0.64.0",
     "oxlint": "~1.79.0",
     "oxlint-tsgolint": "^7.0.2001",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10",
-    "wrangler": "^4.125.0"
+    "vite": "8.3.2",
+    "vitest": "^4.1.10"
   },
   "devEngines": {
     "packageManager": {

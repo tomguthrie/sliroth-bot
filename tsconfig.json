@@ -15,14 +15,17 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "ESNext",
-    "types": ["./worker-configuration.d.ts", "node"]
+    "types": ["./.cloudflare/types/index.d.ts", "node"],
+    "allowImportingTsExtensions": true
   },
   "include": [
-    "worker-configuration.d.ts",
     "drizzle/**/*.ts",
     "src/**/*.ts",
     "vitest.config.ts",
     "oxfmt.config.ts",
-    "oxlint.config.ts"
+    "oxlint.config.ts",
+    ".cloudflare/types/**/*.d.ts",
+    "cloudflare.config.ts",
+    "vite.config.ts"
   ]
 }

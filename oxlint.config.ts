@@ -8,9 +8,8 @@ export default defineConfig({
   ignorePatterns: [
     '**/coverage/**',
     '**/dist/**',
-    '**/.wrangler/**',
+    '**/.cloudflare/**',
     '**/src/db/**/migrations/**',
-    '**/worker-configuration.d.ts',
   ],
   options: {
     denyWarnings: true,

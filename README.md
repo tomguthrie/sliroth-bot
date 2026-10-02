@@ -7,13 +7,17 @@ uploaded to a specific channel.
 
 ```sh
 pnpm install
+pnpm dev
+```
+
+Validate and build locally without deploying:
+
+```sh
 pnpm fmt
 pnpm check
 pnpm test
+pnpm build
 ```
-
-Runtime configuration is declared in `wrangler.jsonc`. Secret values must be
-configured through Cloudflare or a local `.dev.vars` file.
 
 ## Database migrations
 
