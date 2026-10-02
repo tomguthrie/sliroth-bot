@@ -19,5 +19,7 @@ jobs:
         with:
           cache: true
       - run: node --version
+      - run: pnpm cf-typegen
       - run: pnpm check
       - run: pnpm test
+      - run: pnpm build
