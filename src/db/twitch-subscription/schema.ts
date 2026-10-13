@@ -1,13 +1,4 @@
-import { sql } from 'drizzle-orm';
-import {
-  check,
-  index,
-  integer,
-  primaryKey,
-  snakeCase,
-  text,
-  uniqueIndex,
-} from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, snakeCase, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 import type { DiscordMentionTarget } from '../../discord/message';
 
@@ -42,17 +33,13 @@ export const twitchSubscribers = snakeCase.table(
 export const eventSubSubscriptions = snakeCase.table(
   'eventsub_subscriptions',
   {
-    subscriptionKey: text().notNull(),
     type: text().notNull(),
     version: text().notNull(),
-    conditionJson: text().notNull(),
     subscriptionId: text().notNull(),
   },
   (table) => [
-    primaryKey({ columns: [table.subscriptionKey] }),
-    index('eventsub_subscriptions_type_idx').on(table.type),
+    primaryKey({ columns: [table.type] }),
     uniqueIndex('eventsub_subscriptions_subscription_id_idx').on(table.subscriptionId),
-    check('eventsub_subscriptions_condition_json_check', sql`json_valid(${table.conditionJson})`),
   ],
 );
 

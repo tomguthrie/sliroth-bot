@@ -437,10 +437,8 @@ describe('Twitch EventSub webhook', () => {
           { type: 'stream.online', version: '1' },
           { type: 'stream.offline', version: '1' },
         ].map(({ type, version }) => ({
-          subscriptionKey: type,
           type,
           version,
-          conditionJson: JSON.stringify({ broadcaster_user_id: RECONCILE_BROADCASTER_ID }),
           subscriptionId: `subscription-${type}`,
         })),
       ),
