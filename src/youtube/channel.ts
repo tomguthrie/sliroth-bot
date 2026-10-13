@@ -1,13 +1,8 @@
-import { parse } from 'txml/txml';
 import * as z from 'zod';
 
-const YOUTUBE_CHANNEL_FEED_URL = 'https://www.youtube.com/feeds/videos.xml';
+import { parseYouTubeXml } from './xml';
 
-const XML_PARSE_OPTIONS = {
-  decodeEntities: true,
-  selfClosingTags: [],
-  simplify: true,
-};
+const YOUTUBE_CHANNEL_FEED_URL = 'https://www.youtube.com/feeds/videos.xml';
 
 const YouTubeChannelFeed = z.object({
   feed: z.object({
@@ -75,13 +70,11 @@ export function createYouTubeChannelFeedUrl(channelId: string): string {
 export async function fetchYouTubeChannelTitle(channelId: string): Promise<string> {
   const response = await fetch(createYouTubeChannelFeedUrl(channelId));
   if (!response.ok) {
-    if (response.body !== null) {
-      await response.body.cancel();
-    }
+    await response.body?.cancel();
     throw new Error(`YouTube channel feed returned HTTP ${response.status}`);
   }
 
-  return YouTubeChannelFeed.parse(parse(await response.text(), XML_PARSE_OPTIONS)).feed.title;
+  return YouTubeChannelFeed.parse(parseYouTubeXml(await response.text())).feed.title;
 }
 
 /** Resolves a YouTube channel ID, handle, or channel URL without the Data API. */
@@ -100,9 +93,7 @@ async function resolveYouTubeHandle(handle: string): Promise<string | undefined>
   const url = new URL(`@${encodeURIComponent(handle)}`, 'https://www.youtube.com/');
   const response = await fetch(url);
   if (!response.ok) {
-    if (response.body !== null) {
-      await response.body.cancel();
-    }
+    await response.body?.cancel();
     throw new Error(`YouTube handle returned HTTP ${response.status}`);
   }
 

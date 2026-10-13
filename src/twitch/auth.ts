@@ -1,10 +1,11 @@
 import * as z from 'zod';
 
 const ACCESS_TOKEN_KEY = 'twitch';
+const ACCESS_TOKEN_PATTERN = /^[A-Za-z0-9._~+/-]+=*$/;
 
 const AccessToken = z
   .object({
-    access_token: z.string().regex(/^[A-Za-z0-9._~+/-]+=*$/),
+    access_token: z.string().regex(ACCESS_TOKEN_PATTERN),
     expires_in: z.int().min(75),
   })
   .transform((data) => ({
@@ -28,7 +29,7 @@ type AccessToken = z.infer<typeof AccessToken>;
  */
 export async function getAccessToken(env: Env): Promise<string> {
   const cached = await loadCachedAccessToken(env);
-  if (cached !== null && /^[A-Za-z0-9._~+/-]+=*$/.test(cached)) {
+  if (cached !== null && ACCESS_TOKEN_PATTERN.test(cached)) {
     return cached;
   }
 

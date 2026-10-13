@@ -1,11 +1,6 @@
-import { parse } from 'txml/txml';
 import * as z from 'zod';
 
-const XML_PARSE_OPTIONS = {
-  decodeEntities: true,
-  selfClosingTags: [],
-  simplify: true,
-};
+import { parseYouTubeXml } from './xml';
 
 export const YouTubeVideoNotification = z.object({
   videoId: z.string().trim().min(1),
@@ -39,7 +34,7 @@ const YouTubeAtomFeed = z.object({
 });
 
 export function parseYouTubeVideoNotifications(xml: string): YouTubeVideoNotification[] {
-  const entryValue = YouTubeAtomFeed.parse(parse(xml, XML_PARSE_OPTIONS)).feed.entry;
+  const entryValue = YouTubeAtomFeed.parse(parseYouTubeXml(xml)).feed.entry;
 
   if (entryValue === undefined) {
     return [];

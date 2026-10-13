@@ -10,25 +10,13 @@ import { deliverQueueMessages, type QueueMessageProcessor } from './message';
 const DISCORD_MESSAGES_QUEUE = 'discord-messages';
 const SUBSCRIPTION_EVENTS_QUEUE = 'subscription-events';
 
-type SubscriptionEventDelivery = TwitchSubscriptionEventDelivery | YouTubeVideoDelivery;
-
-export type WorkerQueueMessage = DiscordMessageDelivery | SubscriptionEventDelivery;
+/** A message body accepted by either of the Worker's queues. */
+export type WorkerQueueMessage =
+  | DiscordMessageDelivery
+  | TwitchSubscriptionEventDelivery
+  | YouTubeVideoDelivery;
 
 const processDiscordMessage = createDiscordMessageProcessor(twitchStreamMessageReceiptHandler);
-
-const processSubscriptionEvent: QueueMessageProcessor<SubscriptionEventDelivery> = async (
-  delivery,
-  env,
-  context,
-) => {
-  switch (delivery.kind) {
-    case 'twitch-eventsub':
-    case 'twitch-vod-lookup':
-      return processTwitchSubscriptionEvent(delivery, env, context);
-    case 'youtube-video':
-      return processYouTubeSubscriptionEvent(delivery, env, context);
-  }
-};
 
 /** Routes Queue batches to the consumer matching the configured queue name. */
 export async function deliverQueueBatch(
@@ -64,8 +52,14 @@ const processSubscriptionQueueMessage: QueueMessageProcessor<WorkerQueueMessage>
   env,
   context,
 ) => {
-  if ('kind' in delivery) {
-    return processSubscriptionEvent(delivery, env, context);
+  if (!('kind' in delivery)) {
+    throw new Error('Unsupported message in the subscription events queue');
   }
-  throw new Error('Unsupported message in the subscription events queue');
+  switch (delivery.kind) {
+    case 'twitch-eventsub':
+    case 'twitch-vod-lookup':
+      return processTwitchSubscriptionEvent(delivery, env, context);
+    case 'youtube-video':
+      return processYouTubeSubscriptionEvent(delivery, env, context);
+  }
 };

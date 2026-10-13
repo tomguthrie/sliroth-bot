@@ -8,8 +8,6 @@ export interface QueueMessageContext {
   queue: string;
   messageId: string;
   attempt: number;
-  enqueuedAt: Date;
-  startedAt: number;
 }
 
 export type QueueMessageProcessor<T> = (
@@ -31,8 +29,6 @@ export async function deliverQueueMessages<T>(
         queue: batch.queue,
         messageId: message.id,
         attempt: message.attempts,
-        enqueuedAt: message.timestamp,
-        startedAt,
       });
       console.info({
         event: 'queue_message_processed',

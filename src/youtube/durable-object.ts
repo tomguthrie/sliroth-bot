@@ -337,9 +337,7 @@ export class YouTubeSubscription extends DurableObject<Env> {
       return;
     }
 
-    if (response.body !== null) {
-      await response.body.cancel();
-    }
+    await response.body?.cancel();
     throw new Error(`YouTube WebSub hub returned HTTP ${response.status}`);
   }
 

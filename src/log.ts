@@ -1,27 +1,18 @@
-/** Converts an Error and its immediate cause into enumerable log data. */
+/**
+ * Converts an Error and its cause chain into enumerable log data.
+ *
+ * Cause chains are assumed to be acyclic; a cycle would recurse until the stack overflows.
+ */
 export function toLoggableError(error: unknown): unknown {
   if (!(error instanceof Error)) {
     return error;
   }
 
-  const properties = Object.fromEntries(Object.entries(error));
   return {
-    ...properties,
+    ...Object.fromEntries(Object.entries(error)),
     name: error.name,
     message: error.message,
     stack: error.stack,
-    ...(error.cause === undefined
-      ? {}
-      : {
-          cause:
-            error.cause instanceof Error
-              ? {
-                  ...Object.fromEntries(Object.entries(error.cause)),
-                  name: error.cause.name,
-                  message: error.cause.message,
-                  stack: error.cause.stack,
-                }
-              : error.cause,
-        }),
+    ...(error.cause === undefined ? {} : { cause: toLoggableError(error.cause) }),
   };
 }

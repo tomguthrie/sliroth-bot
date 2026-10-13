@@ -90,8 +90,6 @@ function createContext(attempt: number): QueueMessageContext {
     queue: 'subscription-events',
     messageId: `vod-${attempt}`,
     attempt,
-    enqueuedAt: new Date('2026-08-11T19:00:00Z'),
-    startedAt: Date.now(),
   };
 }
 
