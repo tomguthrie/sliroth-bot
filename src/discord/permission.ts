@@ -63,7 +63,7 @@ export function hasDiscordPermission(value: string | undefined, permission: bigi
 
 /** Resolves the mention selected by a notification add command. */
 export function resolveNotificationPing(
-  options: { ping?: 'everyone' | 'here'; roleId?: string },
+  options: { ping?: 'everyone' | 'here' | undefined; role?: string | undefined },
   interaction: DiscordInteraction,
   guildId: string,
 ): { ping?: DiscordMentionTarget } | { error: string } {
@@ -72,16 +72,16 @@ export function resolveNotificationPing(
       ? { ping: options.ping }
       : { error: 'I need Mention Everyone permission to use that ping.' };
   }
-  if (options.roleId === undefined) {
+  if (options.role === undefined) {
     return {};
   }
-  if (options.roleId === guildId) {
+  if (options.role === guildId) {
     return hasDiscordPermission(interaction.app_permissions, MENTION_EVERYONE_PERMISSION)
       ? { ping: 'everyone' }
       : { error: 'I need Mention Everyone permission to mention @everyone.' };
   }
 
-  const role = interaction.data?.resolved?.roles?.[options.roleId];
+  const role = interaction.data?.resolved?.roles?.[options.role];
   if (role === undefined) {
     return { error: 'The selected Discord role could not be resolved.' };
   }
@@ -93,5 +93,5 @@ export function resolveNotificationPing(
       error: 'I need Mention Everyone permission to mention that role.',
     };
   }
-  return { ping: options.roleId };
+  return { ping: options.role };
 }

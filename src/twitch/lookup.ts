@@ -1,115 +1,16 @@
 import * as z from 'zod';
 
-import { DiscordSnowflake } from '../discord/snowflake';
+import { createSubscriptionLookup } from '../subscription-lookup';
 import { isTwitchBroadcasterId } from './channel';
 
-const NonBlankString = z.string().refine((value) => value.trim() !== '');
-
-export const TwitchSubscriptionMetadata = z.object({
-  login: NonBlankString,
-  displayName: NonBlankString,
+const TwitchSubscriptionMetadata = z.object({
+  login: z.string().trim().min(1),
+  displayName: z.string().trim().min(1),
 });
 
-export type TwitchSubscriptionMetadata = z.infer<typeof TwitchSubscriptionMetadata>;
-
-export interface GuildTwitchSubscription {
-  discordChannelId: DiscordSnowflake;
-  twitchBroadcasterId: string;
-  twitchBroadcasterLogin: string;
-  twitchBroadcasterDisplayName: string;
-}
-
-/** Builds the guild-scoped lookup key for a Twitch subscription. */
-export function createGuildTwitchSubscriptionKey(
-  guildId: string,
-  channelId: string,
-  broadcasterId: string,
-): string {
-  return `guild:${guildId}:channel:${channelId}:twitch:${broadcasterId}`;
-}
-
-/** Builds the channel-scoped lookup key for a Twitch subscription. */
-export function createChannelTwitchSubscriptionKey(
-  channelId: string,
-  broadcasterId: string,
-): string {
-  return `channel:${channelId}:twitch:${broadcasterId}`;
-}
-
-/** Lists every Twitch-to-Discord mapping indexed for a guild. */
-export async function listGuildTwitchSubscriptions(
-  index: KVNamespace,
-  guildId: string,
-): Promise<GuildTwitchSubscription[]> {
-  DiscordSnowflake.parse(guildId);
-  const prefix = `guild:${guildId}:channel:`;
-  const page = await index.list<TwitchSubscriptionMetadata>({ prefix });
-
-  return page.keys.flatMap((key) => {
-    const subscription = parseGuildTwitchSubscriptionKey(key.name, prefix, key.metadata);
-    if (subscription === undefined) {
-      logInvalidIndexKey(key.name);
-      return [];
-    }
-    return [subscription];
-  });
-}
-
-/** Lists the Twitch broadcasters configured for a Discord channel. */
-export async function listChannelTwitchSubscriptions(
-  index: KVNamespace,
-  channelId: string,
-): Promise<string[]> {
-  DiscordSnowflake.parse(channelId);
-  const prefix = `channel:${channelId}:twitch:`;
-  const page = await index.list({ prefix });
-
-  return page.keys.flatMap((key) => {
-    const broadcasterId = key.name.slice(prefix.length);
-    if (!isTwitchBroadcasterId(broadcasterId)) {
-      logInvalidIndexKey(key.name);
-      return [];
-    }
-    return [broadcasterId];
-  });
-}
-
-function parseGuildTwitchSubscriptionKey(
-  key: string,
-  prefix: string,
-  metadata: unknown,
-): GuildTwitchSubscription | undefined {
-  if (!key.startsWith(prefix)) {
-    return undefined;
-  }
-
-  const suffix = key.slice(prefix.length);
-  const separator = ':twitch:';
-  const separatorOffset = suffix.indexOf(separator);
-  if (separatorOffset === -1) {
-    return undefined;
-  }
-
-  const discordChannelId = suffix.slice(0, separatorOffset);
-  const twitchBroadcasterId = suffix.slice(separatorOffset + separator.length);
-  const parsedDiscordChannelId = DiscordSnowflake.safeParse(discordChannelId);
-  const parsedMetadata = TwitchSubscriptionMetadata.safeParse(metadata);
-  if (
-    !parsedDiscordChannelId.success ||
-    !isTwitchBroadcasterId(twitchBroadcasterId) ||
-    !parsedMetadata.success
-  ) {
-    return undefined;
-  }
-
-  return {
-    discordChannelId: parsedDiscordChannelId.data,
-    twitchBroadcasterId,
-    twitchBroadcasterLogin: parsedMetadata.data.login,
-    twitchBroadcasterDisplayName: parsedMetadata.data.displayName,
-  };
-}
-
-function logInvalidIndexKey(key: string): void {
-  console.warn({ event: 'twitch_subscription_index_key_invalid', key });
-}
+/** KV lookups from Discord guilds and channels to Twitch broadcaster subscriptions. */
+export const twitchSubscriptionLookup = createSubscriptionLookup(
+  'twitch',
+  isTwitchBroadcasterId,
+  TwitchSubscriptionMetadata,
+);

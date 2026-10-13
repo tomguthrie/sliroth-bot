@@ -1,6 +1,7 @@
 import * as z from 'zod';
 
 import {
+  CommandOptions,
   createDeferredResponse,
   createEphemeralResponse,
   editInteractionResponse,
@@ -26,83 +27,23 @@ import type { DiscordCommandContext } from '../discord/permission';
 import { DiscordSnowflake } from '../discord/snowflake';
 import { resolveTwitchChannel } from './channel';
 import twitchCommand from './discord-command.json';
-import { listChannelTwitchSubscriptions, listGuildTwitchSubscriptions } from './lookup';
+import { twitchSubscriptionLookup } from './lookup';
 
 const TWITCH_COMMAND_NAME = twitchCommand.name;
 
-const TwitchAddOption = z.discriminatedUnion('name', [
-  z.object({
-    type: z.literal(3),
-    name: z.literal('twitch'),
-    value: z.string().trim().min(1),
-  }),
-  z.object({
-    type: z.literal(3),
-    name: z.literal('message'),
-    value: z.string().trim().min(1),
-  }),
-  z.object({
-    type: z.literal(3),
-    name: z.literal('offline'),
-    value: z.string().trim().min(1),
-  }),
-  z.object({
-    type: z.literal(3),
-    name: z.literal('ping'),
-    value: z.enum(['everyone', 'here']),
-  }),
-  z.object({
-    type: z.literal(8),
-    name: z.literal('role'),
-    value: DiscordSnowflake,
-  }),
-]);
-
-const TwitchAddOptions = z
-  .array(TwitchAddOption)
-  .superRefine((options, context) => {
-    const names = new Set<string>();
-    for (const option of options) {
-      if (names.has(option.name)) {
-        context.addIssue({
-          code: 'custom',
-          message: `Duplicate option: ${option.name}`,
-        });
-      }
-      names.add(option.name);
-    }
-    if (names.has('ping') && names.has('role')) {
-      context.addIssue({
-        code: 'custom',
-        message: 'Choose either ping or role',
-      });
-    }
-  })
-  .transform((options, context) => {
-    const twitchOption = options.find(({ name }) => name === 'twitch');
-    if (twitchOption === undefined) {
-      context.addIssue({
-        code: 'custom',
-        message: 'Twitch channel is required',
-      });
-      return z.NEVER;
-    }
-    const messageOption = options.find(({ name }) => name === 'message');
-    const offlineOption = options.find(({ name }) => name === 'offline');
-    const pingOption = options.find(({ name }) => name === 'ping');
-    const roleOption = options.find(({ name }) => name === 'role');
-    const message = messageOption?.name === 'message' ? messageOption.value : undefined;
-    const offline = offlineOption?.name === 'offline' ? offlineOption.value : undefined;
-    const ping = pingOption?.name === 'ping' ? pingOption.value : undefined;
-    const roleId = roleOption?.name === 'role' ? roleOption.value : undefined;
-    return {
-      twitch: twitchOption.value,
-      ...(message === undefined ? {} : { message }),
-      ...(offline === undefined ? {} : { offline }),
-      ...(ping === undefined ? {} : { ping }),
-      ...(roleId === undefined ? {} : { roleId }),
-    };
-  });
+const TwitchAddOptions = CommandOptions.pipe(
+  z
+    .strictObject({
+      twitch: z.string().trim().min(1),
+      message: z.string().trim().min(1).optional(),
+      offline: z.string().trim().min(1).optional(),
+      ping: z.enum(['everyone', 'here']).optional(),
+      role: DiscordSnowflake.optional(),
+    })
+    .refine(({ ping, role }) => ping === undefined || role === undefined, {
+      message: 'Choose either ping or role',
+    }),
+);
 
 const TwitchAddCommand = z
   .object({
@@ -233,7 +174,7 @@ async function completeTwitchAdd(
 
 async function completeTwitchRemove(env: Env, context: DiscordCommandContext): Promise<void> {
   try {
-    const broadcasterIds = await listChannelTwitchSubscriptions(
+    const broadcasterIds = await twitchSubscriptionLookup.listChannel(
       env.TWITCH_SUBSCRIPTIONS_INDEX,
       context.channelId,
     );
@@ -263,7 +204,7 @@ async function listTwitchSubscriptions(
   context: DiscordCommandContext,
 ): Promise<Response> {
   try {
-    const subscriptions = await listGuildTwitchSubscriptions(
+    const subscriptions = await twitchSubscriptionLookup.listGuild(
       env.TWITCH_SUBSCRIPTIONS_INDEX,
       context.guildId,
     );
@@ -273,10 +214,10 @@ async function listTwitchSubscriptions(
     return createEphemeralResponse(
       createNotificationList(
         '**Twitch notifications in this server**',
-        subscriptions.map((subscription) => ({
-          name: subscription.twitchBroadcasterDisplayName,
-          channelId: subscription.discordChannelId,
-          providerId: subscription.twitchBroadcasterId,
+        subscriptions.map(({ channelId, providerId, metadata }) => ({
+          name: metadata.displayName,
+          channelId,
+          providerId,
         })),
         context.channelId,
       ),

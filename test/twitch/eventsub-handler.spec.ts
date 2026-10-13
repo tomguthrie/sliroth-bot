@@ -10,10 +10,6 @@ import {
 } from '../../src/db/twitch-subscription/schema';
 import type { TwitchSubscription } from '../../src/twitch/durable-object';
 import { handleTwitchEventSub } from '../../src/twitch/eventsub-handler';
-import {
-  createChannelTwitchSubscriptionKey,
-  createGuildTwitchSubscriptionKey,
-} from '../../src/twitch/lookup';
 
 const BROADCASTER_ID = '123456789012345678';
 const WEBHOOK_BROADCASTER_ID = '123456789012345679';
@@ -578,4 +574,16 @@ async function signedRequest(
 
 function toHex(value: Uint8Array): string {
   return Array.from(value, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function createGuildTwitchSubscriptionKey(
+  guildId: string,
+  channelId: string,
+  broadcasterId: string,
+): string {
+  return `guild:${guildId}:channel:${channelId}:twitch:${broadcasterId}`;
+}
+
+function createChannelTwitchSubscriptionKey(channelId: string, broadcasterId: string): string {
+  return `channel:${channelId}:twitch:${broadcasterId}`;
 }

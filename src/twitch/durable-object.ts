@@ -33,11 +33,7 @@ import {
   type StreamOfflineEvent,
   type StreamOnlineEvent,
 } from './eventsub';
-import {
-  createChannelTwitchSubscriptionKey,
-  createGuildTwitchSubscriptionKey,
-  type TwitchSubscriptionMetadata,
-} from './lookup';
+import { twitchSubscriptionLookup } from './lookup';
 import { type TwitchEventSubDelivery, type TwitchVodLookupDelivery } from './queue';
 
 const LIVE_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
@@ -133,21 +129,11 @@ export class TwitchSubscription extends DurableObject<Env> {
           ping: validated.ping ?? null,
         },
       });
-    const metadata: TwitchSubscriptionMetadata = {
-      login: validatedBroadcaster.login,
-      displayName: validatedBroadcaster.displayName,
-    };
-    await Promise.all([
-      this.env.TWITCH_SUBSCRIPTIONS_INDEX.put(
-        createGuildTwitchSubscriptionKey(guildId, validated.channelId, validatedBroadcaster.id),
-        '1',
-        { metadata },
-      ),
-      this.env.TWITCH_SUBSCRIPTIONS_INDEX.put(
-        createChannelTwitchSubscriptionKey(validated.channelId, validatedBroadcaster.id),
-        '1',
-      ),
-    ]);
+    await twitchSubscriptionLookup.add(
+      this.env.TWITCH_SUBSCRIPTIONS_INDEX,
+      { guildId, channelId: validated.channelId, providerId: validatedBroadcaster.id },
+      { login: validatedBroadcaster.login, displayName: validatedBroadcaster.displayName },
+    );
     await this.reconcile();
   }
 
@@ -163,14 +149,11 @@ export class TwitchSubscription extends DurableObject<Env> {
         guildId: twitchSubscribers.guildId,
       });
     if (removed !== undefined && broadcaster !== undefined) {
-      await Promise.all([
-        this.env.TWITCH_SUBSCRIPTIONS_INDEX.delete(
-          createGuildTwitchSubscriptionKey(removed.guildId, removed.channelId, broadcaster.id),
-        ),
-        this.env.TWITCH_SUBSCRIPTIONS_INDEX.delete(
-          createChannelTwitchSubscriptionKey(removed.channelId, broadcaster.id),
-        ),
-      ]);
+      await twitchSubscriptionLookup.remove(this.env.TWITCH_SUBSCRIPTIONS_INDEX, {
+        guildId: removed.guildId,
+        channelId: removed.channelId,
+        providerId: broadcaster.id,
+      });
     }
     if (!this.hasLiveSubscribers()) {
       await this.ctx.storage.deleteAlarm();

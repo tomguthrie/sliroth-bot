@@ -13,11 +13,7 @@ import { DiscordSnowflake } from '../discord/snowflake';
 import { toLoggableError } from '../log';
 import { isYouTubeChannelId } from './channel';
 import { createYouTubeDelivery } from './discord-message';
-import {
-  createChannelYouTubeSubscriptionKey,
-  createGuildYouTubeSubscriptionKey,
-  type YouTubeSubscriptionMetadata,
-} from './lookup';
+import { youtubeSubscriptionLookup } from './lookup';
 import { parseYouTubeVideoNotifications } from './notification';
 import type { YouTubeVideoNotification } from './notification';
 import type { YouTubeVideoDelivery } from './queue';
@@ -28,7 +24,6 @@ import {
 } from './websub';
 import type { WebSubMode } from './websub';
 
-const SUBSCRIPTION_INDEX_VALUE = '1';
 const WEBSUB_SECRET_KEY = 'websub:secret';
 const WEBSUB_STATUS_KEY = 'websub:status';
 const WEBSUB_RETRY_DELAY_MS = 5 * 60 * 1000;
@@ -108,24 +103,15 @@ export class YouTubeSubscription extends DurableObject<Env> {
       throw new Error('Failed to store YouTube subscriber');
     }
 
-    const metadata: YouTubeSubscriptionMetadata = {
-      title: validated.channelTitle,
-    };
-    await Promise.all([
-      this.env.YOUTUBE_SUBSCRIPTIONS_INDEX.put(
-        createGuildYouTubeSubscriptionKey(
-          subscriber.guildId,
-          subscriber.channelId,
-          youtubeChannelId,
-        ),
-        SUBSCRIPTION_INDEX_VALUE,
-        { metadata },
-      ),
-      this.env.YOUTUBE_SUBSCRIPTIONS_INDEX.put(
-        createChannelYouTubeSubscriptionKey(subscriber.channelId, youtubeChannelId),
-        SUBSCRIPTION_INDEX_VALUE,
-      ),
-    ]);
+    await youtubeSubscriptionLookup.add(
+      this.env.YOUTUBE_SUBSCRIPTIONS_INDEX,
+      {
+        guildId: subscriber.guildId,
+        channelId: subscriber.channelId,
+        providerId: youtubeChannelId,
+      },
+      { title: validated.channelTitle },
+    );
 
     await this.ensureWebSubSubscribed();
   }
@@ -145,14 +131,11 @@ export class YouTubeSubscription extends DurableObject<Env> {
     }
 
     await this.db.delete(subscribers).where(eq(subscribers.channelId, validatedChannelId));
-    await Promise.all([
-      this.env.YOUTUBE_SUBSCRIPTIONS_INDEX.delete(
-        createGuildYouTubeSubscriptionKey(subscriber.guildId, validatedChannelId, youtubeChannelId),
-      ),
-      this.env.YOUTUBE_SUBSCRIPTIONS_INDEX.delete(
-        createChannelYouTubeSubscriptionKey(validatedChannelId, youtubeChannelId),
-      ),
-    ]);
+    await youtubeSubscriptionLookup.remove(this.env.YOUTUBE_SUBSCRIPTIONS_INDEX, {
+      guildId: subscriber.guildId,
+      channelId: validatedChannelId,
+      providerId: youtubeChannelId,
+    });
 
     await this.ensureWebSubUnsubscribed();
   }

@@ -5,19 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DiscordInteraction } from '../../src/discord/interaction';
 import type { resolveYouTubeChannel } from '../../src/youtube/channel';
 import { youtubeDiscordCommand } from '../../src/youtube/discord-command';
-import type {
-  listChannelYouTubeSubscriptions,
-  listGuildYouTubeSubscriptions,
-} from '../../src/youtube/lookup';
+import type { youtubeSubscriptionLookup } from '../../src/youtube/lookup';
 
 type ResolveYouTubeChannel = typeof resolveYouTubeChannel;
-type ListChannelYouTubeSubscriptions = typeof listChannelYouTubeSubscriptions;
-type ListGuildYouTubeSubscriptions = typeof listGuildYouTubeSubscriptions;
+type YouTubeSubscriptionLookup = typeof youtubeSubscriptionLookup;
 
 const mocks = vi.hoisted(() => ({
   resolveYouTubeChannel: vi.fn<ResolveYouTubeChannel>(),
-  listChannelYouTubeSubscriptions: vi.fn<ListChannelYouTubeSubscriptions>(),
-  listGuildYouTubeSubscriptions: vi.fn<ListGuildYouTubeSubscriptions>(),
+  listChannelYouTubeSubscriptions: vi.fn<YouTubeSubscriptionLookup['listChannel']>(),
+  listGuildYouTubeSubscriptions: vi.fn<YouTubeSubscriptionLookup['listGuild']>(),
 }));
 
 vi.mock('../../src/youtube/channel', () => ({
@@ -25,8 +21,10 @@ vi.mock('../../src/youtube/channel', () => ({
 }));
 
 vi.mock('../../src/youtube/lookup', () => ({
-  listChannelYouTubeSubscriptions: mocks.listChannelYouTubeSubscriptions,
-  listGuildYouTubeSubscriptions: mocks.listGuildYouTubeSubscriptions,
+  youtubeSubscriptionLookup: {
+    listChannel: mocks.listChannelYouTubeSubscriptions,
+    listGuild: mocks.listGuildYouTubeSubscriptions,
+  },
 }));
 
 const APPLICATION_ID = '123456789012345678';
@@ -129,9 +127,9 @@ describe('/youtube command', () => {
   it.each([undefined, false])('does not fetch status when status is %s', async (status) => {
     mocks.listGuildYouTubeSubscriptions.mockResolvedValue([
       {
-        discordChannelId: CHANNEL_ID,
-        youtubeChannelId: YOUTUBE_CHANNEL_ID,
-        youtubeChannelTitle: 'Google Developers',
+        channelId: CHANNEL_ID,
+        providerId: YOUTUBE_CHANNEL_ID,
+        metadata: { title: 'Google Developers' },
       },
     ]);
     const getByName = vi.spyOn(env.YOUTUBE_SUBSCRIPTIONS, 'getByName');
@@ -155,10 +153,10 @@ describe('/youtube command', () => {
     'shows %s through a deferred response and looks up each YouTube channel once',
     async (status) => {
       mocks.listGuildYouTubeSubscriptions.mockResolvedValue(
-        [CHANNEL_ID, OTHER_CHANNEL_ID].map((discordChannelId) => ({
-          discordChannelId,
-          youtubeChannelId: YOUTUBE_CHANNEL_ID,
-          youtubeChannelTitle: 'Google Developers',
+        [CHANNEL_ID, OTHER_CHANNEL_ID].map((channelId) => ({
+          channelId,
+          providerId: YOUTUBE_CHANNEL_ID,
+          metadata: { title: 'Google Developers' },
         })),
       );
       const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(YOUTUBE_CHANNEL_ID);
@@ -194,9 +192,9 @@ describe('/youtube command', () => {
   ] as const)('shows the scheduled alarm for %s as %s', async (status, label) => {
     mocks.listGuildYouTubeSubscriptions.mockResolvedValue([
       {
-        discordChannelId: CHANNEL_ID,
-        youtubeChannelId: YOUTUBE_CHANNEL_ID,
-        youtubeChannelTitle: 'Google Developers',
+        channelId: CHANNEL_ID,
+        providerId: YOUTUBE_CHANNEL_ID,
+        metadata: { title: 'Google Developers' },
       },
     ]);
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(YOUTUBE_CHANNEL_ID);
@@ -223,9 +221,9 @@ describe('/youtube command', () => {
     const otherYouTubeChannelId = 'UCbbbbbbbbbbbbbbbbbbbbbb';
     mocks.listGuildYouTubeSubscriptions.mockResolvedValue(
       [YOUTUBE_CHANNEL_ID, otherYouTubeChannelId].map((youtubeChannelId) => ({
-        discordChannelId: CHANNEL_ID,
-        youtubeChannelId,
-        youtubeChannelTitle: youtubeChannelId,
+        channelId: CHANNEL_ID,
+        providerId: youtubeChannelId,
+        metadata: { title: youtubeChannelId },
       })),
     );
     const subscription = env.YOUTUBE_SUBSCRIPTIONS.getByName(YOUTUBE_CHANNEL_ID);
@@ -299,19 +297,19 @@ describe('/youtube command', () => {
   it('renders a stable, preview-free, bounded list', async () => {
     mocks.listGuildYouTubeSubscriptions.mockResolvedValue([
       {
-        discordChannelId: OTHER_CHANNEL_ID,
-        youtubeChannelId: 'UCbbbbbbbbbbbbbbbbbbbbbb',
-        youtubeChannelTitle: 'Zulu channel',
+        channelId: OTHER_CHANNEL_ID,
+        providerId: 'UCbbbbbbbbbbbbbbbbbbbbbb',
+        metadata: { title: 'Zulu channel' },
       },
       {
-        discordChannelId: CHANNEL_ID,
-        youtubeChannelId: YOUTUBE_CHANNEL_ID,
-        youtubeChannelTitle: 'Current channel',
+        channelId: CHANNEL_ID,
+        providerId: YOUTUBE_CHANNEL_ID,
+        metadata: { title: 'Current channel' },
       },
       ...Array.from({ length: 80 }, (_, index) => ({
-        discordChannelId: OTHER_CHANNEL_ID,
-        youtubeChannelId: `UC${String(index).padStart(22, '0')}`,
-        youtubeChannelTitle: `Long channel ${String(index).padStart(2, '0')} ${'x'.repeat(30)}`,
+        channelId: OTHER_CHANNEL_ID,
+        providerId: `UC${String(index).padStart(22, '0')}`,
+        metadata: { title: `Long channel ${String(index).padStart(2, '0')} ${'x'.repeat(30)}` },
       })),
     ]);
 
