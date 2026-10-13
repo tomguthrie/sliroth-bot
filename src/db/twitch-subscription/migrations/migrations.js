@@ -4,6 +4,7 @@ import m0002 from './20260812001613_short_jackpot/migration.sql';
 import m0003 from './20260815112813_typical_reavers/migration.sql';
 import m0004 from './20260815152201_flashy_karma/migration.sql';
 import m0005 from './20260828180815_white_exiles/migration.sql';
+import m0006 from './20261013202038_loving_rictor/migration.sql';
 
   export default {
     migrations: {
@@ -12,7 +13,8 @@ import m0005 from './20260828180815_white_exiles/migration.sql';
 "20260812001613_short_jackpot": m0002,
 "20260815112813_typical_reavers": m0003,
 "20260815152201_flashy_karma": m0004,
-"20260828180815_white_exiles": m0005
+"20260828180815_white_exiles": m0005,
+"20261013202038_loving_rictor": m0006
 }
   }
   

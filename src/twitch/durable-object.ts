@@ -512,30 +512,12 @@ export class TwitchSubscription extends DurableObject<Env> {
   }
 
   private async recordIncomingEventSubSubscription(message: EventSubNotification): Promise<void> {
-    const [existing] = await this.db
-      .select({ subscriptionKey: eventSubSubscriptions.subscriptionKey })
-      .from(eventSubSubscriptions)
-      .where(eq(eventSubSubscriptions.subscriptionId, message.subscription.id))
-      .limit(1);
-    if (existing !== undefined) {
-      await this.db
-        .update(eventSubSubscriptions)
-        .set({
-          type: message.eventType,
-          version: message.subscription.version,
-        })
-        .where(eq(eventSubSubscriptions.subscriptionKey, existing.subscriptionKey));
-      return;
-    }
+    // A subscription's type and version never change, so an existing row needs no update.
     await this.db
       .insert(eventSubSubscriptions)
       .values({
-        subscriptionKey: message.eventType,
         type: message.eventType,
         version: message.subscription.version,
-        conditionJson: JSON.stringify({
-          broadcaster_user_id: message.subscription.broadcasterId,
-        }),
         subscriptionId: message.subscription.id,
       })
       .onConflictDoNothing();
@@ -567,30 +549,21 @@ export class TwitchSubscription extends DurableObject<Env> {
     broadcasterId: string,
     callback: string,
   ): Promise<void> {
-    const condition = { broadcaster_user_id: broadcasterId };
     const created = await client.createEventSubSubscription({
       type: desired.type,
       version: desired.version,
-      condition,
+      condition: { broadcaster_user_id: broadcasterId },
       transport: {
         method: 'webhook',
         callback,
         secret: this.env.TWITCH_EVENTSUB_SECRET,
       },
     });
-    const fields = {
-      type: desired.type,
-      version: desired.version,
-      conditionJson: JSON.stringify(condition),
-      subscriptionId: created.id,
-    };
+    const fields = { version: desired.version, subscriptionId: created.id };
     await this.db
       .insert(eventSubSubscriptions)
-      .values({ subscriptionKey: desired.type, ...fields })
-      .onConflictDoUpdate({
-        target: eventSubSubscriptions.subscriptionKey,
-        set: fields,
-      });
+      .values({ type: desired.type, ...fields })
+      .onConflictDoUpdate({ target: eventSubSubscriptions.type, set: fields });
   }
 
   private async auditEventSubSubscriptionsIfDue(): Promise<void> {
