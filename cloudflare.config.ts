@@ -8,6 +8,7 @@ const worker = defineWorker({
   entrypoint,
   compatibilityDate: '2026-08-06',
   compatibilityFlags: ['nodejs_compat'],
+  previewUrls: false,
   observability: {
     enabled: true,
     logs: { headSamplingRate: 1 },
