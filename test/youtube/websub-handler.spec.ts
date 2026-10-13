@@ -3,13 +3,13 @@ import { env } from 'cloudflare:workers';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 
-import { subscribers } from '../../../src/db/youtube-subscription/schema';
-import type { YouTubeSubscription } from '../../../src/youtube/subscription/durable-object';
+import { subscribers } from '../../src/db/youtube-subscription/schema';
+import type { YouTubeSubscription } from '../../src/youtube/durable-object';
+import { createYouTubeTopicUrl } from '../../src/youtube/websub';
 import {
   handleYouTubeWebSubIntent,
   handleYouTubeWebSubNotification,
-} from '../../../src/youtube/subscription/websub-handler';
-import { createYouTubeTopicUrl } from '../../../src/youtube/websub';
+} from '../../src/youtube/websub-handler';
 
 const GUILD_ID = '123456789012345678';
 const CHANNEL_ID = '234567890123456789';

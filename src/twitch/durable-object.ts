@@ -5,7 +5,7 @@ import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
 import * as z from 'zod';
 
-import migrations from '../../db/twitch-subscription/migrations/migrations.js';
+import migrations from '../db/twitch-subscription/migrations/migrations.js';
 import {
   broadcasters,
   eventSubSubscriptions,
@@ -13,13 +13,18 @@ import {
   streamMessages,
   streams,
   twitchSubscribers,
-} from '../../db/twitch-subscription/schema';
-import type { DiscordMessageReceipt } from '../../discord/client';
-import { DiscordMentionTarget } from '../../discord/message';
-import { enqueueDiscordMessages } from '../../discord/queue';
-import { DiscordSnowflake } from '../../discord/snowflake';
-import { toLoggableError } from '../../log';
-import { isTwitchApiErrorStatus, TwitchApiClient, type TwitchUser } from '../client';
+} from '../db/twitch-subscription/schema';
+import type { DiscordMessageReceipt } from '../discord/client';
+import { DiscordMentionTarget } from '../discord/message';
+import { enqueueDiscordMessages } from '../discord/queue';
+import { DiscordSnowflake } from '../discord/snowflake';
+import { toLoggableError } from '../log';
+import { isTwitchApiErrorStatus, TwitchApiClient, type TwitchUser } from './client';
+import {
+  createTwitchLiveDelivery,
+  createTwitchLiveUpdateDelivery,
+  createTwitchOfflineDelivery,
+} from './discord-message';
 import {
   TWITCH_EVENTSUB_SUBSCRIPTIONS,
   type ChannelUpdateEvent,
@@ -27,17 +32,12 @@ import {
   type EventSubSubscriptionDefinition,
   type StreamOfflineEvent,
   type StreamOnlineEvent,
-} from '../eventsub';
-import {
-  createTwitchLiveDelivery,
-  createTwitchLiveUpdateDelivery,
-  createTwitchOfflineDelivery,
-} from './discord-message';
+} from './eventsub';
 import {
   createChannelTwitchSubscriptionKey,
   createGuildTwitchSubscriptionKey,
   type TwitchSubscriptionMetadata,
-} from './index';
+} from './lookup';
 import { type TwitchEventSubDelivery, type TwitchVodLookupDelivery } from './queue';
 
 const LIVE_REFRESH_INTERVAL_MS = 15 * 60 * 1000;

@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { index, integer, primaryKey, snakeCase, text } from 'drizzle-orm/sqlite-core';
 
-import type { DiscordMentionTarget } from '../../discord';
+import type { DiscordMentionTarget } from '../../discord/message';
 
 const currentTimestampMs = () => sql`(cast(unixepoch('subsec') * 1000 as integer))`;
 

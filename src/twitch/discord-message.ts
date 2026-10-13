@@ -1,10 +1,10 @@
-import type { broadcasters, streams, twitchSubscribers } from '../../db/twitch-subscription/schema';
+import type { broadcasters, streams, twitchSubscribers } from '../db/twitch-subscription/schema';
 import {
   createDiscordMentionPayload,
   createDiscordMessageNonce,
   type DiscordMessage,
-} from '../../discord/message';
-import type { DiscordCreateMessageDelivery, DiscordEditMessageDelivery } from '../../discord/queue';
+} from '../discord/message';
+import type { DiscordCreateMessageDelivery, DiscordEditMessageDelivery } from '../discord/queue';
 import { TWITCH_STREAM_MESSAGE_RECEIPT } from './message-receipt';
 
 const TWITCH_COLOR = 0x9146ff;

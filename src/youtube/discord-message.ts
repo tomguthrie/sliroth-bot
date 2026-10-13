@@ -1,11 +1,11 @@
-import type { subscribers } from '../../db/youtube-subscription/schema';
+import type { subscribers } from '../db/youtube-subscription/schema';
 import {
   createDiscordMentionPayload,
   createDiscordMessageNonce,
   type DiscordMessage,
-} from '../../discord/message';
-import type { DiscordMessageDelivery } from '../../discord/queue';
-import type { YouTubeVideoNotification } from '../notification';
+} from '../discord/message';
+import type { DiscordMessageDelivery } from '../discord/queue';
+import type { YouTubeVideoNotification } from './notification';
 
 const DEFAULT_MESSAGE = 'A new video has been uploaded!';
 

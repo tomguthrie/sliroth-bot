@@ -2,8 +2,11 @@ import { createExecutionContext } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createDiscordInteractionHandler, type DiscordCommandHandler } from '../../src/discord';
-import { reportCommandFailure } from '../../src/discord/interaction';
+import {
+  createDiscordInteractionHandler,
+  reportCommandFailure,
+  type DiscordCommandHandler,
+} from '../../src/discord/interaction';
 
 const PRIVATE_KEY_SEED = '9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60';
 const PRIVATE_KEY_PREFIX = '302e020100300506032b657004220420';

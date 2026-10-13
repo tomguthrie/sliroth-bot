@@ -3,10 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   createDiscordMentionPayload,
   createDiscordMessageNonce,
+  createNotificationList,
   DiscordMentionTarget,
-  isDiscordSnowflake,
-} from '../../src/discord';
-import { createNotificationList } from '../../src/discord/message';
+} from '../../src/discord/message';
+import { isDiscordSnowflake } from '../../src/discord/snowflake';
 
 const ROLE_ID = '123456789012345678';
 

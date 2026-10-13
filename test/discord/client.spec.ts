@@ -1,12 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as z from 'zod';
 
-import {
-  DiscordApiError,
-  editDiscordMessage,
-  sendDiscordMessage,
-  type DiscordMessage,
-} from '../../src/discord';
+import { DiscordApiError, editDiscordMessage, sendDiscordMessage } from '../../src/discord/client';
+import type { DiscordMessage } from '../../src/discord/message';
 
 const BOT_TOKEN = 'test-discord-bot-token';
 const CHANNEL_ID = '123456789012345678';

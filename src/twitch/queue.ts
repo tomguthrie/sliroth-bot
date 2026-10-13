@@ -1,6 +1,6 @@
-import type { QueueMessageDisposition, QueueMessageProcessor } from '../../queue/message';
-import { TwitchApiClient } from '../client';
-import type { EventSubNotification, EventSubRevocation } from '../eventsub';
+import type { QueueMessageDisposition, QueueMessageProcessor } from '../queue/message';
+import { TwitchApiClient } from './client';
+import type { EventSubNotification, EventSubRevocation } from './eventsub';
 
 export interface TwitchEventSubDelivery {
   kind: 'twitch-eventsub';

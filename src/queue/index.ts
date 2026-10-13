@@ -1,13 +1,10 @@
 import { createDiscordMessageProcessor, type DiscordMessageDelivery } from '../discord/queue';
-import { twitchStreamMessageReceiptHandler } from '../twitch/subscription/message-receipt';
+import { twitchStreamMessageReceiptHandler } from '../twitch/message-receipt';
 import {
   processTwitchSubscriptionEvent,
   type TwitchSubscriptionEventDelivery,
-} from '../twitch/subscription/queue';
-import {
-  processYouTubeSubscriptionEvent,
-  type YouTubeVideoDelivery,
-} from '../youtube/subscription/queue';
+} from '../twitch/queue';
+import { processYouTubeSubscriptionEvent, type YouTubeVideoDelivery } from '../youtube/queue';
 import { deliverQueueMessages, type QueueMessageProcessor } from './message';
 
 const DISCORD_MESSAGES_QUEUE = 'discord-messages';

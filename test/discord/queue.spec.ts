@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { DiscordMessage } from '../../src/discord';
+import type { DiscordMessage } from '../../src/discord/message';
 import {
   createDiscordMessageProcessor,
   enqueueDiscordMessages,

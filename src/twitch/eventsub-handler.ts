@@ -4,7 +4,7 @@ import {
   getEventSubMessageType,
   parseEventSubMessage,
   verifyEventSubRequest,
-} from '../eventsub';
+} from './eventsub';
 import type { TwitchEventSubDelivery } from './queue';
 
 const MAX_MESSAGE_AGE_MS = 10 * 60 * 1000;

@@ -8,7 +8,7 @@ import { youtubeDiscordCommand } from '../../src/youtube/discord-command';
 import type {
   listChannelYouTubeSubscriptions,
   listGuildYouTubeSubscriptions,
-} from '../../src/youtube/subscription/index';
+} from '../../src/youtube/lookup';
 
 type ResolveYouTubeChannel = typeof resolveYouTubeChannel;
 type ListChannelYouTubeSubscriptions = typeof listChannelYouTubeSubscriptions;
@@ -24,7 +24,7 @@ vi.mock('../../src/youtube/channel', () => ({
   resolveYouTubeChannel: mocks.resolveYouTubeChannel,
 }));
 
-vi.mock('../../src/youtube/subscription/index', () => ({
+vi.mock('../../src/youtube/lookup', () => ({
   listChannelYouTubeSubscriptions: mocks.listChannelYouTubeSubscriptions,
   listGuildYouTubeSubscriptions: mocks.listGuildYouTubeSubscriptions,
 }));

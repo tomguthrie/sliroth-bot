@@ -3,12 +3,12 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { describe, expect, it } from 'vitest';
 
-import { videos } from '../../../src/db/youtube-subscription/schema';
-import type { QueueMessageContext } from '../../../src/queue/message';
+import { videos } from '../../src/db/youtube-subscription/schema';
+import type { QueueMessageContext } from '../../src/queue/message';
 import {
   processYouTubeSubscriptionEvent,
   type YouTubeVideoDelivery,
-} from '../../../src/youtube/subscription/queue';
+} from '../../src/youtube/queue';
 
 describe('YouTube subscription Queue processing', () => {
   it('records the notification in its channel subscription', async () => {
