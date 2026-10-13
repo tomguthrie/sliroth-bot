@@ -1,6 +1,7 @@
-import { createExecutionContext, env, runInDurableObject } from 'cloudflare:test';
+import { env, runInDurableObject } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
+import type { IRequest } from 'itty-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as z from 'zod';
 
@@ -156,7 +157,7 @@ describe('Twitch EventSub webhook', () => {
       type: 'webhook_callback_verification',
     });
 
-    const response = await handleTwitchEventSub(request, env, createExecutionContext());
+    const response = await handleTwitchEventSub(request, env);
 
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe('challenge-value');
@@ -167,11 +168,11 @@ describe('Twitch EventSub webhook', () => {
     const stale = await signedRequest('stale-id', body, {
       timestamp: '2020-01-01T00:00:00Z',
     });
-    expect((await handleTwitchEventSub(stale, env, createExecutionContext())).status).toBe(403);
+    expect((await handleTwitchEventSub(stale, env)).status).toBe(403);
 
     const invalid = await signedRequest('invalid-id', body);
     invalid.headers.set('twitch-eventsub-message-signature', `sha256=${'0'.repeat(64)}`);
-    expect((await handleTwitchEventSub(invalid, env, createExecutionContext())).status).toBe(403);
+    expect((await handleTwitchEventSub(invalid, env)).status).toBe(403);
   });
 
   it('rejects a correctly signed message with a timestamp more than 60 seconds in the future', async () => {
@@ -180,7 +181,7 @@ describe('Twitch EventSub webhook', () => {
     const future = await signedRequest('future-id', body, {
       timestamp: futureTimestamp,
     });
-    expect((await handleTwitchEventSub(future, env, createExecutionContext())).status).toBe(403);
+    expect((await handleTwitchEventSub(future, env)).status).toBe(403);
   });
 
   it('rejects a signed payload with an invalid shape', async () => {
@@ -189,7 +190,7 @@ describe('Twitch EventSub webhook', () => {
       JSON.stringify({ subscription: null }),
     );
 
-    const response = await handleTwitchEventSub(request, env, createExecutionContext());
+    const response = await handleTwitchEventSub(request, env);
 
     expect(response.status).toBe(400);
     await expect(response.text()).resolves.toBe('Invalid EventSub payload');
@@ -205,7 +206,6 @@ describe('Twitch EventSub webhook', () => {
     const response = await handleTwitchEventSub(
       await signedRequest(messageId, body, { broadcasterId, timestamp }),
       env,
-      createExecutionContext(),
     );
 
     expect(response.status).toBe(204);
@@ -254,7 +254,6 @@ describe('Twitch EventSub webhook', () => {
         timestamp,
       }),
       env,
-      createExecutionContext(),
     );
 
     expect(response.status).toBe(204);
@@ -274,8 +273,6 @@ describe('Twitch EventSub webhook', () => {
         event: {
           streamId: 'stream-1',
           broadcasterId,
-          broadcasterLogin: 'sliroth',
-          broadcasterName: 'Sliroth',
           startedAt: '2026-08-13T18:30:00Z',
         },
       },
@@ -301,7 +298,6 @@ describe('Twitch EventSub webhook', () => {
         type: 'revocation',
       }),
       env,
-      createExecutionContext(),
     );
 
     expect(response.status).toBe(204);
@@ -330,7 +326,6 @@ describe('Twitch EventSub webhook', () => {
         broadcasterId: '123456789012345699',
       }),
       env,
-      createExecutionContext(),
     );
 
     expect(response.status).toBe(400);
@@ -345,13 +340,12 @@ describe('Twitch EventSub webhook', () => {
         version: '2',
         condition: { broadcaster_user_id: WEBHOOK_BROADCASTER_ID },
       },
-      event: { broadcaster_user_id: WEBHOOK_BROADCASTER_ID },
+      event: { title: 'Missing broadcaster' },
     });
 
     const response = await handleTwitchEventSub(
       await signedRequest(`channel-update-${crypto.randomUUID()}`, body),
       env,
-      createExecutionContext(),
     );
 
     expect(response.status).toBe(400);
@@ -525,16 +519,7 @@ function channelUpdateWireEvent(broadcasterId: string) {
 }
 
 function channelUpdateEvent(broadcasterId: string) {
-  return {
-    broadcasterId,
-    broadcasterLogin: 'sliroth',
-    broadcasterName: 'Sliroth',
-    title: 'Updated title',
-    language: 'en',
-    gameId: '84',
-    gameName: 'Science & Technology',
-    contentClassificationLabels: [],
-  };
+  return { broadcasterId };
 }
 
 function queueSendResponse(): QueueSendResponse {
@@ -545,7 +530,8 @@ async function signedRequest(
   messageId: string,
   body: string,
   options: { broadcasterId?: string; type?: string; timestamp?: string } = {},
-): Promise<Request> {
+): Promise<IRequest> {
+  const broadcasterId = options.broadcasterId ?? WEBHOOK_BROADCASTER_ID;
   const timestamp = options.timestamp ?? new Date().toISOString();
   const key = await crypto.subtle.importKey(
     'raw',
@@ -557,19 +543,21 @@ async function signedRequest(
   const signature = new Uint8Array(
     await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(messageId + timestamp + body)),
   );
-  return new Request(
-    `https://bot.example.com/twitch/eventsub/${options.broadcasterId ?? WEBHOOK_BROADCASTER_ID}`,
-    {
-      method: 'POST',
-      headers: {
-        'twitch-eventsub-message-id': messageId,
-        'twitch-eventsub-message-type': options.type ?? 'notification',
-        'twitch-eventsub-message-timestamp': timestamp,
-        'twitch-eventsub-message-signature': `sha256=${toHex(signature)}`,
-      },
-      body,
+  const request = new Request(`https://bot.example.com/twitch/eventsub/${broadcasterId}`, {
+    method: 'POST',
+    headers: {
+      'twitch-eventsub-message-id': messageId,
+      'twitch-eventsub-message-type': options.type ?? 'notification',
+      'twitch-eventsub-message-timestamp': timestamp,
+      'twitch-eventsub-message-signature': `sha256=${toHex(signature)}`,
     },
-  );
+    body,
+  });
+  return Object.assign(request, {
+    route: '/twitch/eventsub/:broadcasterId',
+    params: { broadcasterId },
+    query: {},
+  });
 }
 
 function toHex(value: Uint8Array): string {

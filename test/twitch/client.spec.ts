@@ -125,14 +125,10 @@ describe('TwitchApiClient GET methods', () => {
 
     await expect(client.getStream(BROADCASTER_ID)).resolves.toEqual({
       id: 'stream-1',
-      broadcasterId: '123',
-      broadcasterLogin: 'sliroth',
-      broadcasterName: 'Sliroth',
       gameId: 'game-1',
       gameName: 'Gothic 1 Remake',
       title: 'Jelly Armed Man',
       viewerCount: 3,
-      startedAt: new Date('2026-06-06T19:32:00Z'),
       thumbnailUrl: 'https://example.com/{width}x{height}.jpg',
     });
     expect(requestUrl(fetcher.mock.calls[0]?.[0])).toBe(
@@ -182,12 +178,9 @@ describe('TwitchApiClient GET methods', () => {
     expect(getAccessToken).toHaveBeenCalledOnce();
   });
 
-  it('includes Twitch error details and rate-limit reset time', async () => {
+  it('includes Twitch error details', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      Response.json(
-        { message: 'Too Many Requests' },
-        { status: 429, headers: { 'ratelimit-reset': '1786233600' } },
-      ),
+      Response.json({ message: 'Too Many Requests' }, { status: 429 }),
     );
 
     const error = await new TwitchApiClient(env)
@@ -198,7 +191,6 @@ describe('TwitchApiClient GET methods', () => {
     expect(error).toMatchObject({
       message: 'Twitch API returned HTTP 429: Too Many Requests',
       status: 429,
-      retryAtMs: 1_786_233_600_000,
     });
   });
 
@@ -275,29 +267,6 @@ describe('TwitchApiClient GET methods', () => {
     });
   });
 
-  it('ignores an invalid rate-limit reset header', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      Response.json(
-        { message: 'Too Many Requests' },
-        {
-          status: 429,
-          headers: {
-            'ratelimit-reset': 'invalid',
-          },
-        },
-      ),
-    );
-
-    const error = await new TwitchApiClient(env)
-      .getUserById('123')
-      .catch((value: unknown) => value);
-
-    expect(error).toMatchObject({
-      status: 429,
-      retryAtMs: undefined,
-    });
-  });
-
   it('gets archive videos for a broadcaster', async () => {
     const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       Response.json({
@@ -325,24 +294,7 @@ describe('TwitchApiClient GET methods', () => {
     );
 
     await expect(new TwitchApiClient(env).getVideos(BROADCASTER_ID)).resolves.toEqual([
-      {
-        id: 'video-1',
-        streamId: 'stream-1',
-        broadcasterId: '123',
-        broadcasterLogin: 'sliroth',
-        broadcasterName: 'Sliroth',
-        title: 'Latest VOD',
-        description: 'Latest stream',
-        createdAt: new Date('2026-08-13T19:00:00Z'),
-        publishedAt: new Date('2026-08-13T19:05:00Z'),
-        url: 'https://www.twitch.tv/videos/1',
-        thumbnailUrl: 'https://example.com/{width}x{height}.jpg',
-        viewable: 'public',
-        viewCount: 42,
-        language: 'en',
-        type: 'archive',
-        duration: '1h23m45s',
-      },
+      { streamId: 'stream-1', url: 'https://www.twitch.tv/videos/1' },
     ]);
 
     expect(requestUrl(fetcher.mock.calls[0]?.[0])).toBe(

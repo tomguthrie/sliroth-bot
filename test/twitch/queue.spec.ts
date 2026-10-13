@@ -108,22 +108,5 @@ function mockTwitchVideos(videos: readonly TwitchVideoWire[]): void {
 }
 
 function createTwitchVideo(url: string): TwitchVideoWire {
-  return {
-    id: '1234567890',
-    stream_id: STREAM_ID,
-    user_id: BROADCASTER_ID,
-    user_login: 'sliroth',
-    user_name: 'Sliroth',
-    title: 'Finished stream',
-    description: '',
-    created_at: '2026-08-11T18:00:00Z',
-    published_at: '2026-08-11T18:00:00Z',
-    url,
-    thumbnail_url: 'https://example.com/thumbnail.jpg',
-    viewable: 'public',
-    view_count: 3,
-    language: 'en',
-    type: 'archive',
-    duration: '1h0m0s',
-  };
+  return { stream_id: STREAM_ID, url };
 }

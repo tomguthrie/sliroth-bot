@@ -16,23 +16,9 @@ export type EventSubSubscriptionDefinition = (typeof TWITCH_EVENTSUB_SUBSCRIPTIO
 const ChannelUpdateEvent = z
   .object({
     broadcaster_user_id: z.string(),
-    broadcaster_user_login: z.string(),
-    broadcaster_user_name: z.string(),
-    title: z.string(),
-    language: z.string(),
-    category_id: z.string(),
-    category_name: z.string(),
-    content_classification_labels: z.array(z.string()),
   })
   .transform((data) => ({
     broadcasterId: data.broadcaster_user_id,
-    broadcasterLogin: data.broadcaster_user_login,
-    broadcasterName: data.broadcaster_user_name,
-    title: data.title,
-    language: data.language,
-    gameId: data.category_id,
-    gameName: data.category_name,
-    contentClassificationLabels: data.content_classification_labels,
   }));
 
 export type ChannelUpdateEvent = z.output<typeof ChannelUpdateEvent>;
@@ -41,16 +27,11 @@ const StreamOnlineEvent = z
   .object({
     id: z.string(),
     broadcaster_user_id: z.string(),
-    broadcaster_user_login: z.string(),
-    broadcaster_user_name: z.string(),
-    type: z.string(),
     started_at: z.iso.datetime(),
   })
   .transform((data) => ({
     streamId: data.id,
     broadcasterId: data.broadcaster_user_id,
-    broadcasterLogin: data.broadcaster_user_login,
-    broadcasterName: data.broadcaster_user_name,
     startedAt: data.started_at,
   }));
 
@@ -60,14 +41,10 @@ const StreamOfflineEvent = z
   .object({
     id: z.string(),
     broadcaster_user_id: z.string(),
-    broadcaster_user_login: z.string(),
-    broadcaster_user_name: z.string(),
   })
   .transform((data) => ({
     streamId: data.id,
     broadcasterId: data.broadcaster_user_id,
-    broadcasterLogin: data.broadcaster_user_login,
-    broadcasterName: data.broadcaster_user_name,
   }));
 
 export type StreamOfflineEvent = z.output<typeof StreamOfflineEvent>;
@@ -211,45 +188,30 @@ export async function verifyEventSubRequest(
   const timestamp = request.headers.get('Twitch-Eventsub-Message-Timestamp');
   const signature = request.headers.get('Twitch-Eventsub-Message-Signature');
 
-  if (messageId === null || timestamp === null || !signature?.startsWith('sha256=')) {
-    return false;
-  }
-
-  const expected = signature.slice('sha256='.length);
-
-  if (!/^[0-9a-fA-F]{64}$/.test(expected)) {
+  if (
+    messageId === null ||
+    timestamp === null ||
+    signature === null ||
+    !/^sha256=[0-9a-fA-F]{64}$/.test(signature)
+  ) {
     return false;
   }
 
   const encoder = new TextEncoder();
-
   const key = await crypto.subtle.importKey(
     'raw',
     encoder.encode(secret),
-    {
-      name: 'HMAC',
-      hash: 'SHA-256',
-    },
+    { name: 'HMAC', hash: 'SHA-256' },
     false,
-    ['sign'],
+    ['verify'],
   );
 
-  const digest = await crypto.subtle.sign(
+  return crypto.subtle.verify(
     'HMAC',
     key,
+    Uint8Array.fromHex(signature.slice('sha256='.length)),
     encoder.encode(`${messageId}${timestamp}${body}`),
   );
-
-  const actual = new Uint8Array(digest);
-  const expectedBytes = Uint8Array.from(expected.match(/.{2}/g) ?? [], (byte) =>
-    Number.parseInt(byte, 16),
-  );
-
-  if (actual.length !== expectedBytes.length) {
-    return false;
-  }
-
-  return crypto.subtle.timingSafeEqual(actual, expectedBytes);
 }
 
 export type EventSubMessageType = 'notification' | 'webhook_callback_verification' | 'revocation';

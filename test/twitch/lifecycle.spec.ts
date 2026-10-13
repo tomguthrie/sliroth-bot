@@ -74,8 +74,6 @@ describe('Twitch stream lifecycle', () => {
       await instance.streamOnline({
         streamId: '9001',
         broadcasterId: BROADCASTER_ID,
-        broadcasterLogin: 'sliroth',
-        broadcasterName: 'Sliroth',
         startedAt: '2026-06-05T17:28:00.000Z',
       });
 
@@ -175,8 +173,6 @@ describe('Twitch stream lifecycle', () => {
         {
           streamId: '9001',
           broadcasterId: BROADCASTER_ID,
-          broadcasterLogin: 'sliroth',
-          broadcasterName: 'Sliroth',
         },
         '2026-06-05T23:51:08.000Z',
       );
@@ -375,8 +371,6 @@ describe('Twitch stream lifecycle', () => {
             {
               streamId: '9001',
               broadcasterId: BROADCASTER_ID,
-              broadcasterLogin: 'sliroth',
-              broadcasterName: 'Sliroth',
             },
             new Date().toISOString(),
           );
@@ -466,16 +460,7 @@ function createMockTwitchStream(overrides: Partial<MockTwitchStream> = {}): Mock
 }
 
 function channelUpdateEvent() {
-  return {
-    broadcasterId: BROADCASTER_ID,
-    broadcasterLogin: 'sliroth',
-    broadcasterName: 'Sliroth',
-    title: 'Building a Discord bot',
-    language: 'en',
-    gameId: '84',
-    gameName: 'Science & Technology',
-    contentClassificationLabels: [],
-  };
+  return { broadcasterId: BROADCASTER_ID };
 }
 
 function mockTwitchApi(getStream: () => MockTwitchStream | undefined): void {
