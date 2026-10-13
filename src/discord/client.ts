@@ -154,26 +154,20 @@ function createMessagePayload(message: DiscordMessage): DiscordMessagePayload {
   return payload;
 }
 
-function createEmbedPayload(
-  embed: NonNullable<DiscordMessage['embeds']>[number],
-): DiscordEmbedPayload {
+/** Only the author icon differs from Discord's field names; the other embed fields pass through. */
+function createEmbedPayload({
+  author,
+  ...embed
+}: NonNullable<DiscordMessage['embeds']>[number]): DiscordEmbedPayload {
+  if (author === undefined) {
+    return embed;
+  }
   return {
-    ...(embed.author === undefined
-      ? {}
-      : {
-          author: {
-            name: embed.author.name,
-            ...(embed.author.iconUrl === undefined ? {} : { icon_url: embed.author.iconUrl }),
-          },
-        }),
-    ...(embed.title === undefined ? {} : { title: embed.title }),
-    ...(embed.url === undefined ? {} : { url: embed.url }),
-    ...(embed.color === undefined ? {} : { color: embed.color }),
-    ...(embed.fields === undefined ? {} : { fields: embed.fields }),
-    ...(embed.thumbnail === undefined ? {} : { thumbnail: embed.thumbnail }),
-    ...(embed.image === undefined ? {} : { image: embed.image }),
-    ...(embed.footer === undefined ? {} : { footer: embed.footer }),
-    ...(embed.timestamp === undefined ? {} : { timestamp: embed.timestamp }),
+    ...embed,
+    author: {
+      name: author.name,
+      ...(author.iconUrl === undefined ? {} : { icon_url: author.iconUrl }),
+    },
   };
 }
 

@@ -115,11 +115,8 @@ function logDeliverySuccess(
     guildId: delivery.guildId,
     channelId: delivery.channelId,
     operation: delivery.operation,
-    attempt: context.attempt,
-    queueAgeMs: Math.max(0, context.startedAt - context.enqueuedAt.getTime()),
     discordDurationMs,
     receiptDurationMs,
-    durationMs: Date.now() - context.startedAt,
   });
 }
 

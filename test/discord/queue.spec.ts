@@ -163,6 +163,4 @@ const CONTEXT: QueueMessageContext = {
   queue: 'discord-messages',
   messageId: 'message',
   attempt: 1,
-  enqueuedAt: new Date('2026-08-07T12:34:56.789Z'),
-  startedAt: Date.now(),
 };

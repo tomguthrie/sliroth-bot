@@ -48,8 +48,7 @@ export async function verifyYouTubeWebSubSignature(
     return false;
   }
 
-  const signature = hexToBytes(signatureHeader.slice('sha1='.length));
-
+  const signature = Uint8Array.fromHex(signatureHeader.slice('sha1='.length));
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(secret),
@@ -62,17 +61,6 @@ export async function verifyYouTubeWebSubSignature(
   );
 
   return crypto.subtle.verify('HMAC', key, signature, body);
-}
-
-function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
-  const bytes = new Uint8Array(hex.length / 2);
-
-  for (let index = 0; index < bytes.length; index += 1) {
-    const offset = index * 2;
-    bytes[index] = Number.parseInt(hex.slice(offset, offset + 2), 16);
-  }
-
-  return bytes;
 }
 
 function httpOrigin(value: string): string {

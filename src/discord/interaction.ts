@@ -156,14 +156,9 @@ export async function editInteractionResponse(
       body: JSON.stringify({ content, allowed_mentions: { parse: [] } }),
     },
   );
+  await response.body?.cancel();
   if (!response.ok) {
-    if (response.body !== null) {
-      await response.body.cancel();
-    }
     throw new Error(`Discord interaction response returned HTTP ${response.status}`);
-  }
-  if (response.body !== null) {
-    await response.body.cancel();
   }
 }
 

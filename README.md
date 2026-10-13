@@ -1,7 +1,12 @@
 # Sliroth Bot
 
-A Cloudflare Worker that messages a Discord channel whenever a YouTube video is
-uploaded to a specific channel.
+A Cloudflare Worker that posts Discord notifications when a Twitch channel goes
+live or a YouTube channel uploads a video. Twitch notifications are updated
+while the stream is live and replaced with a summary and VOD link when it ends.
+
+Discord server members with the Manage Server permission configure notifications
+for the current channel with the `/twitch` and `/youtube` commands, each of which
+has `add`, `list`, and `remove` subcommands.
 
 ## Development
 
@@ -17,6 +22,16 @@ pnpm fmt
 pnpm check
 pnpm test
 pnpm build
+```
+
+## Discord commands
+
+`pnpm deploy` does not change the bot's slash commands. After editing
+`src/twitch/discord-command.json` or `src/youtube/discord-command.json`,
+synchronize the global commands explicitly:
+
+```sh
+DISCORD_APPLICATION_ID=… DISCORD_BOT_TOKEN=… pnpm discord:sync-commands
 ```
 
 ## Database migrations
