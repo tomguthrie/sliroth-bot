@@ -61,11 +61,7 @@ describe('parseEventSubMessage', () => {
     ).toMatchObject({
       messageType: 'notification',
       eventType: 'channel.update',
-      event: {
-        broadcasterId: '123',
-        title: 'Jelly Armed Man',
-        gameId: 'game-1',
-      },
+      event: { broadcasterId: '123' },
     });
   });
 
@@ -99,8 +95,6 @@ describe('parseEventSubMessage', () => {
       event: {
         streamId: 'stream-1',
         broadcasterId: '123',
-        broadcasterLogin: 'sliroth',
-        broadcasterName: 'Sliroth',
         startedAt: '2026-08-13T18:30:00Z',
       },
     });

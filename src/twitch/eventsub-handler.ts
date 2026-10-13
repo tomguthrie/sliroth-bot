@@ -1,3 +1,5 @@
+import type { IRequest } from 'itty-router';
+
 import {
   getEventSubMessageId,
   getEventSubMessageTimestamp,
@@ -11,11 +13,7 @@ const MAX_MESSAGE_AGE_MS = 10 * 60 * 1000;
 const MAX_FUTURE_SKEW_MS = 60 * 1000;
 
 /** Verifies and routes a Twitch EventSub webhook. */
-export async function handleTwitchEventSub(
-  request: Request,
-  env: Env,
-  _ctx: ExecutionContext,
-): Promise<Response> {
+export async function handleTwitchEventSub(request: IRequest, env: Env): Promise<Response> {
   const messageId = getEventSubMessageId(request);
   const messageType = getEventSubMessageType(request);
   const timestamp = getEventSubMessageTimestamp(request);
@@ -40,8 +38,7 @@ export async function handleTwitchEventSub(
     return new Response('Invalid EventSub payload', { status: 400 });
   }
 
-  const routeBroadcasterId = new URL(request.url).pathname.split('/').filter(Boolean).at(-1);
-  if (message.subscription.broadcasterId !== routeBroadcasterId) {
+  if (message.subscription.broadcasterId !== request.params.broadcasterId) {
     return new Response('EventSub broadcaster mismatch', { status: 400 });
   }
 

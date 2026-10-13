@@ -19,7 +19,13 @@ import { DiscordMentionTarget } from '../discord/message';
 import { enqueueDiscordMessages } from '../discord/queue';
 import { DiscordSnowflake } from '../discord/snowflake';
 import { toLoggableError } from '../log';
-import { isTwitchApiErrorStatus, TwitchApiClient, type TwitchUser } from './client';
+import {
+  isTwitchApiErrorStatus,
+  TwitchApiClient,
+  type TwitchEventSubSubscription,
+  type TwitchStream,
+  type TwitchUser,
+} from './client';
 import {
   createTwitchLiveDelivery,
   createTwitchLiveUpdateDelivery,
@@ -59,10 +65,6 @@ const TwitchBroadcaster = z.object({
   profileImageUrl: z.url(),
   offlineImageUrl: z.union([z.url(), z.literal('')]),
 });
-
-type TwitchEventSubSubscription = NonNullable<
-  Awaited<ReturnType<TwitchApiClient['getEventSubSubscription']>>
->;
 
 /** Coordinates subscribers and EventSub state for one Twitch broadcaster. */
 export class TwitchSubscription extends DurableObject<Env> {
@@ -171,20 +173,11 @@ export class TwitchSubscription extends DurableObject<Env> {
     if (liveStream?.id !== event.streamId) {
       throw new Error(`Twitch stream ${event.streamId} is not live`);
     }
-    const game = liveStream.gameId === '' ? undefined : await client.getGame(liveStream.gameId);
+    const fields = await fetchStreamFields(client, liveStream, broadcaster.displayName);
 
     const [stream] = await this.db
       .insert(streams)
-      .values({
-        id: event.streamId,
-        title:
-          liveStream.title.trim() === '' ? `${broadcaster.displayName} is live` : liveStream.title,
-        gameName: liveStream.gameName.trim() === '' ? 'No Category' : liveStream.gameName,
-        viewerCount: liveStream.viewerCount,
-        gameBoxArtUrl: game?.boxArtUrl ?? null,
-        previewImageUrl: liveStream.thumbnailUrl,
-        startedAt,
-      })
+      .values({ id: event.streamId, ...fields, startedAt })
       .onConflictDoNothing({ target: streams.id })
       .returning();
     if (stream === undefined) {
@@ -259,18 +252,10 @@ export class TwitchSubscription extends DurableObject<Env> {
       return;
     }
 
-    const game = liveStream.gameId === '' ? undefined : await client.getGame(liveStream.gameId);
+    const fields = await fetchStreamFields(client, liveStream, broadcaster.displayName);
     const [updatedStream] = await this.db
       .update(streams)
-      .set({
-        title:
-          liveStream.title.trim() === '' ? `${broadcaster.displayName} is live` : liveStream.title,
-        gameName: liveStream.gameName.trim() === '' ? 'No Category' : liveStream.gameName,
-        viewerCount: liveStream.viewerCount,
-        gameBoxArtUrl: game?.boxArtUrl ?? null,
-        previewImageUrl: liveStream.thumbnailUrl,
-        revision: stream.revision + 1,
-      })
+      .set({ ...fields, revision: stream.revision + 1 })
       .where(
         and(
           eq(streams.id, stream.id),
@@ -444,17 +429,10 @@ export class TwitchSubscription extends DurableObject<Env> {
     if (broadcaster === undefined) {
       return;
     }
-    const [subscriberCount] = await this.db.select({ value: count() }).from(twitchSubscribers);
-    if (subscriberCount === undefined) {
-      throw new Error('Failed to count Twitch subscribers');
-    }
     const desiredSubscriptions: readonly EventSubSubscriptionDefinition[] =
-      subscriberCount.value === 0 ? [] : TWITCH_EVENTSUB_SUBSCRIPTIONS;
+      (await this.getSubscriberCount()) === 0 ? [] : TWITCH_EVENTSUB_SUBSCRIPTIONS;
     const client = new TwitchApiClient(this.env);
-    const callback = new URL(
-      `/twitch/eventsub/${broadcaster.id}`,
-      this.env.PUBLIC_BASE_URL,
-    ).toString();
+    const callback = this.eventSubCallbackUrl(broadcaster.id);
     const rows = await this.db.select().from(eventSubSubscriptions);
 
     for (const row of rows) {
@@ -568,17 +546,13 @@ export class TwitchSubscription extends DurableObject<Env> {
     if (broadcaster === undefined) {
       return;
     }
-    const [subscriberCount] = await this.db.select({ value: count() }).from(twitchSubscribers);
-    if (subscriberCount?.value === 0) {
+    if ((await this.getSubscriberCount()) === 0) {
       return;
     }
 
     const rows = await this.db.select().from(eventSubSubscriptions);
     const client = new TwitchApiClient(this.env);
-    const callback = new URL(
-      `/twitch/eventsub/${broadcaster.id}`,
-      this.env.PUBLIC_BASE_URL,
-    ).toString();
+    const callback = this.eventSubCallbackUrl(broadcaster.id);
     for (const desired of TWITCH_EVENTSUB_SUBSCRIPTIONS) {
       if (rows.some((row) => row.type === desired.type)) {
         continue;
@@ -717,6 +691,15 @@ export class TwitchSubscription extends DurableObject<Env> {
     );
   }
 
+  private async getSubscriberCount(): Promise<number> {
+    const [result] = await this.db.select({ value: count() }).from(twitchSubscribers);
+    return result?.value ?? 0;
+  }
+
+  private eventSubCallbackUrl(broadcasterId: string): string {
+    return new URL(`/twitch/eventsub/${broadcasterId}`, this.env.PUBLIC_BASE_URL).toString();
+  }
+
   private async getBroadcaster(): Promise<typeof broadcasters.$inferSelect | undefined> {
     const [broadcaster] = await this.db.select().from(broadcasters).limit(1);
     return broadcaster;
@@ -725,6 +708,22 @@ export class TwitchSubscription extends DurableObject<Env> {
   private async deleteLocalSubscription(type: string): Promise<void> {
     await this.db.delete(eventSubSubscriptions).where(eq(eventSubSubscriptions.type, type));
   }
+}
+
+/** Loads the stored fields for a live stream, substituting placeholders for a blank title or category. */
+async function fetchStreamFields(
+  client: TwitchApiClient,
+  liveStream: TwitchStream,
+  displayName: string,
+) {
+  const game = liveStream.gameId === '' ? undefined : await client.getGame(liveStream.gameId);
+  return {
+    title: liveStream.title.trim() === '' ? `${displayName} is live` : liveStream.title,
+    gameName: liveStream.gameName.trim() === '' ? 'No Category' : liveStream.gameName,
+    viewerCount: liveStream.viewerCount,
+    gameBoxArtUrl: game?.boxArtUrl ?? null,
+    previewImageUrl: liveStream.thumbnailUrl,
+  };
 }
 
 async function getRemoteSubscription(
