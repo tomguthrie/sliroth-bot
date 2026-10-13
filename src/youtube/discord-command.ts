@@ -1,6 +1,7 @@
 import * as z from 'zod';
 
 import {
+  CommandOptions,
   createDeferredResponse,
   createEphemeralResponse,
   editInteractionResponse,
@@ -26,75 +27,22 @@ import { DiscordSnowflake } from '../discord/snowflake';
 import { toLoggableError } from '../log';
 import { resolveYouTubeChannel } from './channel';
 import youtubeCommand from './discord-command.json';
-import { listChannelYouTubeSubscriptions, listGuildYouTubeSubscriptions } from './lookup';
+import { youtubeSubscriptionLookup } from './lookup';
 
 const YOUTUBE_COMMAND_NAME = youtubeCommand.name;
 
-const YouTubeAddOption = z.discriminatedUnion('name', [
-  z.object({
-    type: z.literal(3),
-    name: z.literal('youtube'),
-    value: z.string().trim().min(1),
-  }),
-  z.object({
-    type: z.literal(3),
-    name: z.literal('message'),
-    value: z.string().trim().min(1),
-  }),
-  z.object({
-    type: z.literal(3),
-    name: z.literal('ping'),
-    value: z.enum(['everyone', 'here']),
-  }),
-  z.object({
-    type: z.literal(8),
-    name: z.literal('role'),
-    value: DiscordSnowflake,
-  }),
-]);
-
-const YouTubeAddOptions = z
-  .array(YouTubeAddOption)
-  .superRefine((options, context) => {
-    const names = new Set<string>();
-    for (const option of options) {
-      if (names.has(option.name)) {
-        context.addIssue({
-          code: 'custom',
-          message: `Duplicate option: ${option.name}`,
-        });
-      }
-      names.add(option.name);
-    }
-    if (names.has('ping') && names.has('role')) {
-      context.addIssue({
-        code: 'custom',
-        message: 'Choose either ping or role',
-      });
-    }
-  })
-  .transform((options, context) => {
-    const youtubeOption = options.find(({ name }) => name === 'youtube');
-    if (youtubeOption === undefined) {
-      context.addIssue({
-        code: 'custom',
-        message: 'YouTube channel is required',
-      });
-      return z.NEVER;
-    }
-    const messageOption = options.find(({ name }) => name === 'message');
-    const pingOption = options.find(({ name }) => name === 'ping');
-    const roleOption = options.find(({ name }) => name === 'role');
-    const message = messageOption?.name === 'message' ? messageOption.value : undefined;
-    const ping = pingOption?.name === 'ping' ? pingOption.value : undefined;
-    const roleId = roleOption?.name === 'role' ? roleOption.value : undefined;
-    return {
-      youtube: youtubeOption.value,
-      ...(message === undefined ? {} : { message }),
-      ...(ping === undefined ? {} : { ping }),
-      ...(roleId === undefined ? {} : { roleId }),
-    };
-  });
+const YouTubeAddOptions = CommandOptions.pipe(
+  z
+    .strictObject({
+      youtube: z.string().trim().min(1),
+      message: z.string().trim().min(1).optional(),
+      ping: z.enum(['everyone', 'here']).optional(),
+      role: DiscordSnowflake.optional(),
+    })
+    .refine(({ ping, role }) => ping === undefined || role === undefined, {
+      message: 'Choose either ping or role',
+    }),
+);
 
 const YouTubeAddCommand = z
   .object({
@@ -235,7 +183,7 @@ async function completeYouTubeAdd(
 
 async function completeYouTubeRemove(env: Env, context: DiscordCommandContext): Promise<void> {
   try {
-    const channelIds = await listChannelYouTubeSubscriptions(
+    const channelIds = await youtubeSubscriptionLookup.listChannel(
       env.YOUTUBE_SUBSCRIPTIONS_INDEX,
       context.channelId,
     );
@@ -292,7 +240,7 @@ async function createYouTubeSubscriptionList(
   context: DiscordCommandContext,
   includeStatus = false,
 ): Promise<string> {
-  const subscriptions = await listGuildYouTubeSubscriptions(
+  const subscriptions = await youtubeSubscriptionLookup.listGuild(
     env.YOUTUBE_SUBSCRIPTIONS_INDEX,
     context.guildId,
   );
@@ -302,7 +250,7 @@ async function createYouTubeSubscriptionList(
 
   const statuses = new Map<string, Pick<NotificationListItem, 'detail' | 'detailTimestamp'>>();
   if (includeStatus) {
-    const channelIds = new Set(subscriptions.map((subscription) => subscription.youtubeChannelId));
+    const channelIds = new Set(subscriptions.map(({ providerId }) => providerId));
     await Promise.all(
       [...channelIds].map(async (youtubeChannelId) => {
         try {
@@ -328,11 +276,11 @@ async function createYouTubeSubscriptionList(
 
   return createNotificationList(
     '**YouTube notifications in this server**',
-    subscriptions.map((subscription) => ({
-      name: subscription.youtubeChannelTitle,
-      channelId: subscription.discordChannelId,
-      providerId: subscription.youtubeChannelId,
-      ...statuses.get(subscription.youtubeChannelId),
+    subscriptions.map(({ channelId, providerId, metadata }) => ({
+      name: metadata.title,
+      channelId,
+      providerId,
+      ...statuses.get(providerId),
     })),
     context.channelId,
   );

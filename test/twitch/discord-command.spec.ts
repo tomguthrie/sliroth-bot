@@ -5,19 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DiscordInteraction } from '../../src/discord/interaction';
 import type { resolveTwitchChannel } from '../../src/twitch/channel';
 import { twitchDiscordCommand } from '../../src/twitch/discord-command';
-import type {
-  listChannelTwitchSubscriptions,
-  listGuildTwitchSubscriptions,
-} from '../../src/twitch/lookup';
+import type { twitchSubscriptionLookup } from '../../src/twitch/lookup';
 
 type ResolveTwitchChannel = typeof resolveTwitchChannel;
-type ListChannelTwitchSubscriptions = typeof listChannelTwitchSubscriptions;
-type ListGuildTwitchSubscriptions = typeof listGuildTwitchSubscriptions;
+type TwitchSubscriptionLookup = typeof twitchSubscriptionLookup;
 
 const mocks = vi.hoisted(() => ({
   resolveTwitchChannel: vi.fn<ResolveTwitchChannel>(),
-  listChannelTwitchSubscriptions: vi.fn<ListChannelTwitchSubscriptions>(),
-  listGuildTwitchSubscriptions: vi.fn<ListGuildTwitchSubscriptions>(),
+  listChannelTwitchSubscriptions: vi.fn<TwitchSubscriptionLookup['listChannel']>(),
+  listGuildTwitchSubscriptions: vi.fn<TwitchSubscriptionLookup['listGuild']>(),
 }));
 
 vi.mock('../../src/twitch/channel', () => ({
@@ -25,8 +21,10 @@ vi.mock('../../src/twitch/channel', () => ({
 }));
 
 vi.mock('../../src/twitch/lookup', () => ({
-  listChannelTwitchSubscriptions: mocks.listChannelTwitchSubscriptions,
-  listGuildTwitchSubscriptions: mocks.listGuildTwitchSubscriptions,
+  twitchSubscriptionLookup: {
+    listChannel: mocks.listChannelTwitchSubscriptions,
+    listGuild: mocks.listGuildTwitchSubscriptions,
+  },
 }));
 
 const APPLICATION_ID = '123456789012345678';
@@ -131,16 +129,14 @@ describe('/twitch command', () => {
   it('lists plain broadcaster names with the current channel first', async () => {
     mocks.listGuildTwitchSubscriptions.mockResolvedValue([
       {
-        discordChannelId: OTHER_CHANNEL_ID,
-        twitchBroadcasterId: '1',
-        twitchBroadcasterLogin: 'zulu',
-        twitchBroadcasterDisplayName: 'Zulu',
+        channelId: OTHER_CHANNEL_ID,
+        providerId: '1',
+        metadata: { login: 'zulu', displayName: 'Zulu' },
       },
       {
-        discordChannelId: CHANNEL_ID,
-        twitchBroadcasterId: BROADCASTER_ID,
-        twitchBroadcasterLogin: 'sliroth',
-        twitchBroadcasterDisplayName: 'Sliroth',
+        channelId: CHANNEL_ID,
+        providerId: BROADCASTER_ID,
+        metadata: { login: 'sliroth', displayName: 'Sliroth' },
       },
     ]);
 

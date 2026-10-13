@@ -41,6 +41,19 @@ export const DiscordInteraction = z.object({
 
 export type DiscordInteraction = z.infer<typeof DiscordInteraction>;
 
+/**
+ * Collects a subcommand's options into an object keyed by option name.
+ *
+ * Repeated option names are rejected so a later value cannot silently replace
+ * an earlier one. Pipe the result into an object schema for the subcommand.
+ */
+export const CommandOptions = z
+  .array(z.object({ name: z.string(), value: z.unknown() }))
+  .refine((options) => new Set(options.map(({ name }) => name)).size === options.length, {
+    message: 'Duplicate option',
+  })
+  .transform((options) => Object.fromEntries(options.map(({ name, value }) => [name, value])));
+
 export interface DiscordCommandHandler {
   readonly name: string;
   readonly handle: (
