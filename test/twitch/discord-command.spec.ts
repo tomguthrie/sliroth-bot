@@ -8,7 +8,7 @@ import { twitchDiscordCommand } from '../../src/twitch/discord-command';
 import type {
   listChannelTwitchSubscriptions,
   listGuildTwitchSubscriptions,
-} from '../../src/twitch/subscription/index';
+} from '../../src/twitch/lookup';
 
 type ResolveTwitchChannel = typeof resolveTwitchChannel;
 type ListChannelTwitchSubscriptions = typeof listChannelTwitchSubscriptions;
@@ -24,7 +24,7 @@ vi.mock('../../src/twitch/channel', () => ({
   resolveTwitchChannel: mocks.resolveTwitchChannel,
 }));
 
-vi.mock('../../src/twitch/subscription/index', () => ({
+vi.mock('../../src/twitch/lookup', () => ({
   listChannelTwitchSubscriptions: mocks.listChannelTwitchSubscriptions,
   listGuildTwitchSubscriptions: mocks.listGuildTwitchSubscriptions,
 }));

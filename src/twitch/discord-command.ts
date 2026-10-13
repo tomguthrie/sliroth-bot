@@ -26,7 +26,7 @@ import type { DiscordCommandContext } from '../discord/permission';
 import { DiscordSnowflake } from '../discord/snowflake';
 import { resolveTwitchChannel } from './channel';
 import twitchCommand from './discord-command.json';
-import { listChannelTwitchSubscriptions, listGuildTwitchSubscriptions } from './subscription/index';
+import { listChannelTwitchSubscriptions, listGuildTwitchSubscriptions } from './lookup';
 
 const TWITCH_COMMAND_NAME = twitchCommand.name;
 

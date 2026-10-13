@@ -5,28 +5,28 @@ import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
 import * as z from 'zod';
 
-import migrations from '../../db/youtube-subscription/migrations/migrations.js';
-import { subscribers, videos } from '../../db/youtube-subscription/schema';
-import { DiscordMentionTarget } from '../../discord/message';
-import { enqueueDiscordMessages } from '../../discord/queue';
-import { DiscordSnowflake } from '../../discord/snowflake';
-import { toLoggableError } from '../../log';
-import { isYouTubeChannelId } from '../channel';
-import { parseYouTubeVideoNotifications } from '../notification';
-import type { YouTubeVideoNotification } from '../notification';
-import {
-  createYouTubeTopicUrl,
-  createYouTubeWebSubRequest,
-  verifyYouTubeWebSubSignature,
-} from '../websub';
-import type { WebSubMode } from '../websub';
+import migrations from '../db/youtube-subscription/migrations/migrations.js';
+import { subscribers, videos } from '../db/youtube-subscription/schema';
+import { DiscordMentionTarget } from '../discord/message';
+import { enqueueDiscordMessages } from '../discord/queue';
+import { DiscordSnowflake } from '../discord/snowflake';
+import { toLoggableError } from '../log';
+import { isYouTubeChannelId } from './channel';
 import { createYouTubeDelivery } from './discord-message';
 import {
   createChannelYouTubeSubscriptionKey,
   createGuildYouTubeSubscriptionKey,
   type YouTubeSubscriptionMetadata,
-} from './index';
+} from './lookup';
+import { parseYouTubeVideoNotifications } from './notification';
+import type { YouTubeVideoNotification } from './notification';
 import type { YouTubeVideoDelivery } from './queue';
+import {
+  createYouTubeTopicUrl,
+  createYouTubeWebSubRequest,
+  verifyYouTubeWebSubSignature,
+} from './websub';
+import type { WebSubMode } from './websub';
 
 const SUBSCRIPTION_INDEX_VALUE = '1';
 const WEBSUB_SECRET_KEY = 'websub:secret';

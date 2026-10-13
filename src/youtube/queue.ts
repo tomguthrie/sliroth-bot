@@ -1,5 +1,5 @@
-import type { QueueMessageProcessor } from '../../queue/message';
-import type { YouTubeVideoNotification } from '../notification';
+import type { QueueMessageProcessor } from '../queue/message';
+import type { YouTubeVideoNotification } from './notification';
 
 export interface YouTubeVideoDelivery {
   kind: 'youtube-video';

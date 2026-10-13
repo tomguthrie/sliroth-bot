@@ -1,6 +1,6 @@
 import * as z from 'zod';
 
-import type { DiscordMessageReceiptHandler } from '../../discord/queue';
+import type { DiscordMessageReceiptHandler } from '../discord/queue';
 
 export const TWITCH_STREAM_MESSAGE_RECEIPT = 'twitch-stream';
 

@@ -4,13 +4,13 @@ import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as z from 'zod';
 
-import { streams } from '../../../src/db/twitch-subscription/schema';
-import type { QueueMessageContext } from '../../../src/queue/message';
-import { type TwitchVideo } from '../../../src/twitch/client';
+import { streams } from '../../src/db/twitch-subscription/schema';
+import type { QueueMessageContext } from '../../src/queue/message';
+import { type TwitchVideo } from '../../src/twitch/client';
 import {
   processTwitchSubscriptionEvent,
   type TwitchVodLookupDelivery,
-} from '../../../src/twitch/subscription/queue';
+} from '../../src/twitch/queue';
 
 const BROADCASTER_ID = '123456789012345678';
 const STREAM_ID = '9001';

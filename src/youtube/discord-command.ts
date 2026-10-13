@@ -26,10 +26,7 @@ import { DiscordSnowflake } from '../discord/snowflake';
 import { toLoggableError } from '../log';
 import { resolveYouTubeChannel } from './channel';
 import youtubeCommand from './discord-command.json';
-import {
-  listChannelYouTubeSubscriptions,
-  listGuildYouTubeSubscriptions,
-} from './subscription/index';
+import { listChannelYouTubeSubscriptions, listGuildYouTubeSubscriptions } from './lookup';
 
 const YOUTUBE_COMMAND_NAME = youtubeCommand.name;
 

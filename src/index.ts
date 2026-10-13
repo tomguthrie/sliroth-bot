@@ -1,16 +1,17 @@
 import { AutoRouter, type IRequest } from 'itty-router';
 
-import { createDiscordInteractionHandler } from './discord';
+import { createDiscordInteractionHandler } from './discord/interaction';
 import { deliverQueueBatch, type WorkerQueueMessage } from './queue';
-import { handleTwitchEventSub, twitchDiscordCommand } from './twitch';
+import { twitchDiscordCommand } from './twitch/discord-command';
+import { handleTwitchEventSub } from './twitch/eventsub-handler';
+import { youtubeDiscordCommand } from './youtube/discord-command';
 import {
   handleYouTubeWebSubIntent,
   handleYouTubeWebSubNotification,
-  youtubeDiscordCommand,
-} from './youtube';
+} from './youtube/websub-handler';
 
-export { TwitchSubscription } from './twitch';
-export { YouTubeSubscription } from './youtube';
+export { TwitchSubscription } from './twitch/durable-object';
+export { YouTubeSubscription } from './youtube/durable-object';
 
 const handleDiscordInteraction = createDiscordInteractionHandler([
   twitchDiscordCommand,
