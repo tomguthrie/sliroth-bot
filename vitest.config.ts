@@ -4,15 +4,10 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   plugins: [
     cloudflareTest({
-      experimental: { newConfig: true },
+      config: true,
       remoteBindings: false,
       miniflare: {
         modulesRules: [{ type: 'Text', include: ['**/*.sql'], fallthrough: true }],
-        // The beta test plugin does not rewrite named self-bindings to its runner Worker.
-        durableObjects: {
-          YOUTUBE_SUBSCRIPTIONS: { className: 'YouTubeSubscription', useSQLite: true },
-          TWITCH_SUBSCRIPTIONS: { className: 'TwitchSubscription', useSQLite: true },
-        },
         bindings: {
           DISCORD_BOT_TOKEN: 'test-discord-bot-token',
           DISCORD_PUBLIC_KEY: 'd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a',
